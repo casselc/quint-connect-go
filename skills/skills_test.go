@@ -31,4 +31,23 @@ func TestSkillsHaveFrontMatter(t *testing.T) {
 	if _, err := Install(dir, false); err == nil {
 		t.Fatal("overwrote without force")
 	}
+	dirs, err := TargetDirs("p", nil)
+	if err != nil || len(dirs) != 2 || dirs[0] != filepath.Join("p", ".agents", "skills") {
+		t.Fatalf("default targets: %v %v", dirs, err)
+	}
+	if _, err := TargetDirs("p", []string{"nope"}); err == nil {
+		t.Fatal("unknown target accepted")
+	}
+}
+
+// The repository exposes the skills where agents look for them.
+func TestRepoSkillDirs(t *testing.T) {
+	list, _ := List()
+	for _, d := range []string{"../.agents/skills", "../.claude/skills"} {
+		for _, s := range list {
+			if _, err := os.Stat(filepath.Join(d, s.Name, "SKILL.md")); err != nil {
+				t.Errorf("%s/%s: %v (symlink it to ../../skills/%s)", d, s.Name, err, s.Name)
+			}
+		}
+	}
 }

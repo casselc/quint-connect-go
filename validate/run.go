@@ -75,3 +75,19 @@ func (c *Checker) Check(ctx context.Context, steps []qtrace.Step) (*Report, erro
 	}
 	return rep, nil
 }
+
+// WithInvariants returns a copy of the checker that checks these model
+// invariants instead of the binding's, e.g. a property the design does not
+// guarantee, to see whether (and where) a recorded run violates it.
+func (c *Checker) WithInvariants(invariants ...string) (*Checker, error) {
+	for _, inv := range invariants {
+		if !c.Model.Vals[inv] {
+			return nil, fmt.Errorf("invariant %s: not a boolean val of %s", inv, c.Binding.Module)
+		}
+	}
+	b := *c.Binding
+	b.Invariants = invariants
+	cc := *c
+	cc.Binding = &b
+	return &cc, nil
+}

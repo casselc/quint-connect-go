@@ -217,10 +217,16 @@ func CheckAll(t testing.TB, c *validate.Checker, runs [][]qtrace.Step, parallel 
 	return reps
 }
 
-// Render lists steps one per line, for failure messages.
+// Render lists steps one per line, for failure messages, marking where the
+// process (incarnation) changes: where a binding's restart action goes.
 func Render(steps []qtrace.Step) string {
 	var b strings.Builder
+	procs := ids{}
 	for i, s := range steps {
+		p := procs.of(s.Process)
+		if i > 0 && s.Process != steps[i-1].Process {
+			fmt.Fprintf(&b, "  -- process %d (restart)\n", p)
+		}
 		fmt.Fprintf(&b, "  [%d] %s\n", i, s.String())
 	}
 	return b.String()

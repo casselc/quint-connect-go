@@ -25,8 +25,11 @@ itf/          ITF decode/encode, Go <-> Quint values (Decode/Encode), Quint lite
 qobs/ qtrace/ otelio/ convert/ load/   recording, schema/reconstruction, OTLP, span conversion, input sniffing
 binding/ validate/ qtest/              binding YAML, quint-test-based validator, test helpers
 cmd/quintgo/  CLI
-skills/       agent skills (embedded by package skills; symlinked into .claude/skills)
-examples/bank         root module; every workflow on one small system
+skills/       agent skills, the source of truth (embedded by package skills;
+              symlinked into .agents/skills and .claude/skills, checked by skills_test.go)
+examples/kvstore      app: HTTP KV service with CAS (kvserver, kvload); concurrency, span conversion
+examples/jobqueue     app: at-least-once queue with leases and restarts; design-level verdicts
+examples/bank         library example; every workflow on one small system
 examples/edgepublish  separate module (Orchestrion); the spike's real-world case, model vendored in model/
 docs/         DESIGN.md, instrumentation.md
 ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API rate limits)
@@ -77,6 +80,14 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   paths and set `cmd.Dir` to the spec's directory.
 - Timing-sensitive or slow tests (shrinking against the model) skip under
   `testing.Short()`.
+- Skills live in `skills/<name>/SKILL.md`, never directly in `.agents/` or
+  `.claude/`, which only hold symlinks to them. Add a symlink in both when
+  adding a skill (`skills_test.go` checks it). A skill's front-matter
+  `name` equals its directory.
+- An example app has a model in `model/`, a binding, at least one
+  mutant, a `run-demo.sh`, tests showing which check catches which
+  mutant, and a README with the table of tests. Its row goes in the
+  README's example table.
 
 ## Gotchas
 
@@ -89,6 +100,13 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   (`binding.RenderModule` handles this).
 - Hegel's `TestCase.Errorf` aborts the test case (unlike `testing.T`).
   `hegel.Test` cannot express "expected to fail": use `hegel.Run`.
+- Long replays are split into `.then` segments of 20 (`binding.segmentSteps`):
+  Quint's Rust evaluator rejects chains nested much past 50. A disabled
+  last step is reported by quint as QNT511 at the run's own line, and a
+  segment ending in one at the `.then(segK)` line. The validator maps both,
+  and `validate/segments_test.go` covers them.
+- A failed quint test with no error position is a tool failure (e.g. the
+  evaluator crashed). The validator returns an error, never a verdict.
 - `quinthegel.CaseChecker` prefix reuse is only sound for one actor with
   no `order.*` keys, where the recording order is the reconstructed order,
   and with equal instance constants. Keep those guards.

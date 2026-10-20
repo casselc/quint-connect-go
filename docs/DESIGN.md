@@ -609,3 +609,20 @@ conversion cannot give:
 
 The binding is unchanged: the same binding checks recorded and converted
 steps (`examples/bank`).
+
+### 9.4 Long replays and quint's error positions
+
+A replay is one `init.then(c1).then(c2)...` chain, and the Rust evaluator
+rejects chains nested much past 50 steps ("recursion limit exceeded").
+`binding.RenderModule` writes longer chains as named segments of 20 calls
+(`action conformsTest_seg0 = c1.then(c2)...`), and the run chains the
+segments. Each call stays on its own line, so a failure is still located
+by line, with two cases quint reports elsewhere:
+- the last call of the whole run evaluating to false is QNT511 ("Test …
+  returned false") at the run's own line;
+- the last call of a segment evaluating to false is QNT513 at the
+  top-level `.then(segK)` line.
+
+Both are mapped to the call. A failed test with no location at all is
+quint failing, not the model rejecting the run, and is an error. A
+400-step concurrent kvstore run validates in about 7 s.

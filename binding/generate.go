@@ -228,6 +228,9 @@ type ModuleSpec struct {
 	Header     []string // comment lines
 }
 
+// segmentSteps is the longest `.then` chain written as one expression.
+const segmentSteps = 20
+
 // RenderModule writes the replay module for calls: a conformance run with
 // each call's expect, and one run per invariant.
 func RenderModule(ms ModuleSpec, calls []Call, qntPath string) (*Generated, error) {
@@ -260,35 +263,74 @@ func RenderModule(ms ModuleSpec, calls []Call, qntPath string) (*Generated, erro
 		pr("%s", indent(strings.TrimRight(ms.Defs, "\n"), "  "))
 	}
 	pr("")
-	g.Tests.Conforms = "conformsTest"
-	pr("  // The observed steps, each checked against the observed state.")
-	pr("  run %s =", g.Tests.Conforms)
-	if ms.InitExpect != "" {
-		pr("    init.expect(%s)", ms.InitExpect)
-	} else {
-		pr("    init")
-	}
-	for i, c := range calls {
-		pr("    // [%d] %s", i, describe(c))
-		g.LineStep[line] = i
-		if c.Expect != "" {
-			pr("    .then(%s.expect(%s))", c.Quint, c.Expect)
-		} else {
-			pr("    .then(%s)", c.Quint)
+	// chain writes a run of init and then every call, rendered by step. Long
+	// chains are split into segments: Quint's Rust evaluator rejects a
+	// `.then` chain nested much past 50 steps.
+	chain := func(name, first string, step func(c Call) string, comment bool) {
+		// emit writes call i on its own line (quint's error positions map
+		// back to the observed step by line): `.then(...)`, or bare as the
+		// first step of a segment.
+		emit := func(i int, then bool) {
+			if comment {
+				pr("    // [%d] %s", i, describe(calls[i]))
+			}
+			g.LineStep[line] = i
+			if then {
+				pr("    .then(%s)", step(calls[i]))
+			} else {
+				pr("    %s", step(calls[i]))
+			}
+		}
+		if len(calls) <= segmentSteps {
+			pr("  run %s =", name)
+			pr("    %s", first)
+			for i := range calls {
+				emit(i, true)
+			}
+			return
+		}
+		var segs []string
+		var lasts []int // the last call of each segment
+		for s := 0; s < len(calls); s += segmentSteps {
+			seg := fmt.Sprintf("%s_seg%d", name, s/segmentSteps)
+			segs = append(segs, seg)
+			lasts = append(lasts, min(s+segmentSteps, len(calls))-1)
+			pr("  action %s =", seg)
+			for i := s; i < len(calls) && i < s+segmentSteps; i++ {
+				emit(i, i > s)
+			}
+		}
+		pr("  run %s =", name)
+		pr("    %s", first)
+		for k, seg := range segs {
+			// A segment that evaluates to false is reported at this line:
+			// its last call was the disabled one (an earlier one would have
+			// been reported inside the segment).
+			g.LineStep[line] = lasts[k]
+			pr("    .then(%s)", seg)
 		}
 	}
+	g.Tests.Conforms = "conformsTest"
+	pr("  // The observed steps, each checked against the observed state.")
+	first := "init"
+	if ms.InitExpect != "" {
+		first = fmt.Sprintf("init.expect(%s)", ms.InitExpect)
+	}
+	chain(g.Tests.Conforms, first, func(c Call) string {
+		if c.Expect != "" {
+			return fmt.Sprintf("%s.expect(%s)", c.Quint, c.Expect)
+		}
+		return c.Quint
+	}, true)
 	g.Tests.Invariants = map[string]string{}
 	for _, inv := range ms.Invariants {
 		name := inv + "InvTest"
 		g.Tests.Invariants[inv] = name
 		pr("")
 		pr("  // The same steps; %s must hold in every state.", inv)
-		pr("  run %s =", name)
-		pr("    init.expect(%s)", inv)
-		for i, c := range calls {
-			g.LineStep[line] = i
-			pr("    .then(%s.expect(%s))", c.Quint, inv)
-		}
+		chain(name, fmt.Sprintf("init.expect(%s)", inv), func(c Call) string {
+			return fmt.Sprintf("%s.expect(%s)", c.Quint, inv)
+		}, false)
 	}
 	pr("}")
 	g.Text = w.String()

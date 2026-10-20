@@ -193,24 +193,26 @@ action. See [docs/instrumentation.md](docs/instrumentation.md) and
 | `validate` | replay with `quint test`: `Checker.Check`, `CheckRuns`, `ValidateITF`, structured verdicts |
 | `qtest` | record-then-check inside a Go test |
 | `load` | read OTLP/JSON, a step log or ITF, detected by content |
-| `skills` | the agent skills below, embedded |
+| `skills` | the agent skills below, embedded; install targets |
 | `cmd/quintgo` | CLI: `scaffold`, `lint`, `steps`, `validate`, `itf`, `convert`, `skills` |
 
-## Examples
+## Example apps
 
-- [`examples/bank`](examples/bank) is every workflow on one small system:
-  - `mbt_test.go`: the model drives the bank, and only divergence is
-    caught;
-  - `hegel_test.go`: Hegel drives and the model judges and shrinks; model
-    traces get Hegel noise;
-  - `trace_test.go`: recorded steps and converted OTel spans are checked.
-- [`examples/edgepublish`](examples/edgepublish) is the spike's real case
-  (its own module, using Orchestrion). It covers:
-  - an OTel exporter's publish protocol, with S3 faults and crashes;
-  - `//quint:action` annotations;
-  - three trace paths with identical verdicts;
-  - MBT with gated effects for concurrency;
-  - a round trip from model to Go to telemetry and back to the model.
+Each one is a runnable Go app with a Quint model, a binding, mutants that
+inject real bugs, a `run-demo.sh` and tests showing which check catches
+which bug.
+
+| App | What it is | What it shows |
+|---|---|---|
+| [`examples/kvstore`](examples/kvstore) | an HTTP key-value service with compare-and-swap (`kvserver`, `kvload`) | a concurrent service checked as a serial behaviour of its model, from its steps or its plain OTel spans (`kv.op` as a linearization key); a CAS race caught under load; errors that classify themselves; reads checked against the model; Hegel over HTTP |
+| [`examples/jobqueue`](examples/jobqueue) | an at-least-once job queue with leases, workers and restarts (`jobqueue`) | all three verdicts: an implementation bug, a design property the run violates (`exactlyOnce`, checked with `-invariants`), and conformance; restarts inferred from incarnations; when model-driven testing does not fit |
+| [`examples/bank`](examples/bank) | an in-memory bank (library) | every workflow on one small system: what model-driven testing cannot catch and Hegel + the model can |
+| [`examples/edgepublish`](examples/edgepublish) | the spike's real case: an OTel exporter's publish protocol with S3 faults and crashes (own module, Orchestrion) | `//quint:action` annotations; three trace paths with identical verdicts; MBT with gated effects; model → Go → telemetry → model |
+
+```sh
+examples/kvstore/run-demo.sh                    # MUTATION=stale-cas | revision-on-conflict
+examples/jobqueue/run-demo.sh                   # MUTATION=ack-any-lease | forget-done
+```
 
 ## Agent skills and guidance
 
@@ -220,14 +222,20 @@ The skills in [`skills/`](skills) teach a coding agent this toolkit:
 - `quint-trace-validation`: instrumentation, bindings and verdicts;
 - `quint-hegel`: Hegel + Quint.
 
-They are active in this repository (`.claude/skills`). To install them into
-your own project:
+They are in the [Agent Skills](https://agentskills.io) format, one
+`SKILL.md` per directory. In this repository they are exposed where agents
+look for them: `.agents/skills/`, the vendor-neutral location read by
+Cursor, VS Code/Copilot, Codex and others, and `.claude/skills/` for Claude
+Code. Install them into your own project, or for your user:
 
 ```sh
-quintgo skills install            # writes .claude/skills/<name>/SKILL.md
+quintgo skills install                     # .agents/skills and .claude/skills
+quintgo skills install -target all         # also .github/skills and .cursor/skills
+quintgo skills install -user               # under $HOME instead of the project
 ```
 
-Contributor guidance for agents is in [AGENTS.md](AGENTS.md).
+Repository guidance for agents is in [AGENTS.md](AGENTS.md); `CLAUDE.md`
+imports it.
 
 ## Limits
 

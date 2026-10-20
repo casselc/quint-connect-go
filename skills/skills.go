@@ -1,8 +1,8 @@
 // Package skills embeds quint-connect-go's agent skills (Agent Skills
 // format: one directory per skill with a SKILL.md), so they can be
-// installed into any project: `quintgo skills install` writes them to
-// .claude/skills (or -dir), where Claude Code and other agents that read
-// Agent Skills pick them up.
+// installed into any project with `quintgo skills install`. By default
+// they go to the vendor-neutral .agents/skills, which Cursor, VS Code /
+// Copilot, Codex and others read, and to .claude/skills for Claude Code.
 package skills
 
 import (
@@ -62,6 +62,46 @@ func frontMatter(doc, key string) string {
 		}
 	}
 	return ""
+}
+
+// Targets are the skills directories agents read, relative to a project
+// (or, for a user-wide install, to the home directory).
+var Targets = map[string]string{
+	"agents": filepath.Join(".agents", "skills"), // vendor-neutral: Cursor, VS Code/Copilot, Codex, ...
+	"claude": filepath.Join(".claude", "skills"), // Claude Code
+	"github": filepath.Join(".github", "skills"), // GitHub Copilot
+	"cursor": filepath.Join(".cursor", "skills"), // Cursor
+}
+
+// DefaultTargets are installed when none are named.
+var DefaultTargets = []string{"agents", "claude"}
+
+// TargetDirs resolves target names ("all" for every one) under root.
+func TargetDirs(root string, names []string) ([]string, error) {
+	if len(names) == 0 {
+		names = DefaultTargets
+	}
+	if len(names) == 1 && names[0] == "all" {
+		names = nil
+		for n := range Targets {
+			names = append(names, n)
+		}
+		sort.Strings(names)
+	}
+	var out []string
+	for _, n := range names {
+		d, ok := Targets[n]
+		if !ok {
+			var known []string
+			for k := range Targets {
+				known = append(known, k)
+			}
+			sort.Strings(known)
+			return nil, fmt.Errorf("unknown target %q (have %s, all)", n, strings.Join(known, ", "))
+		}
+		out = append(out, filepath.Join(root, d))
+	}
+	return out, nil
 }
 
 // Install writes every skill to dir/<name>/SKILL.md. Existing files are

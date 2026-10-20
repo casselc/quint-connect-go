@@ -110,3 +110,20 @@ so `connect.ReplayFiles` can drive the implementation with it again.
 
 Soundness is relative to the binding: a wrong template can hide or invent
 a bug. When a verdict surprises you, check the binding first.
+
+## Patterns from the example apps
+
+- **Concurrent services** (`examples/kvstore`). Record each step inside the
+  critical section that orders it. For spans, stamp a linearization index
+  (`kv.op`) and make it an ordering key in the convert rules
+  (`order: { op: attr:kv.op }`). Otherwise concurrent requests are
+  ordered by span end time, which is not the order their effects took.
+- **Restarts** (`examples/jobqueue`). Give every incarnation its own
+  `process`, and let the binding's `restart:` insert the model's restart.
+  Make operations that race a restart retry on the new incarnation, so
+  nothing is recorded under a dead one.
+- **Properties the design does not promise.** Leave them out of the
+  binding's `invariants` and check them on demand:
+  `quintgo validate -invariants exactlyOnce`, or
+  `Checker.WithInvariants`. "Conforms, invariant FAIL" then says when
+  and where a real run hit the design's limit.

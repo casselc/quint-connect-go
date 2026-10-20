@@ -1,0 +1,31 @@
+# Recorded jobqueue steps (queue/queue.go's qobs.Record calls) as calls of
+# model/jobqueue.qnt. A new queue incarnation (quint.process) means the
+# queue restarted: the model's restart action is inserted there.
+spec: model/jobqueue.qnt
+module: jobqueue
+
+constants:
+  JOBS: '{{ set "job" }}'
+  WORKERS: 'Set("w1", "w2", "w3", "w4")'
+
+outcomes: { ok: Ok, stale: Stale }
+restart: restart
+
+actions:
+  enqueue:
+    args: { job: '{{.job}}' }
+    outcomes: { error: skip }      # a duplicate is refused and changes nothing
+  lease:
+    args: { worker: '{{.worker}}', job: '{{.job}}' }
+  perform:
+    args: { worker: '{{.worker}}', job: '{{.job}}' }
+  ack:
+    args: { worker: '{{.worker}}', job: '{{.job}}', o: '{{.outcome}}' }
+  expire:
+    args: { job: '{{.job}}' }
+
+# What the design guarantees. exactlyOnce is not among them (an
+# at-least-once queue performs a job twice when a lease expires while its
+# worker is still working); check it explicitly to see when that happens:
+#   quintgo validate -binding jobqueue.binding.yaml -invariants exactlyOnce steps.jsonl
+invariants: [doneImpliesPerformed]

@@ -163,6 +163,17 @@ func run(ctx context.Context, g *binding.Generated, qnt, base string, invariants
 	}
 	res.Conforms = verdicts[g.Tests.Conforms]
 	res.Failure = failures[g.Tests.Conforms]
+	// A failed run with no error position is quint failing, not the model
+	// rejecting the trace (e.g. the evaluator crashed): never a verdict.
+	for name, v := range verdicts {
+		if v == Fail && failures[name] == nil {
+			msg := "no error location in quint's output"
+			if m := reToolErr.FindString(res.Output); m != "" {
+				msg = strings.TrimSpace(m)
+			}
+			return fmt.Errorf("quint could not evaluate the replay %s (test %s): %s\n%s", qnt, name, msg, res.Output)
+		}
+	}
 	for _, inv := range invariants {
 		name := g.Tests.Invariants[inv]
 		ir := InvariantResult{Name: inv, Verdict: verdicts[name], Failure: failures[name]}
@@ -181,9 +192,10 @@ func run(ctx context.Context, g *binding.Generated, qnt, base string, invariants
 }
 
 var (
-	reOK     = regexp.MustCompile(`(?m)^\s+ok (\S+) passed`)
-	reFailed = regexp.MustCompile(`(?m)^\s+\d+\) (\S+) failed`)
-	reBlock  = regexp.MustCompile(`(?m)^\s+\d+\) (\S+):\s*\n\s+(Error \[QNT\d+\]: [^\n]*)\n\s+at ([^\n]*):(\d+):(\d+)`)
+	reOK      = regexp.MustCompile(`(?m)^\s+ok (\S+) passed`)
+	reFailed  = regexp.MustCompile(`(?m)^\s+\d+\) (\S+) failed`)
+	reToolErr = regexp.MustCompile(`(?m)(error: \[QNT\d+\][^\n]*(\n\s+Error:[^\n]*)?)`)
+	reBlock   = regexp.MustCompile(`(?m)^\s+\d+\) (\S+):\s*\n\s+(Error \[QNT\d+\]: [^\n]*)\n\s+at ([^\n]*):(\d+):(\d+)`)
 )
 
 func parseQuintTest(out, qnt string, g *binding.Generated) (map[string]Verdict, map[string]*Failure) {
@@ -212,7 +224,13 @@ func parseQuintTest(out, qnt string, g *binding.Generated) (map[string]Verdict, 
 		default:
 			fl.Kind = "error"
 		}
-		if i, ok := g.LineStep[line]; ok {
+		i, ok := g.LineStep[line]
+		if strings.Contains(msg, "QNT511") && len(g.Calls) > 0 {
+			// "Test ... returned false", located at the run itself: the
+			// last call evaluated to false, so the model cannot take it.
+			fl.Kind, i, ok = "disabled", len(g.Calls)-1, true
+		}
+		if ok {
 			fl.Index = i
 			fl.Call = g.Calls[i].Quint
 			fl.Expect = g.Calls[i].Expect

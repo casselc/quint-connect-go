@@ -9,7 +9,8 @@
 //	quintgo itf      -binding b.yaml -out DIR FILE...   recorded steps -> model-level ITF, per actor
 //	quintgo convert  -rules r.yaml [-out steps.jsonl] FILE...
 //	                                                    an app's own OTLP/JSON spans -> a native step log
-//	quintgo skills   [list | install [-dir DIR] [-force]] the toolkit's agent skills, for .claude/skills
+//	quintgo skills   [list | install [-target T] [-user] [-dir DIR] [-force]]
+//	                                                    the toolkit's agent skills, into .agents/skills and .claude/skills
 //
 // FILE is detected by content: OTLP/JSON (e.g. the collector's file
 // exporter output), a native step log (qobs.JSONLSink), or a model-level
@@ -73,11 +74,13 @@ func usage() {
   quintgo lint     -binding b.yaml [-src DIR]
   quintgo steps    FILE.jsonl...
   quintgo validate [-binding b.yaml] [-dir OUT] [-backend rust|typescript] [-format auto|otlp|steps|itf]
-                   [-spec M.qnt -module M -instance I] [-novars] FILE...
+                   [-spec M.qnt -module M -instance I] [-novars]
+                   [-convert rules.yaml] [-invariants a,b] FILE...
   quintgo itf      -binding b.yaml -out DIR FILE...      recorded steps -> model-level ITF per actor
   quintgo convert  -rules r.yaml [-out steps.jsonl] FILE...   an app's OTLP/JSON spans -> step log (see package convert)
 
-  quintgo skills   [list | install [-dir .claude/skills] [-force]]   agent skills for this toolkit
+  quintgo skills   [list | install [-target agents,claude,github,cursor|all] [-user] [-dir DIR] [-force]]
+                   agent skills for this toolkit (default: .agents/skills and .claude/skills)
 
 validate, steps and itf also take -convert r.yaml to convert OTLP/JSON spans on the way in.`)
 	os.Exit(2)
@@ -227,6 +230,7 @@ func runValidate(args []string) (int, error) {
 	novars := fset.Bool("novars", false, "ITF input: do not compare model variables carried by the trace")
 	verbose := fset.Bool("v", false, "print quint's output")
 	conv := fset.String("convert", "", "convert OTLP/JSON spans with this rule file (see quintgo convert)")
+	invs := fset.String("invariants", "", "comma-separated model invariants to check instead of the binding's")
 	fset.Parse(args)
 	rules, err := loadRules(*conv)
 	if err != nil {
@@ -276,6 +280,11 @@ func runValidate(args []string) (int, error) {
 		c, err := validate.NewChecker(*bpath, opts)
 		if err != nil {
 			return 2, err
+		}
+		if *invs != "" {
+			if c, err = c.WithInvariants(strings.Split(*invs, ",")...); err != nil {
+				return 2, err
+			}
 		}
 		rep, err := c.Check(context.Background(), steps)
 		if err != nil {
@@ -435,21 +444,47 @@ func runSkills(args []string) error {
 		for _, s := range list {
 			fmt.Printf("%s\n    %s\n", s.Name, s.Description)
 		}
-		fmt.Println("\ninstall into a project: quintgo skills install [-dir .claude/skills]")
+		fmt.Println("\ninstall into a project: quintgo skills install   (.agents/skills and .claude/skills; -target, -user, -dir)")
 		return nil
 	}
 	if args[0] != "install" {
 		usage()
 	}
 	fset := flag.NewFlagSet("skills install", flag.ExitOnError)
-	dir := fset.String("dir", filepath.Join(".claude", "skills"), "skills directory of the project")
+	target := fset.String("target", "", "comma-separated: agents (.agents/skills), claude (.claude/skills), github, cursor, or all (default agents,claude)")
+	dir := fset.String("dir", "", "install into this skills directory instead of the targets")
+	user := fset.Bool("user", false, "install for the user (under $HOME) instead of the current project")
 	force := fset.Bool("force", false, "overwrite existing skill files")
 	fset.Parse(args[1:])
-	paths, err := skills.Install(*dir, *force)
-	for _, p := range paths {
-		fmt.Println("wrote", p)
+	dirs := []string{*dir}
+	if *dir == "" {
+		root := "."
+		if *user {
+			h, err := os.UserHomeDir()
+			if err != nil {
+				return err
+			}
+			root = h
+		}
+		var names []string
+		if *target != "" {
+			names = strings.Split(*target, ",")
+		}
+		var err error
+		if dirs, err = skills.TargetDirs(root, names); err != nil {
+			return err
+		}
 	}
-	return err
+	for _, d := range dirs {
+		paths, err := skills.Install(d, *force)
+		for _, p := range paths {
+			fmt.Println("wrote", p)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func sortedKeys[V any](m map[string]V) []string {

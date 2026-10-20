@@ -1,0 +1,35 @@
+# Recorded kvstore steps (kv/store.go's qobs.Record calls, or the server's
+# spans converted by kv.convert.yaml) as calls of model/kv.qnt.
+spec: model/kv.qnt
+module: kv
+
+# Keys and values: those the run used.
+constants:
+  KEYS: '{{ set "key" }}'
+  VALUES: '{{ set "value" }}'
+
+# The store's errors classify themselves (QuintOutcome): conflict, missing.
+outcomes:
+  ok: Ok
+  conflict: Conflict
+  missing: Missing
+
+actions:
+  write:
+    args: { key: '{{.key}}', value: '{{.value}}' }
+    expect: 'revision == {{.obs.revision}}'
+  cas:
+    args: { key: '{{.key}}', expected: '{{.expected}}', value: '{{.value}}', o: '{{.outcome}}' }
+    expect: 'revision == {{.obs.revision}}'
+  del:
+    args: { key: '{{.key}}', o: '{{.outcome}}' }
+    expect: 'revision == {{.obs.revision}}'
+  read:
+    args: { key: '{{.key}}' }
+    # What the read returned must be what the model's store holds.
+    expect: >-
+      revision == {{.obs.revision}} and
+      (if ({{.obs.found}}) store.get({{.key}}) == { value: {{.obs.value}}, version: {{.obs.version}} }
+       else not(store.keys().contains({{.key}})))
+
+invariants: [versionsAreRevisions, versionsUnique]

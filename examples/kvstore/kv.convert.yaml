@@ -1,0 +1,34 @@
+# The kvstore server's ordinary OTel spans (kv/server.go) as model steps.
+# Requests run concurrently, so span end times do not give the order in
+# which the store applied them. The server stamps each span with kv.op,
+# the store's linearization index, and `order: { op: ... }` makes it a
+# hard ordering edge (a domain clock, see docs/instrumentation.md).
+actor: =kv
+recorder: =kvserver
+rules:
+  - span: "KV *"
+    where: { http.response.status_code: "400" }   # malformed requests never reach the store
+    drop: true
+  - span: KV Put
+    action: write
+    args: { key: attr:kv.key, value: attr:kv.value }
+    obs: { revision: attr:kv.revision }
+    order: { op: attr:kv.op }
+  - span: KV CAS
+    action: cas
+    outcome: attr:kv.outcome
+    args: { key: attr:kv.key, expected: attr:kv.expect, value: attr:kv.value }
+    obs: { revision: attr:kv.revision }
+    order: { op: attr:kv.op }
+  - span: KV Delete
+    action: del
+    outcome: attr:kv.outcome
+    args: { key: attr:kv.key }
+    obs: { revision: attr:kv.revision }
+    order: { op: attr:kv.op }
+  - span: KV Get
+    action: read
+    outcome: attr:kv.outcome
+    args: { key: attr:kv.key }
+    obs: { revision: attr:kv.revision, found: attr:kv.found, value: attr:kv.read.value, version: attr:kv.read.version }
+    order: { op: attr:kv.op }

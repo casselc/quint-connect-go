@@ -32,6 +32,10 @@ jobs:
         run: go test -count=1 ./...
       - name: test (typescript backend)
         run: QUINT_BACKEND=typescript go test -short -count=1 ./connect/ ./validate/ ./examples/bank/
+      - name: example app demos
+        run: |
+          examples/kvstore/run-demo.sh
+          examples/jobqueue/run-demo.sh
 
   edgepublish:
     runs-on: ubuntu-latest

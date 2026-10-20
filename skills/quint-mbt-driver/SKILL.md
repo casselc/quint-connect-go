@@ -96,3 +96,8 @@ Mapping from quint-connect: `#[quint_run]` → `connect.Run`; `#[quint_test]`
 - `quint test` traces have no `mbt::` annotations. Use `connect.Run`, or
   `NondetPath` when the spec records the action in its state (Choreo's
   `extensions.actionTaken`).
+- When the model chooses where the implementation decides on its own
+  (the model leases any pending job, the queue always the oldest), model
+  traces ask for steps the code cannot be made to take. Either make the
+  choice controllable (a test hook), or check the code's own runs instead
+  (trace validation, Hegel). See `examples/jobqueue`.
