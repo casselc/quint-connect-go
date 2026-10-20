@@ -1,0 +1,466 @@
+// Command quintgo checks Go programs against Quint models from their
+// telemetry.
+//
+//	quintgo scaffold -spec model.qnt -module M          print a binding skeleton for M
+//	quintgo lint     -binding b.yaml [-src DIR]         check a binding (and annotations) against the model
+//	quintgo steps    FILE...                            print the reconstructed per-actor traces
+//	quintgo validate [-binding b.yaml] [-dir OUT] FILE...
+//	                                                    reconstruct (or read), replay in Quint, report
+//	quintgo itf      -binding b.yaml -out DIR FILE...   recorded steps -> model-level ITF, per actor
+//	quintgo convert  -rules r.yaml [-out steps.jsonl] FILE...
+//	                                                    an app's own OTLP/JSON spans -> a native step log
+//	quintgo skills   [list | install [-dir DIR] [-force]] the toolkit's agent skills, for .claude/skills
+//
+// FILE is detected by content: OTLP/JSON (e.g. the collector's file
+// exporter output), a native step log (qobs.JSONLSink), or a model-level
+// ITF trace (quintgo's, or `quint run --mbt` output with -spec/-module/-instance).
+// Exit status of validate: 0 all actors conform and satisfy the invariants,
+// 1 some do not, 2 usage or tool error.
+package main
+
+import (
+	"bytes"
+	"context"
+	"flag"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/casselc/quint-connect-go/binding"
+	"github.com/casselc/quint-connect-go/convert"
+	"github.com/casselc/quint-connect-go/load"
+	"github.com/casselc/quint-connect-go/otelio"
+	"github.com/casselc/quint-connect-go/qtrace"
+	"github.com/casselc/quint-connect-go/skills"
+	"github.com/casselc/quint-connect-go/validate"
+)
+
+func main() {
+	if len(os.Args) < 2 {
+		usage()
+	}
+	var err error
+	code := 0
+	switch os.Args[1] {
+	case "scaffold":
+		err = scaffold(os.Args[2:])
+	case "lint":
+		code, err = lint(os.Args[2:])
+	case "steps":
+		err = steps(os.Args[2:])
+	case "validate":
+		code, err = runValidate(os.Args[2:])
+	case "itf":
+		err = toITF(os.Args[2:])
+	case "convert":
+		err = runConvert(os.Args[2:])
+	case "skills":
+		err = runSkills(os.Args[2:])
+	default:
+		usage()
+	}
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "quintgo:", err)
+		os.Exit(2)
+	}
+	os.Exit(code)
+}
+
+func usage() {
+	fmt.Fprintln(os.Stderr, `usage:
+  quintgo scaffold -spec model.qnt -module M
+  quintgo lint     -binding b.yaml [-src DIR]
+  quintgo steps    FILE.jsonl...
+  quintgo validate [-binding b.yaml] [-dir OUT] [-backend rust|typescript] [-format auto|otlp|steps|itf]
+                   [-spec M.qnt -module M -instance I] [-novars] FILE...
+  quintgo itf      -binding b.yaml -out DIR FILE...      recorded steps -> model-level ITF per actor
+  quintgo convert  -rules r.yaml [-out steps.jsonl] FILE...   an app's OTLP/JSON spans -> step log (see package convert)
+
+  quintgo skills   [list | install [-dir .claude/skills] [-force]]   agent skills for this toolkit
+
+validate, steps and itf also take -convert r.yaml to convert OTLP/JSON spans on the way in.`)
+	os.Exit(2)
+}
+
+func scaffold(args []string) error {
+	fset := flag.NewFlagSet("scaffold", flag.ExitOnError)
+	spec := fset.String("spec", "", "Quint spec")
+	module := fset.String("module", "", "parameterised module to bind")
+	quint := fset.String("quint", "quint", "quint binary")
+	fset.Parse(args)
+	if *spec == "" || *module == "" {
+		return fmt.Errorf("scaffold needs -spec and -module")
+	}
+	m, err := binding.LoadModel(*quint, *spec, *module)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("# quintgo binding for %s (generated skeleton: fill in the templates)\nspec: %s   # relative to this file\nmodule: %s\n\nconstants:\n", *module, *spec, *module)
+	for _, c := range sortedKeys(m.Consts) {
+		fmt.Printf("  %s: ''   # %s\n", c, m.Consts[c])
+	}
+	fmt.Printf("\nintern: {}      # arg: actor|process, for opaque ids the model names by small integers\n")
+	fmt.Printf("outcomes: {}    # ok/error/<custom> -> Quint expression, used as {{.outcome}}\n")
+	fmt.Printf("restart: ''     # parameterless action inserted when an actor's process changes\n\nactions:\n")
+	for _, a := range m.ActionNames() {
+		if a == "init" || a == "step" {
+			continue // the state machine itself, not steps
+		}
+		fmt.Printf("  %s:   # %s\n", a, m.Signature(a))
+		if ps := m.Actions[a]; len(ps) > 0 {
+			fmt.Printf("    args:\n")
+			for _, p := range ps {
+				fmt.Printf("      %s: ''   # %s\n", p.Name, p.Type)
+			}
+		}
+		fmt.Printf("    # expect: ''  # Quint bool over the post-state, from observed .obs.<name>\n")
+	}
+	fmt.Printf("\ninvariants: []  # vals of %s: %s\n", *module, strings.Join(sortedKeys(m.Vals), ", "))
+	return nil
+}
+
+func lint(args []string) (int, error) {
+	fset := flag.NewFlagSet("lint", flag.ExitOnError)
+	bpath := fset.String("binding", "", "binding file")
+	src := fset.String("src", "", "Go source tree to scan for //quint:action")
+	quint := fset.String("quint", "quint", "quint binary")
+	fset.Parse(args)
+	b, err := binding.Load(*bpath)
+	if err != nil {
+		return 2, err
+	}
+	m, err := binding.LoadModel(*quint, b.SpecPath(), b.Module)
+	if err != nil {
+		return 2, err
+	}
+	errs := b.Lint(m)
+	var warns []string
+	if *src != "" {
+		anns, err := binding.ScanAnnotations(*src)
+		if err != nil {
+			return 2, err
+		}
+		fmt.Printf("%d //quint:action annotations under %s\n", len(anns), *src)
+		for _, a := range anns {
+			fmt.Printf("  %-28s %-14s %s\n", a.Pos[strings.LastIndex(a.Pos, "/")+1:], a.Action, a.Func)
+		}
+		e, w := b.LintAnnotations(m, anns)
+		errs, warns = append(errs, e...), w
+	}
+	for _, w := range warns {
+		fmt.Println("warning:", w)
+	}
+	for _, e := range errs {
+		fmt.Println("error:", e)
+	}
+	if len(errs) > 0 {
+		return 1, nil
+	}
+	fmt.Printf("binding %s fits %s (%d actions bound)\n", *bpath, b.Module, len(b.Actions))
+	return 0, nil
+}
+
+func readSteps(files []string, rules *convert.Rules) ([]qtrace.Step, error) {
+	var all []qtrace.Step
+	for _, f := range files {
+		if rules != nil {
+			steps, ok, err := convertFile(f, rules)
+			if err != nil {
+				return nil, err
+			}
+			if ok {
+				all = append(all, steps...)
+				continue
+			}
+		}
+		in, err := load.File(f, load.Unknown)
+		if err != nil {
+			return nil, err
+		}
+		if in.Format == load.ITF {
+			return nil, fmt.Errorf("%s is an ITF trace, not recorded steps", f)
+		}
+		all = append(all, in.Steps...)
+	}
+	return all, nil
+}
+
+func steps(args []string) error {
+	fset := flag.NewFlagSet("steps", flag.ExitOnError)
+	conv := fset.String("convert", "", "convert OTLP/JSON spans with this rule file")
+	fset.Parse(args)
+	rules, err := loadRules(*conv)
+	if err != nil {
+		return err
+	}
+	all, err := readSteps(fset.Args(), rules)
+	if err != nil {
+		return err
+	}
+	traces, issues := qtrace.Reconstruct(all)
+	for _, i := range issues {
+		fmt.Println("issue:", i)
+	}
+	for _, t := range traces {
+		fmt.Printf("actor %s: %d steps, processes %v\n", t.Actor, len(t.Steps), t.Processes)
+		for _, i := range t.Issues {
+			fmt.Println("  issue:", i)
+		}
+		for i, s := range t.Steps {
+			fmt.Printf("  [%2d] seq %-3d %-10.10s %s\n", i, s.Seq, s.Process, s.String())
+		}
+	}
+	return nil
+}
+
+func runValidate(args []string) (int, error) {
+	fset := flag.NewFlagSet("validate", flag.ExitOnError)
+	bpath := fset.String("binding", "", "binding file (optional for ITF written by quintgo)")
+	dir := fset.String("dir", "", "where to write generated modules and ITF (default: a temp dir)")
+	backend := fset.String("backend", "", "quint test backend (default $QUINTGO_BACKEND or rust)")
+	quint := fset.String("quint", "quint", "quint binary")
+	format := fset.String("format", "auto", "input format: auto, otlp, steps (native step log) or itf")
+	spec := fset.String("spec", "", "ITF input: the model, if neither the trace nor a binding names it")
+	module := fset.String("module", "", "ITF input: the parameterised module")
+	instance := fset.String("instance", "", "ITF input: replay against this instance module (e.g. currentDesign), e.g. for quint run --mbt traces")
+	novars := fset.Bool("novars", false, "ITF input: do not compare model variables carried by the trace")
+	verbose := fset.Bool("v", false, "print quint's output")
+	conv := fset.String("convert", "", "convert OTLP/JSON spans with this rule file (see quintgo convert)")
+	fset.Parse(args)
+	rules, err := loadRules(*conv)
+	if err != nil {
+		return 2, err
+	}
+	if fset.NArg() == 0 {
+		usage()
+	}
+	opts := validate.Options{Quint: *quint, Backend: *backend, Dir: *dir}
+	var b *binding.Binding
+	if *bpath != "" {
+		if b, err = binding.Load(*bpath); err != nil {
+			return 2, err
+		}
+	}
+	var steps []qtrace.Step
+	var itfs []*load.Input
+	for _, f := range fset.Args() {
+		if rules != nil {
+			cs, ok, err := convertFile(f, rules)
+			if err != nil {
+				return 2, err
+			}
+			if ok {
+				fmt.Printf("input %s: OTLP/JSON spans, converted with %s: %d steps\n", f, *conv, len(cs))
+				steps = append(steps, cs...)
+				continue
+			}
+		}
+		in, err := load.File(f, load.Format(*format))
+		if err != nil {
+			return 2, err
+		}
+		fmt.Printf("input %s: %s\n", f, map[load.Format]string{load.OTLP: "OTLP/JSON spans", load.StepLog: "native step log",
+			load.ITF: "model-level ITF", load.Unknown: "empty"}[in.Format])
+		if in.Format == load.ITF {
+			itfs = append(itfs, in)
+		} else {
+			steps = append(steps, in.Steps...)
+		}
+	}
+	ok := true
+	if len(steps) > 0 || len(itfs) == 0 {
+		if *bpath == "" {
+			return 2, fmt.Errorf("recorded steps need -binding")
+		}
+		c, err := validate.NewChecker(*bpath, opts)
+		if err != nil {
+			return 2, err
+		}
+		rep, err := c.Check(context.Background(), steps)
+		if err != nil {
+			return 2, err
+		}
+		fmt.Print(rep.Summary())
+		if *verbose {
+			for _, a := range rep.Actors {
+				fmt.Println(a.Output)
+			}
+		}
+		ok = ok && rep.OK()
+	}
+	for i, in := range itfs {
+		o := opts
+		if o.Dir != "" && len(itfs) > 1 {
+			o.Dir = fmt.Sprintf("%s/itf%d", o.Dir, i)
+		}
+		r, err := validate.ValidateITF(context.Background(), in.ITF, validate.ITFOptions{Options: o, Binding: b,
+			Spec: *spec, Module: *module, Instance: *instance, NoVarCheck: *novars})
+		if err != nil {
+			return 2, fmt.Errorf("%s: %w", in.Path, err)
+		}
+		fmt.Print(r.Summary())
+		if *verbose {
+			fmt.Println(r.Output)
+		}
+		ok = ok && r.OK()
+	}
+	if ok {
+		fmt.Println("RESULT: trace conforms to the model and satisfies the invariants")
+		return 0, nil
+	}
+	fmt.Println("RESULT: VIOLATION")
+	return 1, nil
+}
+
+// toITF writes one model-level ITF per actor from recorded steps.
+func toITF(args []string) error {
+	fset := flag.NewFlagSet("itf", flag.ExitOnError)
+	bpath := fset.String("binding", "", "binding file")
+	out := fset.String("out", ".", "output directory: <actor>.itf.json per actor")
+	conv := fset.String("convert", "", "convert OTLP/JSON spans with this rule file")
+	fset.Parse(args)
+	rules, err := loadRules(*conv)
+	if err != nil {
+		return err
+	}
+	if *bpath == "" || fset.NArg() == 0 {
+		usage()
+	}
+	b, err := binding.Load(*bpath)
+	if err != nil {
+		return err
+	}
+	all, err := readSteps(fset.Args(), rules)
+	if err != nil {
+		return err
+	}
+	traces, issues, err := b.StepsToITF(all)
+	for _, i := range issues {
+		fmt.Println("issue:", i)
+	}
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(*out, 0o755); err != nil {
+		return err
+	}
+	for actor, data := range traces {
+		f := filepath.Join(*out, strings.Map(func(r rune) rune {
+			if r == '/' || r == ' ' {
+				return '_'
+			}
+			return r
+		}, actor)+".itf.json")
+		if err := os.WriteFile(f, data, 0o644); err != nil {
+			return err
+		}
+		fmt.Printf("actor %s -> %s\n", actor, f)
+	}
+	return nil
+}
+
+func loadRules(p string) (*convert.Rules, error) {
+	if p == "" {
+		return nil, nil
+	}
+	return convert.Load(p)
+}
+
+// convertFile converts an OTLP/JSON file; ok is false for other formats.
+func convertFile(path string, rules *convert.Rules) ([]qtrace.Step, bool, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, false, err
+	}
+	if load.Sniff(data) != load.OTLP {
+		return nil, false, nil
+	}
+	tds, err := otelio.ReadTracesData(bytes.NewReader(data))
+	if err != nil {
+		return nil, false, fmt.Errorf("%s: %w", path, err)
+	}
+	steps, err := rules.Steps(tds)
+	if err != nil {
+		return nil, false, fmt.Errorf("%s: %w", path, err)
+	}
+	return steps, true, nil
+}
+
+func runConvert(args []string) error {
+	fset := flag.NewFlagSet("convert", flag.ExitOnError)
+	rpath := fset.String("rules", "", "rule file mapping spans to model actions")
+	out := fset.String("out", "-", "native step log to write (- for stdout)")
+	fset.Parse(args)
+	if *rpath == "" || fset.NArg() == 0 {
+		usage()
+	}
+	rules, err := convert.Load(*rpath)
+	if err != nil {
+		return err
+	}
+	var all []qtrace.Step
+	for _, f := range fset.Args() {
+		steps, ok, err := convertFile(f, rules)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return fmt.Errorf("%s is not OTLP/JSON", f)
+		}
+		all = append(all, steps...)
+	}
+	w := os.Stdout
+	if *out != "-" {
+		f, err := os.Create(*out)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		w = f
+	}
+	if err := qtrace.WriteJSONL(w, all); err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stderr, "%d steps\n", len(all))
+	return nil
+}
+
+func runSkills(args []string) error {
+	if len(args) == 0 || args[0] == "list" {
+		list, err := skills.List()
+		if err != nil {
+			return err
+		}
+		for _, s := range list {
+			fmt.Printf("%s\n    %s\n", s.Name, s.Description)
+		}
+		fmt.Println("\ninstall into a project: quintgo skills install [-dir .claude/skills]")
+		return nil
+	}
+	if args[0] != "install" {
+		usage()
+	}
+	fset := flag.NewFlagSet("skills install", flag.ExitOnError)
+	dir := fset.String("dir", filepath.Join(".claude", "skills"), "skills directory of the project")
+	force := fset.Bool("force", false, "overwrite existing skill files")
+	fset.Parse(args[1:])
+	paths, err := skills.Install(*dir, *force)
+	for _, p := range paths {
+		fmt.Println("wrote", p)
+	}
+	return err
+}
+
+func sortedKeys[V any](m map[string]V) []string {
+	var out []string
+	for k := range m {
+		out = append(out, k)
+	}
+	for i := 1; i < len(out); i++ {
+		for j := i; j > 0 && out[j] < out[j-1]; j-- {
+			out[j], out[j-1] = out[j-1], out[j]
+		}
+	}
+	return out
+}

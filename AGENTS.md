@@ -1,0 +1,94 @@
+# AGENTS.md: working on quint-connect-go
+
+Guidance for coding agents (and humans) changing this repository. If you
+are *using* the toolkit in another project, the skills in `skills/` are
+for you (`quintgo skills install`).
+
+## What this is
+
+A Go toolkit for checking Go code against Quint models in three ways:
+- **MBT** (`connect`): Quint traces drive the code.
+- **Hegel integration** (`quinthegel`): Hegel drives and the model
+  judges, or the model drives and Hegel varies.
+- **Trace validation** (`qobs`, `qtrace`, `otelio`, `convert`, `binding`,
+  `validate`, `qtest`): recorded runs are checked by the model.
+
+The design record is `docs/DESIGN.md`. Read §9 before changing `connect`
+or `quinthegel`.
+
+## Layout
+
+```
+connect/      MBT runtime (quint-connect parity); testdata/bank.qnt
+quinthegel/   Hegel integration; testdata/bank.yaml
+itf/          ITF decode/encode, Go <-> Quint values (Decode/Encode), Quint literal parser
+qobs/ qtrace/ otelio/ convert/ load/   recording, schema/reconstruction, OTLP, span conversion, input sniffing
+binding/ validate/ qtest/              binding YAML, quint-test-based validator, test helpers
+cmd/quintgo/  CLI
+skills/       agent skills (embedded by package skills; symlinked into .claude/skills)
+examples/bank         root module; every workflow on one small system
+examples/edgepublish  separate module (Orchestrion); the spike's real-world case, model vendored in model/
+docs/         DESIGN.md, instrumentation.md
+ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API rate limits)
+```
+
+## Requirements and commands
+
+- Go ≥ 1.26.1 (`go.mod`; hegel-go needs it). quint ≥ 0.32 on PATH
+  (`npm i -g @informalsystems/quint`, then `QUINT_VERSION=0.33.0
+  ci/install-quint.sh` for the Rust evaluator). Tests that need quint
+  skip without it.
+- `go vet ./... && gofmt -l .`: both must be clean.
+- `go test -short ./...` takes ~1 min. `go test ./...` adds the
+  shrinking-against-the-model tests, ~3–4 min.
+- edgepublish (its own module):
+  ```sh
+  cd examples/edgepublish
+  go test ./...
+  go run github.com/DataDog/orchestrion go test ./mbt/ ./scenarios/   # woven
+  ```
+- Backend: `QUINT_BACKEND=rust|typescript` (`QUINTGO_BACKEND` also works).
+  `QUINTGO_KEEP=/dir` keeps generated modules and traces from qtest and
+  quinthegel.
+
+## Conventions
+
+- The spec is ground truth. A failing model test means fixing the code
+  or, deliberately and visibly, the model. Never loosen a check to get
+  green.
+- Error messages say what to do next: name the step, the action and its
+  picks, the field, and the fix (see `connect`'s "anonymous action" and
+  "no mbt::actionTaken" errors). Tests assert on these messages, so keep
+  them stable.
+- Keep the core free of heavy dependencies: OTel, yaml.v3 and hegel only.
+  Orchestrion stays in examples.
+- Any `//quint:action` expression may only use parameters, the receiver
+  and named results. Methods called only from annotations (like
+  `Publisher.actor`) look unused to linters: mark them, don't delete them.
+- Comments explain why, at the density of the surrounding code. Doc
+  comments on every exported identifier.
+- New user-facing behaviour gets:
+  - a test (against `connect/testdata/bank.qnt` or
+    `examples/bank/model/bank.qnt`, or a model in `testdata/`);
+  - a line in README.md if it is a new entry point;
+  - an update to the relevant skill in `skills/` if agents should use it.
+  `skills/skills_test.go` checks the skills' front matter.
+- quint invocations go through argv (never a shell). Pass absolute spec
+  paths and set `cmd.Dir` to the spec's directory.
+- Timing-sensitive or slow tests (shrinking against the model) skip under
+  `testing.Short()`.
+
+## Gotchas
+
+- `quint run --mbt` records every `nondet` evaluated in a step, not only
+  the action's own: picks of other actions appear as `Some(..)`.
+- `quint test` ITF has no `mbt::` variables.
+- Generated replay modules import the model by relative path from their
+  own directory. Moving a generated `.qnt` breaks its import.
+- A model with no constants must be imported as `import M.*`, not `M()`
+  (`binding.RenderModule` handles this).
+- Hegel's `TestCase.Errorf` aborts the test case (unlike `testing.T`).
+  `hegel.Test` cannot express "expected to fail": use `hegel.Run`.
+- `quinthegel.CaseChecker` prefix reuse is only sound for one actor with
+  no `order.*` keys, where the recording order is the reconstructed order,
+  and with equal instance constants. Keep those guards.

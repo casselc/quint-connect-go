@@ -1,0 +1,6 @@
+# test artifacts ($QUINTGO_KEEP, generated modules and traces)
+/.quintgo/
+*.itf.json
+!**/testdata/**/*.itf.json
+.hegel/
+/quintgo

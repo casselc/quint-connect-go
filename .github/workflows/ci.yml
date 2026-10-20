@@ -1,0 +1,59 @@
+name: ci
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  QUINT_VERSION: 0.33.0
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install quint
+        run: ci/install-quint.sh
+      - name: gofmt
+        run: test -z "$(gofmt -l . | tee /dev/stderr)"
+      - name: vet
+        run: go vet ./...
+      - name: test
+        run: go test -count=1 ./...
+      - name: test (typescript backend)
+        run: QUINT_BACKEND=typescript go test -short -count=1 ./connect/ ./validate/ ./examples/bank/
+
+  edgepublish:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: examples/edgepublish
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: examples/edgepublish/go.mod
+          cache-dependency-path: examples/edgepublish/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install quint
+        run: ../../ci/install-quint.sh
+      - name: vet
+        run: go vet ./...
+      - name: test (unwoven)
+        run: go test -count=1 ./...
+      - name: test (woven with Orchestrion)
+        run: go run github.com/DataDog/orchestrion go test -count=1 ./mbt/ ./scenarios/
+      - name: demo
+        run: OUT=$RUNNER_TEMP/demo ./run-demo.sh

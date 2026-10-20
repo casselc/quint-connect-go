@@ -1,0 +1,28 @@
+# How recorded bank steps become calls of model/bank.qnt's actions. The same
+# binding serves the qobs-recorded steps (bank.go's qobs.Record calls) and
+# steps converted from the bank's own OTel spans (bank.convert.yaml).
+spec: model/bank.qnt
+module: bank
+
+# The instance to check against: the deployed accounts, and amounts up to
+# the largest one seen (constants may be templates over the whole run).
+constants:
+  ACCOUNTS: 'Set("alice", "bob", "carol")'
+  MAX_AMOUNT: '{{ atLeast 5 (max "amount") }}'
+
+actions:
+  deposit:
+    args: { account: '{{.account}}', amount: '{{.amount}}' }
+    # A refused operation changed nothing: the model has no such step.
+    outcomes: { error: skip }
+    expect: 'balances.get({{.account}}) == {{.obs.balance}}'
+  withdraw:
+    args: { account: '{{.account}}', amount: '{{.amount}}' }
+    outcomes: { error: skip }
+    expect: 'balances.get({{.account}}) == {{.obs.balance}}'
+  transfer:
+    args: { src: '{{.src}}', dst: '{{.dst}}', amount: '{{.amount}}' }
+    outcomes: { error: skip }
+    expect: 'balances.get({{.src}}) == {{.obs.src_balance}} and balances.get({{.dst}}) == {{.obs.dst_balance}}'
+
+invariants: [noOverdraft]

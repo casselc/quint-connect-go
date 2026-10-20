@@ -1,0 +1,18 @@
+# Recorded bank steps -> calls of ../../connect/testdata/bank.qnt.
+spec: ../../connect/testdata/bank.qnt
+module: bank
+constants: {}
+actions:
+  deposit:
+    args: { account: '{{.account}}', amount: '{{.amount}}' }
+    expect: 'balances == Map("alice" -> {{.obs.alice}}, "bob" -> {{.obs.bob}})'
+  withdraw:
+    args: { account: '{{.account}}', amount: '{{.amount}}' }
+    # A refused withdrawal changes nothing; the model has no such step.
+    outcomes: { error: skip }
+    expect: 'balances == Map("alice" -> {{.obs.alice}}, "bob" -> {{.obs.bob}})'
+  transfer:
+    args: { src: '{{.src}}', dst: '{{.dst}}', amount: '{{.amount}}' }
+    outcomes: { error: skip }
+    expect: 'balances == Map("alice" -> {{.obs.alice}}, "bob" -> {{.obs.bob}})'
+invariants: [nonNegative]

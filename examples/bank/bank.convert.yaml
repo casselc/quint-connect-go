@@ -1,0 +1,18 @@
+# The bank's ordinary OTel spans (no quint instrumentation) as model steps,
+# for `quintgo convert` / `quintgo validate -convert` and package convert.
+# Values: attr:K (event, then span, then resource attribute), =literal,
+# status (ok|error from the span status), |int to convert.
+actor: =bank
+rules:
+  - span: Bank/Deposit
+    action: deposit
+    args: { account: attr:bank.account, amount: attr:bank.amount }
+    obs: { balance: attr:bank.balance }
+  - span: Bank/Withdraw
+    action: withdraw
+    args: { account: attr:bank.account, amount: attr:bank.amount }
+    obs: { balance: attr:bank.balance }
+  - span: Bank/Transfer
+    action: transfer
+    args: { src: attr:bank.src, dst: attr:bank.dst, amount: attr:bank.amount }
+    obs: { src_balance: attr:bank.src_balance, dst_balance: attr:bank.dst_balance }
