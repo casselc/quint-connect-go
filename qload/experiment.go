@@ -184,6 +184,7 @@ func (x Experiment) Run(seed uint64, tr Trigger, horizon time.Duration) *Series 
 		sc.Rates = x.Faults
 		c = sc
 	}
+	defer qobs.Strict()()
 	cnt := &counter{n: map[string]int{}, next: x.Sink}
 	s := qenv.New(qenv.WithContext(c, qobs.WithRecorder(context.Background(), qobs.NewRecorder(cnt, qobs.WithActor(x.Actor)))))
 	defer s.Close()

@@ -46,6 +46,7 @@ type Sim struct {
 	base      context.Context // every task's context derives from it
 	nextNem   time.Time       // with NemesisEvery: when the next nemesis choice is due
 	lastNow   time.Time       // Check: time never goes backwards
+	creator   int64           // the goroutine that created it (owners)
 	now       time.Time
 	start     time.Time
 	tasks     []*task   // every task, in creation order (task id-1)
@@ -123,8 +124,10 @@ func New(c Chooser) *Sim {
 	if cc, ok := c.(ctxChooser); ok {
 		base = cc.ctx
 	}
-	return &Sim{c: c, base: base, now: Epoch, start: Epoch, back: make(chan struct{}), MaxSteps: 100000,
-		Check: os.Getenv("QENV_CHECK") == "1"}
+	s := &Sim{c: c, base: base, now: Epoch, start: Epoch, back: make(chan struct{}), MaxSteps: 100000,
+		Check: os.Getenv("QENV_CHECK") == "1", creator: goid()}
+	own(s.creator, s)
+	return s
 }
 
 // Choose makes a choice of the environment. While the simulation settles,
@@ -212,6 +215,9 @@ func (s *Sim) spawn(parent context.Context, name string, p *Process, fn func(ctx
 	s.enqueue(t)
 	ctx := context.WithValue(parent, ctxKey{}, t)
 	go func() {
+		id := goid()
+		own(id, s)
+		defer disown(id, s)
 		<-t.wake
 		defer func() {
 			if r := recover(); r != nil {
@@ -749,6 +755,7 @@ func (s *Sim) Close() {
 		return
 	}
 	s.closed = true
+	defer disown(s.creator, s)
 	for _, t := range s.tasks {
 		if !t.done {
 			t.killed = true

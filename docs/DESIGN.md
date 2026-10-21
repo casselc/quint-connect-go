@@ -991,11 +991,26 @@ the same workarounds kept appearing in examples. They are now in the core.
   parallel, and `qmeta.Runs`, `Count` and `Mostly` run a trigger's seeds
   in parallel. A Hegel test records the same way
   (`quinthegel.Recorder.Context`). The global recorder remains for real
-  processes and woven code. One consequence: a step recorded through
-  `context.Background()` inside a simulation now goes to the global
-  recorder and is missing from the run. Four call sites did this
-  (`settle` in three examples, a test scenario), and the model caught
-  each one at once.
+  processes and woven code.
+
+  At first, a step recorded through `context.Background()` inside a
+  simulation went to the global recorder and was missing from its run.
+  Four call sites did this (`settle` in three examples, a test scenario),
+  and the model caught each one at once. That is now impossible rather
+  than merely caught. qenv registers which simulation each goroutine
+  belongs to: every task's goroutine, and the goroutine that created the
+  simulation. qobs consults that registry when a step's context carries
+  no recorder (`qobs.SetFallback`). Go has no goroutine-local storage, so
+  the goroutine id comes from the stack header, read once per task. It
+  cost nothing measurable in the checkout load tests. What remains, a
+  step from a goroutine started with `go`, is made loud: Explore and
+  Experiment runs are strict (`qobs.Strict`), and such a step panics with
+  the fix. It is also caught before running, by `quintgo lint -sim`,
+  which flags `go` statements, wall-clock calls and background-context
+  steps in files that import qenv, and runs in CI. A compile-time
+  guarantee (a context type only qenv can make) was rejected: code under
+  test, woven advice and production code all pass a plain
+  `context.Context`.
 - **Load experiments on the application itself** (`qload.Experiment`).
   Before this, checkout's load harness had its own sampler, step counter,
   recovery windows and arrival process. Now an experiment:

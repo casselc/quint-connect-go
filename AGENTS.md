@@ -153,11 +153,15 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   per step (`DefaultRates` 1 in 200), not per operation. Under load that
   means far more crashes per second: set `Sim.NemesisEvery`
   (`qload.Experiment` does when it injects faults).
-- Simulated runs record through their own context: `qtest.Explore` runs
+- Simulated runs record into their own recorder. `qtest.Explore` runs
   seeds in parallel, each with a recorder in the chooser's context
-  (`qenv.WithContext`, `qobs.WithRecorder`). Code in a simulation records
-  through a task's context or `Sim.Context()`. `context.Background()`
-  falls back to the global recorder, and the step is lost from the run.
+  (`qenv.WithContext`, `qobs.WithRecorder`). A step without it in its
+  context finds its run through its goroutine: qenv registers each
+  task's goroutine and the simulation's creator (`qobs.SetFallback`,
+  `qenv/goroutine.go`). Explore and Experiment runs are strict
+  (`qobs.Strict`), so a step from a goroutine started with `go` panics.
+  `quintgo lint -sim .` (in CI) flags `go` statements and wall-clock
+  calls in files that import qenv; `//qenv:ok` exempts a line.
 - Run qenv's tests, and tests of new doubles, with `QENV_CHECK=1`: the
   scheduler checks its invariants at every step. CI does.
 - A recovery verdict needs a healthy baseline (`Experiment.Healthy`). A

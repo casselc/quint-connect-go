@@ -60,9 +60,11 @@ type ExploreConfig struct {
 	// Parallel runs this many seeds at once (default GOMAXPROCS; 1: one
 	// after another). Each run records into its own recorder, carried by
 	// the chooser's context (qenv.WithContext), so the scenario must build
-	// its simulation from the chooser it is given, keep no state across
-	// runs, and record through the simulation's contexts (a task's, or
-	// Sim.Context outside tasks), not context.Background().
+	// its simulation from the chooser it is given and keep no state across
+	// runs. A step lands in its run if it is recorded through a context of
+	// the run or from a goroutine of the simulation (its tasks, the one
+	// that created it); one recorded from a goroutine started with `go`
+	// has nowhere to go and panics (qobs.Strict).
 	Parallel int
 }
 
@@ -85,6 +87,7 @@ func Explore(t testing.TB, bindingPath string, cfg ExploreConfig, scenario func(
 		cfg.Parallel = runtime.GOMAXPROCS(0)
 	}
 	c := config(t, cfg.Opts)
+	defer qobs.Strict()() // a step with nowhere to go panics, rather than vanish from its run
 	x := &Exploration{Runs: make([]*Explored, cfg.Seeds)}
 	runs := make([][]qtrace.Step, cfg.Seeds)
 	var wg sync.WaitGroup
@@ -93,7 +96,7 @@ func Explore(t testing.TB, bindingPath string, cfg ExploreConfig, scenario func(
 		seed := uint64(i + 1)
 		wg.Add(1)
 		sem <- struct{}{}
-		go func() {
+		go func() { //qenv:ok runs seeds side by side, each its own simulation
 			defer func() { <-sem; wg.Done() }()
 			mem := &qobs.MemorySink{}
 			ch := qenv.NewSeeded(seed)

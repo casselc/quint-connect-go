@@ -94,23 +94,67 @@ func WithRecorder(ctx context.Context, r *Recorder) context.Context {
 	return context.WithValue(ctx, recorderKey{}, r)
 }
 
-// From returns the recorder Record uses for ctx: the one WithRecorder set,
-// else the global one (nil if none).
-func From(ctx context.Context) *Recorder {
+// InContext returns the recorder WithRecorder put in ctx, or nil.
+func InContext(ctx context.Context) *Recorder {
 	if ctx != nil {
 		if r, ok := ctx.Value(recorderKey{}).(*Recorder); ok {
+			return r
+		}
+	}
+	return nil
+}
+
+var (
+	fallback atomic.Pointer[func() (*Recorder, bool)]
+	strict   atomic.Int64
+)
+
+// SetFallback installs where a step whose context carries no recorder goes
+// before the global recorder: f returns the recorder of the run the calling
+// goroutine belongs to, and whether it belongs to one. qenv installs it, so
+// that a step recorded with context.Background() inside a simulation still
+// lands in its own run, even with runs in parallel.
+func SetFallback(f func() (*Recorder, bool)) { fallback.Store(&f) }
+
+// Strict turns on, until release is called, the rule that a step must have
+// somewhere to go: a step with no recorder in its context, no run for its
+// goroutine and no global recorder panics instead of being dropped.
+// Simulated runs (qtest.Explore, qload.Experiment) are strict: a dropped
+// step would make a correct run fail the model, or hide a bug.
+func Strict() (release func()) {
+	strict.Add(1)
+	var once sync.Once
+	return func() { once.Do(func() { strict.Add(-1) }) }
+}
+
+// From returns the recorder Record uses for ctx: the one WithRecorder set;
+// else that of the run the goroutine belongs to (SetFallback); else the
+// global one (nil if none).
+func From(ctx context.Context) *Recorder {
+	if r := InContext(ctx); r != nil {
+		return r
+	}
+	if f := fallback.Load(); f != nil {
+		if r, ok := (*f)(); ok {
 			return r
 		}
 	}
 	return global.Load()
 }
 
-// Record records one step through the context's recorder (WithRecorder) or
-// the global one; a no-op when there is none. This is the function
+// Record records one step through the context's recorder (WithRecorder),
+// its goroutine's run's (SetFallback) or the global one; a no-op when
+// there is none, unless a run is Strict. This is the function
 // //quint:action advice calls.
 func Record(ctx context.Context, action string, err error, kv ...any) {
 	if r := From(ctx); r != nil {
 		r.Record(ctx, action, err, kv...)
+		return
+	}
+	if strict.Load() > 0 {
+		panic(fmt.Sprintf("qobs: step %q has no recorder: its context carries none, its goroutine belongs to no "+
+			"simulated run, and no global recorder is installed. A goroutine started with `go` is outside the "+
+			"simulation: start it with qenv.Go, or record through a context from the run (qenv.WithContext).", action))
 	}
 }
 

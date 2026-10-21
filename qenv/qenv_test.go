@@ -5,10 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/casselc/quint-connect-go/qenv"
+	"github.com/casselc/quint-connect-go/qobs"
 	"hegel.dev/go/hegel"
 )
 
@@ -473,4 +476,58 @@ func TestNemesisEvery(t *testing.T) {
 			t.Errorf("%d yields per tick: %d crashes in 10 s, want about one a second", busy, crashes)
 		}
 	}
+}
+
+// Steps recorded with context.Background() land in the run whose
+// goroutine records them, a task's or the simulation's creator's, even
+// with simulations running in parallel.
+func TestBackgroundStepsFindTheirRun(t *testing.T) {
+	var wg sync.WaitGroup
+	sinks := make([]*qobs.MemorySink, 8)
+	for i := range sinks {
+		sinks[i] = &qobs.MemorySink{}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ctx := qobs.WithRecorder(context.Background(), qobs.NewRecorder(sinks[i]))
+			s := qenv.New(qenv.WithContext(qenv.Nominal{}, ctx))
+			defer s.Close()
+			for range 3 {
+				s.Spawn("task", func(ctx context.Context) {
+					qenv.Sleep(ctx, time.Millisecond)
+					qobs.Record(context.Background(), "work", nil, "run", i)
+					qenv.Go(ctx, "child", func(context.Context) { qobs.Record(context.Background(), "child", nil, "run", i) })
+				})
+			}
+			if err := s.Run(time.Second); err != nil {
+				t.Error(err)
+			}
+			qobs.Record(context.Background(), "settle", nil, "run", i) // the creator's goroutine
+		}()
+	}
+	wg.Wait()
+	for i, m := range sinks {
+		steps := m.Steps()
+		if len(steps) != 7 {
+			t.Errorf("run %d: %d steps, want 7: %v", i, len(steps), steps)
+		}
+		for _, s := range steps {
+			if s.Args["run"] != int64(i) {
+				t.Errorf("run %d got a step of run %v", i, s.Args["run"])
+			}
+		}
+	}
+}
+
+// While a run is strict, a step with nowhere to go panics with what to do.
+func TestStrictStepWithNowhereToGo(t *testing.T) {
+	release := qobs.Strict()
+	defer release()
+	defer func() {
+		r := recover()
+		if msg, _ := r.(string); !strings.Contains(msg, "qenv.Go") {
+			t.Fatalf("got %v, want a panic naming qenv.Go", r)
+		}
+	}()
+	qobs.Record(context.Background(), "lost", nil)
 }

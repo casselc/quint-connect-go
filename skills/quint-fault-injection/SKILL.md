@@ -62,7 +62,7 @@ s.Process("payments", true, func(ctx context.Context) { app.RunPayments(ctx, inb
 s.Spawn("client", func(ctx context.Context) { /* calls that retry on qenv.ErrTimeout */ })
 s.Run(20 * time.Second)       // with faults
 s.Settle(60 * time.Second)    // faults off, canonical schedule, until quiet
-qobs.Record(context.Background(), "settle", nil)
+qobs.Record(s.Context(), "settle", nil)
 ```
 
 - **Restarts:** a process's start function runs on boot and after every
@@ -84,13 +84,17 @@ qtest.Explore(t, "app.binding.yaml", qtest.ExploreConfig{Seeds: 100, Rates: rate
 - **Batching:** every seeded run is checked in one quint batch. On a
   miss, the report names the seed, its faults and its step log.
 - **Parallel seeds:** seeds run in parallel (`ExploreConfig.Parallel`,
-  default GOMAXPROCS). Each run's recorder travels in the chooser's
-  context (`qenv.WithContext`), so:
+  default GOMAXPROCS), each with its own recorder in the chooser's
+  context (`qenv.WithContext`). So:
   - build the simulation from the chooser you are given;
   - keep no state across runs;
-  - record through a task's context, or `s.Context()` outside tasks
-    (the final `settle`), never `context.Background()`, which falls back
-    to the global recorder and loses the step.
+  - start goroutines with `qenv.Go`, never `go`. A step lands in its run
+    from any of the simulation's goroutines (its tasks, the one that
+    created it), whatever context it was recorded with. From a `go`
+    goroutine it has no run, and the exploration panics with the fix.
+  - Run `quintgo lint -sim .` to find `go` statements and wall-clock calls
+    (`time.Now`, `time.Sleep`) in files that import qenv. Mark a
+    deliberate one `//qenv:ok`.
 - **Other instances:** `qtest.Constants(map[string]string{"STOCK":
   "1000"})` checks against the model with other constants, so one
   binding serves runs of every size.

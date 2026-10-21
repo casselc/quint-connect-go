@@ -3,6 +3,7 @@
 //
 //	quintgo scaffold -spec model.qnt -module M          print a binding skeleton for M
 //	quintgo lint     -binding b.yaml [-src DIR]         check a binding (and annotations) against the model
+//	quintgo lint     -sim DIR                           check simulation code for goroutines, wall-clock time and steps that escape it
 //	quintgo steps    FILE...                            print the reconstructed per-actor traces
 //	quintgo validate [-binding b.yaml] [-dir OUT] FILE...
 //	                                                    reconstruct (or read), replay in Quint, report
@@ -32,6 +33,7 @@ import (
 	"github.com/casselc/quint-connect-go/convert"
 	"github.com/casselc/quint-connect-go/load"
 	"github.com/casselc/quint-connect-go/otelio"
+	"github.com/casselc/quint-connect-go/qenv"
 	"github.com/casselc/quint-connect-go/qtrace"
 	"github.com/casselc/quint-connect-go/skills"
 	"github.com/casselc/quint-connect-go/validate"
@@ -71,7 +73,8 @@ func main() {
 func usage() {
 	fmt.Fprintln(os.Stderr, `usage:
   quintgo scaffold -spec model.qnt -module M
-  quintgo lint     -binding b.yaml [-src DIR]
+  quintgo lint     -binding b.yaml [-src DIR] [-sim DIR]
+  quintgo lint     -sim DIR
   quintgo steps    FILE.jsonl...
   quintgo validate [-binding b.yaml] [-dir OUT] [-backend rust|typescript] [-format auto|otlp|steps|itf]
                    [-spec M.qnt -module M -instance I] [-novars]
@@ -128,8 +131,27 @@ func lint(args []string) (int, error) {
 	fset := flag.NewFlagSet("lint", flag.ExitOnError)
 	bpath := fset.String("binding", "", "binding file")
 	src := fset.String("src", "", "Go source tree to scan for //quint:action")
+	sim := fset.String("sim", "", "Go source tree of simulation code (files importing qenv) to check for what escapes the simulation")
 	quint := fset.String("quint", "quint", "quint binary")
 	fset.Parse(args)
+	simFindings := 0
+	if *sim != "" {
+		fs, err := qenv.Lint(*sim)
+		if err != nil {
+			return 2, err
+		}
+		for _, f := range fs {
+			fmt.Printf("%s: %s (%s)\n", f.Pos, f.What, f.Fix)
+		}
+		fmt.Printf("%d places under %s escape the simulation\n", len(fs), *sim)
+		simFindings = len(fs)
+		if *bpath == "" {
+			if simFindings > 0 {
+				return 1, nil
+			}
+			return 0, nil
+		}
+	}
 	b, err := binding.Load(*bpath)
 	if err != nil {
 		return 2, err
@@ -158,7 +180,7 @@ func lint(args []string) (int, error) {
 	for _, e := range errs {
 		fmt.Println("error:", e)
 	}
-	if len(errs) > 0 {
+	if len(errs) > 0 || simFindings > 0 {
 		return 1, nil
 	}
 	fmt.Printf("binding %s fits %s (%d actions bound)\n", *bpath, b.Module, len(b.Actions))
