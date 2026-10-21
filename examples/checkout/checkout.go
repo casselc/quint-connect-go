@@ -27,6 +27,13 @@ type Config struct {
 	Orders, Stock int
 	// NoCrashes keeps every process up.
 	NoCrashes bool
+
+	// For load experiments (load.go): the provider's capacity (nil:
+	// unlimited, instant), and the shop's payment design.
+	Provider        *qenv.Capacity
+	PaymentWorkers  int
+	PaymentRetry    shop.Retrier
+	RedeliveryDelay time.Duration
 }
 
 // Deployment is a running shop in a simulation.
@@ -35,6 +42,8 @@ type Deployment struct {
 	Shop     *shop.Shop
 	DB       *qenv.Store
 	Provider *qenv.Store
+	PaySvc   *qenv.Service[shop.PayReq, string]
+	PayQueue *qenv.Queue
 	api      *qenv.Service[apiReq, string]
 }
 
@@ -88,8 +97,11 @@ func Deploy(s *qenv.Sim, cfg Config) *Deployment {
 	d.DB.Load("stock/widget", cfg.Stock)
 	provider := &shop.Provider{DB: d.Provider}
 	paySvc := qenv.NewService(s, "provider", nil, provider.Handle)
+	paySvc.Capacity = cfg.Provider
 	qPay, qShip := qenv.NewQueue(s, "payments"), qenv.NewQueue(s, "shipping")
-	d.Shop = &shop.Shop{DB: d.DB, Broker: broker{qPay, qShip}, Payments: payments{paySvc}, Mutation: cfg.Mutation}
+	d.PaySvc, d.PayQueue = paySvc, qPay
+	d.Shop = &shop.Shop{DB: d.DB, Broker: broker{qPay, qShip}, Payments: payments{paySvc}, Mutation: cfg.Mutation,
+		PaymentWorkers: cfg.PaymentWorkers, PaymentRetry: cfg.PaymentRetry, RedeliveryDelay: cfg.RedeliveryDelay}
 	crash := !cfg.NoCrashes
 	api := s.Process("api", crash, func(context.Context) {})
 	s.Process("relay", crash, d.Shop.RunRelay)

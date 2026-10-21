@@ -137,6 +137,15 @@ func RecordAndCheck(t testing.TB, bindingPath string, scenario func(rec *qobs.Re
 // Check validates steps recorded elsewhere, failing the test on a violation.
 func Check(t testing.TB, bindingPath string, steps []qtrace.Step, opts ...Option) *Run {
 	t.Helper()
+	r := Validate(t, bindingPath, steps, opts...)
+	fail(t, r)
+	return r
+}
+
+// Validate is Check without failing the test on a violation: inspect the
+// returned Run, or state the expected verdict with Run.Expect.
+func Validate(t testing.TB, bindingPath string, steps []qtrace.Step, opts ...Option) *Run {
+	t.Helper()
 	c := config(t, opts)
 	if err := os.MkdirAll(c.Dir, 0o755); err != nil {
 		t.Fatal(err)
@@ -150,9 +159,7 @@ func Check(t testing.TB, bindingPath string, steps []qtrace.Step, opts ...Option
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := check(t, bindingPath, run, c)
-	fail(t, r)
-	return r
+	return check(t, bindingPath, run, c)
 }
 
 func check(t testing.TB, bindingPath string, run *Run, c Config) *Run {

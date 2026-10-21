@@ -278,7 +278,10 @@ backoff alone makes recovery worse, which the first chain had missed.
 Correctness stays with the model: the retry budget's accounting is
 checked against Quint, which catches a bug that load tests hardly see.
 [examples/crossdb](examples/crossdb) applies the tiers to a Crossplane
-provider's requeue policy.
+provider's requeue policy. [examples/checkout](examples/checkout) puts
+the saga itself under load: `qenv.Capacity` gives a service workers, a
+queue and service times, and `qmeta.Search` takes any system, not only
+qload's.
 
 ## Packages
 
@@ -293,10 +296,10 @@ provider's requeue policy.
 | `convert` | an application's own spans to steps, by YAML rules |
 | `binding` | the YAML binding: lint against `quint typecheck`, annotation scan, plan, Quint module and ITF generation |
 | `validate` | replay with `quint test`: `Checker.Check`, `CheckRuns`, `ValidateITF`, structured verdicts |
-| `qtest` | record-then-check inside a Go test; `Expect` with `Conforms`/`Rejects`/`Mismatch`/`Violates`/`AnyOf`; `Explore` (seeded simulated runs checked in bulk); `RequireQuint` |
-| `qenv` | deterministic simulated environments: scheduler, virtual time, crashable processes, choosers (Hegel, seeded, replay, swarm), `Store` (isolation levels), `Queue`, `Service` (RPC) |
+| `qtest` | record-then-check inside a Go test; `Expect` with `Conforms`/`Rejects`/`Mismatch`/`Violates`/`AnyOf`; `Explore` (seeded simulated runs checked in bulk); `Check`/`Validate` for steps recorded elsewhere; `RequireQuint` |
+| `qenv` | deterministic simulated environments: scheduler, virtual time, crashable processes, choosers (Hegel, seeded, replay, swarm), `Store` (isolation levels), `Queue`, `Service` (RPC, with optional `Capacity`: workers, queue, service times, shedding) |
 | `qload` | load simulation on qenv: open- and closed-loop clients with timeouts, retries, backoff, budgets or a `Retrier` under test; queued servers; triggers (`Spike`, slowdowns); time series |
-| `qmeta` | metastability: a CTMC (`Field`/`SVG`, `HittingTimes`, `Expect`, `Calibrate`), the recovery property (`Recovers`), Hegel trigger search (`FindTrigger`) |
+| `qmeta` | metastability: a CTMC (`Field`/`SVG`, `HittingTimes`, `Expect`, `Calibrate`), the recovery property (`Recovers`, `Mostly`), Hegel trigger search (`FindTrigger`, and `Search` over any `System`) |
 | `load` | read OTLP/JSON, a step log or ITF, detected by content |
 | `skills` | the agent skills below, embedded; install targets |
 | `cmd/quintgo` | CLI: `scaffold`, `lint`, `steps`, `validate`, `itf`, `convert`, `skills` |
@@ -309,7 +312,7 @@ which bug.
 
 | App | What it is | What it shows |
 |---|---|---|
-| [`examples/checkout`](examples/checkout) | a checkout saga: orders, payments with idempotency keys and voids, shipping, cancellation, a transactional outbox | fault injection with `qenv`: crashable services, a database at three isolation levels, an at-least-once broker, a lossy network; which bug is a bug at which isolation level (lost update, write skew); a double charge; a lost event; Hegel shrinking a write skew |
+| [`examples/checkout`](examples/checkout) | a checkout saga: orders, payments with idempotency keys and voids, shipping, cancellation, a transactional outbox | fault injection with `qenv`: crashable services, a database at three isolation levels, an at-least-once broker, a lossy network; which bug is a bug at which isolation level (lost update, write skew); a double charge; a lost event; Hegel shrinking a write skew; under load, too many payment consumers collapse on their own, a retry budget is bypassed by broker redelivery, deadline propagation recovers, and idempotency keys hold through the storm |
 | [`examples/fleetrollout`](examples/fleetrollout) | a multicluster-runtime controller rolling a Deployment across member clusters within a budget (own module) | the same controller simulated (fake clients behind interceptors: status lag, lost responses, crashes) and on three real kwok clusters (`kill -9` included), checked by one evidence-based model; `observedGeneration` and in-memory-state bugs caught in both |
 | [`examples/crossdb`](examples/crossdb) | a Crossplane provider for a database-as-a-service (crossplane-runtime's managed reconciler), with connection details written back as Secrets (own module) | Crossplane's real reconcile logic simulated under lost responses, crashes, throttling and an eventually consistent cloud, then the same provider on kind with full Crossplane composing `AppDatabase`s; why the external name must be deterministic and the create idempotent; a leak with no crash; translating a library's real-clock timestamps at the seam; the provider's requeue policy against a capacity dip in the cloud (`qload`, closed loop) |
 | [`examples/retrystorm`](examples/retrystorm) | a client retry library: bounded retries, backoff with jitter, a retry budget | metastable failures in tiers: a CTMC predicts which policies recover from a spike, a simulation (the library on virtual time) confirms it, and Hegel shrinks the smallest trigger; backoff alone made things worse; the budget's accounting checked against a Quint model, which catches a bug load tests barely see |

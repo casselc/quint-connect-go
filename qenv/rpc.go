@@ -10,6 +10,30 @@ import (
 // request may or may not have been processed: the caller cannot tell.
 var ErrTimeout = errors.New("qenv: call timed out (outcome unknown)")
 
+// ErrOverloaded is returned by Call when the service's queue was full: the
+// request was not processed.
+var ErrOverloaded = errors.New("qenv: service overloaded (request rejected)")
+
+// Capacity makes a service a queued server, for load and metastability
+// experiments (see qload, qmeta). A request waits for one of Workers; at
+// most Queue wait (more are rejected with ErrOverloaded). Its service takes
+// Time, times Slowdown at that moment, before the handler runs. A request
+// whose caller has already given up is still served, as most servers do
+// (wasted work, what sustains a retry storm), unless Shed is set.
+//
+// Time draws from the experiment's own seeded generator, not the Chooser:
+// a load run has thousands of requests, and what a search should vary is
+// the trigger (Slowdown), not each service time.
+type Capacity struct {
+	Workers  int // default 1
+	Queue    int
+	Time     func() time.Duration
+	Slowdown func(elapsed time.Duration) float64 // nil: 1
+	// Shed drops a request whose caller's deadline passed while it waited:
+	// deadline propagation, the server-side mitigation.
+	Shed bool
+}
+
 // Service is a remote service: a handler run in its own process, reached
 // over a network whose contract is "at most a response, maybe late, maybe
 // never". Its faults:
@@ -26,6 +50,52 @@ type Service[Req, Resp any] struct {
 	sim     *Sim
 	// Calls counts handler invocations.
 	Calls int
+	// Capacity, if set, queues requests for workers (set before the run).
+	Capacity *Capacity
+	// Rejected and Shed count requests refused by a full queue, and dropped
+	// because their caller had given up.
+	Rejected, Shed int
+
+	busy, waiting int
+	free          Signal
+}
+
+// InSystem is the number of requests waiting or in service (with Capacity).
+func (svc *Service[Req, Resp]) InSystem() int { return svc.busy + svc.waiting }
+
+// serve runs the queueing of a request with Capacity: false if it was
+// rejected (rejected true) or shed.
+func (svc *Service[Req, Resp]) serve(ctx context.Context, deadline time.Time) (ok, rejected bool) {
+	c := svc.Capacity
+	workers := max(c.Workers, 1)
+	if svc.busy >= workers {
+		if svc.waiting >= c.Queue {
+			svc.Rejected++
+			return false, true
+		}
+		svc.waiting++
+		for svc.busy >= workers {
+			svc.free.Wait(ctx, time.Time{})
+		}
+		svc.waiting--
+	}
+	if c.Shed && svc.sim.now.After(deadline) {
+		svc.Shed++
+		svc.free.Notify()
+		return false, false
+	}
+	svc.busy++
+	d := c.Time()
+	if c.Slowdown != nil {
+		d = time.Duration(float64(d) * c.Slowdown(svc.sim.Elapsed()))
+	}
+	Sleep(ctx, d)
+	return true, false
+}
+
+func (svc *Service[Req, Resp]) release() {
+	svc.busy--
+	svc.free.Notify()
 }
 
 // NewService registers a service whose handler runs in process p (nil: a
@@ -58,9 +128,20 @@ func (svc *Service[Req, Resp]) Call(ctx context.Context, req Req, timeout time.D
 	if svc.Proc.Down() {
 		deliveries = 0
 	}
+	deadline := s.now.Add(timeout)
 	for i := 0; i < deliveries; i++ {
 		first := i == 0
 		s.spawn(context.Background(), svc.Name+".handle", svc.Proc, func(hctx context.Context) {
+			if svc.Capacity != nil {
+				ok, rejected := svc.serve(hctx, deadline)
+				if rejected && first {
+					res.err, res.done = ErrOverloaded, true
+				}
+				if !ok {
+					return
+				}
+				defer svc.release()
+			}
 			svc.Calls++
 			resp, err := svc.handler(hctx, req)
 			if !first {
@@ -73,7 +154,7 @@ func (svc *Service[Req, Resp]) Call(ctx context.Context, req Req, timeout time.D
 		})
 	}
 	var zero Resp
-	if !WaitUntil(ctx, func() bool { return res.done }, s.now.Add(timeout)) {
+	if !WaitUntil(ctx, func() bool { return res.done }, deadline) {
 		return zero, ErrTimeout
 	}
 	return res.resp, res.err

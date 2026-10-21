@@ -317,3 +317,45 @@ func TestSignalTimeoutIsForgotten(t *testing.T) {
 		t.Errorf("slept %v, want 10s: a stale Signal entry woke the sleep", slept)
 	}
 }
+
+// A service with Capacity queues calls for its workers, rejects calls
+// over its queue, and keeps serving calls whose caller gave up, unless it
+// sheds them.
+func TestServiceCapacity(t *testing.T) {
+	for _, shed := range []bool{false, true} {
+		s := qenv.New(qenv.Nominal{})
+		svc := qenv.NewService(s, "api", nil, func(ctx context.Context, n int) (int, error) { return n, nil })
+		svc.Capacity = &qenv.Capacity{Workers: 1, Queue: 2, Time: func() time.Duration { return time.Second }, Shed: shed}
+		var ok, timedOut, rejected int
+		for i := 0; i < 4; i++ {
+			s.Spawn("client", func(ctx context.Context) {
+				_, err := svc.Call(ctx, i, 1500*time.Millisecond)
+				switch {
+				case err == nil:
+					ok++
+				case errors.Is(err, qenv.ErrTimeout):
+					timedOut++
+				case errors.Is(err, qenv.ErrOverloaded):
+					rejected++
+				}
+			})
+		}
+		if err := s.Run(10 * time.Second); err != nil {
+			t.Fatal(err)
+		}
+		s.Close()
+		// one served, two queued (both time out: 2 s and 3 s of work), one rejected
+		if ok != 1 || timedOut != 2 || rejected != 1 {
+			t.Errorf("shed=%v: %d ok, %d timed out, %d rejected; want 1, 2, 1", shed, ok, timedOut, rejected)
+		}
+		// the timed-out calls are still served (wasted work), unless their
+		// deadline passed before they started: the third call's, at 2 s
+		wantCalls := 3
+		if shed {
+			wantCalls = 2
+		}
+		if svc.Calls != wantCalls || (shed && svc.Shed != 1) {
+			t.Errorf("shed=%v: %d calls served, %d shed; want %d served", shed, svc.Calls, svc.Shed, wantCalls)
+		}
+	}
+}

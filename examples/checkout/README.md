@@ -81,6 +81,42 @@ It is not a bug under PostgreSQL's default, READ COMMITTED.
   the nominal option. Hegel shrinks the bytes toward zeros, which means
   fewer faults and the canonical schedule. The same test takes 16 s.
 
+## Under load (`load.go`, `load_test.go`)
+
+The same shop, with the same outbox, consumers, retries and model, runs
+under steady customer traffic: 3 orders/s against a payment provider that
+captures 5/s (one worker, exponential service times, `qenv.Capacity`).
+The payment call times out after 1 s. Goodput is paid orders per second,
+counted from the shop's own model steps. The question is whether a
+transient provider slowdown leaves the shop stuck.
+
+| Payment design | Outcome |
+|---|---|
+| 4 consumers | recovers from a 3x slowdown for a minute (3/3); its backlog stays small with no trigger |
+| 6 or more consumers | **collapses with no trigger at all**. A few timeouts send redeliveries back, every consumer is busy, and 6 queued captures are 1.2 s of work against a 1 s timeout. Everything times out while the provider works on calls nobody waits for. The backlog grows past 1300 events in 8 minutes |
+| 8 consumers + a retry budget (examples/retrystorm's `retry.Policy`) | **no help** (0/3). A capture the budget refuses goes back to the broker, which redelivers it at once: the broker is a second retry loop the budget does not see |
+| 8 consumers + redelivery after 5 s | slows the storm, rarely ends it (0–1/3) |
+| 8 consumers + the provider dropping calls whose caller gave up (`Capacity.Shed`, deadline propagation) | recovers (3/3) |
+
+The threshold is the provider's capacity times the timeout: 5 capture
+calls in flight. With more consumers than that, the healthy state and the
+collapsed state both exist. Noise is enough to move the shop from one to
+the other, so the smallest trigger Hegel could find is no trigger.
+
+Correctness through the storm:
+- **The faithful shop conforms to the model.** The test adds crashes,
+  lost responses and redeliveries to the storm (`TestStormIsCorrect`, a
+  1300-step run). Every capture is retried many times, and the
+  idempotency key keeps each order charged once.
+- **`NoIdempotencyKey` charges orders twice with no injected fault**
+  (`TestStormChargesTwiceWithoutKeys`). A timeout is as ambiguous as a
+  lost response, and a storm is thousands of timeouts: load is a fault
+  injector.
+
+```sh
+go test -run 'Consumers|Mitigations|Storm' -v .   # ~2 min; under -short only the consumer threshold runs
+```
+
 ## Layout
 
 | | |
@@ -90,3 +126,4 @@ It is not a bug under PostgreSQL's default, READ COMMITTED.
 | `model/checkout.qnt`, `checkout.binding.yaml` | the model and its binding (every parameter a same-named step field) |
 | `cmd/checkout-sim` | simulate seeds and write step logs |
 | `checkout_test.go` | the table above as explorations; Hegel shrinking a write skew; Hegel in batches |
+| `load.go`, `load_test.go`, `load.binding.yaml` | the shop under load: provider capacity, consumer count, retry and redelivery designs; recovery and correctness under a storm |

@@ -954,3 +954,28 @@ step does, qmeta and qload for what the rates do.
 - **Real-system confirmation.** Run the trigger Hegel found against the
   real provider on kind, with a throttling dbaas server (`dbaas-server
   -throttle-rps`).
+
+### 11.6 The application itself under load (`examples/checkout`)
+
+The tiers above abstract a system into queues and rates. The checkout
+saga ran under load as itself: its outbox, consumers, retries and
+database, with only the provider given a capacity (`qenv.Capacity`:
+workers, a queue, service times from a seeded generator, a slowdown, and
+optional shedding of calls whose caller gave up). Goodput was counted
+from the shop's own model steps, and the same run was checked against the
+model. What that showed, which no abstraction had:
+- **The trigger can be noise.** With more consumers than the provider's
+  capacity times the timeout, the collapsed state is reachable from
+  ordinary variance. Search finds the empty trigger. This is a design
+  bound, best stated as one: consumers ≤ capacity × timeout.
+- **Retry loops compose.** A retry budget in the shop's provider client
+  did nothing, because the broker's redelivery is a second, unbudgeted
+  retry loop around it. A budget has to cover every loop, or the
+  outermost one has to be bounded.
+- **Wasted work is the mechanism.** Shedding calls whose caller gave up
+  restored recovery without changing anything else.
+- **Load is a fault injector.** With no injected fault at all, the storm's
+  timeouts charged orders twice when the idempotency key was missing. With
+  crashes, lost responses and redeliveries added, the faithful shop
+  conformed through the storm. Correctness and recovery are separate
+  checks on the same run.

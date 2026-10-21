@@ -60,13 +60,17 @@ func Recovers(cfg qload.Config, base float64, tr Trigger, within time.Duration) 
 	r := Recovery{Trigger: tr, Metrics: m,
 		Before: m.Mean(tr.Start-100*time.Second, tr.Start, goodput),
 		After:  m.Mean(end+within, cfg.Horizon, goodput)}
-	r.Recovered = r.After >= 0.9*r.Before
+	r.Judge()
 	return r
 }
 
+// Judge sets Recovered from Before and After: goodput back to at least 90%
+// of what it was.
+func (r *Recovery) Judge() { r.Recovered = r.After >= 0.9*r.Before }
+
 // TriggerSpace bounds the triggers FindTrigger draws.
 type TriggerSpace struct {
-	MaxExtraRate float64       // default: the base rate
+	MaxExtraRate float64       // FindTrigger's default: the base rate
 	MaxSlowdown  float64       // default 1 (no capacity triggers)
 	MaxDuration  time.Duration // default 300 s
 	// Start of the trigger (default 100 s): late enough that the system is
@@ -81,10 +85,22 @@ type TriggerSpace struct {
 // RecoversMostly runs the trigger with seeds 1..n and reports whether most
 // runs recover, with the first run that did not (if any).
 func RecoversMostly(cfg qload.Config, base float64, tr Trigger, within time.Duration, n int) (bool, Recovery) {
+	return Mostly(func(tr Trigger, seed uint64) Recovery {
+		cfg.Seed = seed
+		return Recovers(cfg, base, tr, within)
+	}, tr, n)
+}
+
+// A System runs a trigger against a system with a seed and judges its
+// recovery: qload's Recovers, or an application's own load harness.
+type System func(tr Trigger, seed uint64) Recovery
+
+// Mostly runs the trigger with seeds 1..n and reports whether most runs
+// recover, with the first run that did not (if any).
+func Mostly(sys System, tr Trigger, n int) (bool, Recovery) {
 	stuck, first := 0, Recovery{}
 	for i := 1; i <= n; i++ {
-		cfg.Seed = uint64(i)
-		r := Recovers(cfg, base, tr, within)
+		r := sys(tr, uint64(i))
 		if !r.Recovered {
 			if stuck == 0 {
 				first = r
@@ -106,6 +122,18 @@ func FindTrigger(t testing.TB, cfg qload.Config, base float64, space TriggerSpac
 	if space.MaxExtraRate == 0 {
 		space.MaxExtraRate = base
 	}
+	return Search(t, func(tr Trigger, seed uint64) Recovery {
+		cfg.Seed = seed
+		return Recovers(cfg, base, tr, within)
+	}, space, opts...)
+}
+
+// Search is FindTrigger for any System: Hegel draws triggers from space,
+// each run with Seeds seeds, and shrinks one that most runs do not recover
+// from. Unset bounds default as in FindTrigger, except MaxExtraRate (0:
+// no extra load).
+func Search(t testing.TB, sys System, space TriggerSpace, opts ...hegel.Option) *Recovery {
+	t.Helper()
 	if space.MaxSlowdown == 0 {
 		space.MaxSlowdown = 1
 	}
@@ -125,7 +153,7 @@ func FindTrigger(t testing.TB, cfg qload.Config, base float64, space TriggerSpac
 			Slowdown:  1 + float64(hegel.Draw(tc, hegel.Integers(0, int((space.MaxSlowdown-1)*10))))/10,
 			Duration:  time.Duration(hegel.Draw(tc, hegel.Integers(0, int(space.MaxDuration/time.Second)))) * time.Second,
 		}
-		ok, r := RecoversMostly(cfg, base, tr, within, space.Seeds)
+		ok, r := Mostly(sys, tr, space.Seeds)
 		mu.Lock()
 		runs++
 		if !ok {

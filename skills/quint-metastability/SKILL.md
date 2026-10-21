@@ -67,6 +67,29 @@ r := qmeta.Recovers(cfg, 9, qmeta.Trigger{ExtraRate: 5, Duration: time.Minute}, 
   the metastable region, a run's escape is a coin toss.
   `RecoversMostly` takes the majority.
 
+## 2b. Or run the application itself
+
+qload is an abstraction. To put the real system under load, give the
+dependency a capacity and keep everything else real:
+
+```go
+svc := qenv.NewService(s, "provider", nil, handler)
+svc.Capacity = &qenv.Capacity{Workers: 1, Queue: 50, Shed: false,
+	Time: func() time.Duration { return time.Duration(rnd.ExpFloat64() / 5 * float64(time.Second)) },
+	Slowdown: func(t time.Duration) float64 { /* the trigger */ }}
+```
+
+Drive it with seeded open-loop customers and count goodput from the app's
+own model steps, with a counting `qobs.Sink`. Wrap the run as a
+`qmeta.System` for `qmeta.Mostly` and `qmeta.Search`. Record the same run
+and check it with `qtest.Check`/`qtest.Validate`: recovery and
+correctness are separate verdicts on one run. See examples/checkout
+`load.go`.
+
+Look for loops around the retry loop. A broker's redelivery, a client's
+retry or a controller's requeue each retries too. A budget on the inner
+loop alone does nothing, as checkout's consumers showed.
+
 ## 3. Search: Hegel (`qmeta.FindTrigger`)
 
 ```go
@@ -76,7 +99,10 @@ r := qmeta.FindTrigger(t, cfg, base, qmeta.TriggerSpace{MaxExtraRate: 10, MaxSlo
 ```
 
 Assert `r != nil` for a design that should be shown fragile, and
-`r == nil` for the mitigation. Each case runs `Seeds` (default 3)
+`r == nil` for the mitigation. `qmeta.Search(t, sys, space)` does the same
+for any `qmeta.System`. If it returns the empty trigger, the system
+collapses on noise alone: look for a design bound, such as more
+concurrency than capacity × timeout. Each case runs `Seeds` (default 3)
 simulations, so keep it out of `-short`.
 
 ## Correctness of the mechanism stays with Quint
@@ -102,3 +128,10 @@ See examples/retrystorm (`retry/`, `model/retry.qnt`).
     of 10 reconciles/s) recovers from capacity dips;
   - a fixed 1 s requeue on error does not;
   - the global limit alone saves it.
+- examples/checkout (the saga itself, a provider at 5 captures/s with a
+  1 s timeout):
+  - 6 or more payment consumers collapse with no trigger;
+  - a retry budget is bypassed by broker redelivery;
+  - shedding expired calls at the provider recovers;
+  - idempotency keys hold through the storm, and without them the storm
+    alone charges twice.

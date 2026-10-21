@@ -106,6 +106,22 @@ type Shop struct {
 	Mutation Mutation
 	// PollInterval of the outbox relay (default 100ms).
 	PollInterval time.Duration
+	// PaymentRetry decides the retries of provider calls (nil: 4 attempts,
+	// 200 ms apart). examples/retrystorm's retry.Policy is one.
+	PaymentRetry Retrier
+	// PaymentWorkers is the number of concurrent payment consumers
+	// (default 1).
+	PaymentWorkers int
+	// RedeliveryDelay is how long a consumer waits before returning a
+	// message it failed to process (0: at once, and the broker redelivers
+	// it immediately).
+	RedeliveryDelay time.Duration
+}
+
+// Retrier is a retry policy (the same interface as qload.Retrier).
+type Retrier interface {
+	Request(now time.Time)
+	Retry(n int, now time.Time) (wait time.Duration, ok bool)
 }
 
 var (
@@ -220,21 +236,38 @@ func (s *Shop) RunRelay(ctx context.Context) {
 	}
 }
 
-// retry calls fn until it succeeds or returns a permanent error, with a
-// short backoff, at most 4 times.
-func retry(ctx context.Context, fn func() error) error {
-	var err error
-	for i := 0; i < 4; i++ {
-		if err = fn(); err == nil || errors.Is(err, ErrVoided) {
+// retry calls fn until it succeeds or returns a permanent error, as
+// PaymentRetry decides (by default at most 4 times, 200 ms apart).
+func (s *Shop) retry(ctx context.Context, fn func() error) error {
+	if s.PaymentRetry != nil {
+		s.PaymentRetry.Request(qenv.Now(ctx))
+	}
+	for n := 1; ; n++ {
+		err := fn()
+		if err == nil || errors.Is(err, ErrVoided) {
 			return err
 		}
-		qenv.Sleep(ctx, 200*time.Millisecond)
+		wait, ok := 200*time.Millisecond, n < 4
+		if s.PaymentRetry != nil {
+			wait, ok = s.PaymentRetry.Retry(n, qenv.Now(ctx))
+		}
+		if !ok {
+			return errTransient
+		}
+		qenv.Sleep(ctx, wait)
 	}
-	return errTransient
 }
 
-// RunPayments consumes "placed" and "cancelled" forever.
+// RunPayments consumes "placed" and "cancelled" forever, with
+// PaymentWorkers consumers.
 func (s *Shop) RunPayments(ctx context.Context, in Inbox) {
+	for i := 1; i < s.PaymentWorkers; i++ {
+		qenv.Go(ctx, "payments.consumer", func(ctx context.Context) { s.consumePayments(ctx, in) })
+	}
+	s.consumePayments(ctx, in)
+}
+
+func (s *Shop) consumePayments(ctx context.Context, in Inbox) {
 	for {
 		ev, ack, nack := in.Receive(ctx)
 		var err error
@@ -242,9 +275,12 @@ func (s *Shop) RunPayments(ctx context.Context, in Inbox) {
 		case "placed":
 			err = s.pay(ctx, ev.Order)
 		case "cancelled":
-			err = retry(ctx, func() error { return s.Payments.Void(ctx, "cap:"+ev.Order, ev.Order) })
+			err = s.retry(ctx, func() error { return s.Payments.Void(ctx, "cap:"+ev.Order, ev.Order) })
 		}
 		if err != nil {
+			if s.RedeliveryDelay > 0 {
+				qenv.Sleep(ctx, s.RedeliveryDelay)
+			}
 			nack(ctx)
 		} else {
 			ack(ctx)
@@ -265,7 +301,7 @@ func (s *Shop) pay(ctx context.Context, id string) error {
 		return nil
 	}
 	attempt := 0
-	err := retry(ctx, func() error {
+	err := s.retry(ctx, func() error {
 		attempt++
 		key := "cap:" + id
 		if s.Mutation == NoIdempotencyKey {
