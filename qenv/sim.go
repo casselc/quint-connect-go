@@ -1,6 +1,7 @@
 package qenv
 
 import (
+	"container/heap"
 	"context"
 	"errors"
 	"fmt"
@@ -33,7 +34,11 @@ type Sim struct {
 	c         Chooser
 	now       time.Time
 	start     time.Time
-	tasks     []*task
+	tasks     []*task   // every task, in creation order (task id-1)
+	runq      fenwick   // the queued runnable tasks, by id: k-th in O(log n)
+	pred      []*task   // tasks waiting on a predicate (evaluated every step)
+	timers    timerHeap // deadlines of waiting tasks
+	nextID    int
 	back      chan struct{}
 	procs     []*Process
 	nemeses   []*nemesis
@@ -49,15 +54,44 @@ type Sim struct {
 
 type task struct {
 	sim      *Sim
+	id       int // creation order: the order runnable tasks are offered in
 	name     string
 	proc     *Process
 	inc      int // the process incarnation it belongs to
 	wake     chan struct{}
-	ready    func() bool // nil: runnable
+	waiting  bool        // parked until ready, a signal, or deadline
+	ready    func() bool // the predicate waited for, if any
 	deadline time.Time   // zero: none
-	started  bool
+	gen      int         // bumped when a wait ends: stale timers are skipped
+	notified bool        // a Signal it waited on fired
+	queued   bool        // in runq
 	done     bool
 	killed   bool
+}
+
+type timer struct {
+	at  time.Time
+	id  int // tie-break: creation order
+	t   *task
+	gen int
+}
+
+type timerHeap []timer
+
+func (h timerHeap) Len() int { return len(h) }
+func (h timerHeap) Less(i, j int) bool {
+	if !h[i].at.Equal(h[j].at) {
+		return h[i].at.Before(h[j].at)
+	}
+	return h[i].id < h[j].id
+}
+func (h timerHeap) Swap(i, j int) { h[i], h[j] = h[j], h[i] }
+func (h *timerHeap) Push(x any)   { *h = append(*h, x.(timer)) }
+func (h *timerHeap) Pop() any {
+	old := *h
+	x := old[len(old)-1]
+	*h = old[:len(old)-1]
+	return x
 }
 
 type nemesis struct {
@@ -146,11 +180,13 @@ func (s *Sim) Spawn(name string, fn func(ctx context.Context)) {
 }
 
 func (s *Sim) spawn(parent context.Context, name string, p *Process, fn func(ctx context.Context)) {
-	t := &task{sim: s, name: name, proc: p, wake: make(chan struct{})}
+	s.nextID++
+	t := &task{sim: s, id: s.nextID, name: name, proc: p, wake: make(chan struct{})}
 	if p != nil {
 		t.inc = p.Incarnation
 	}
 	s.tasks = append(s.tasks, t)
+	s.enqueue(t)
 	ctx := context.WithValue(parent, ctxKey{}, t)
 	go func() {
 		<-t.wake
@@ -166,6 +202,7 @@ func (s *Sim) spawn(parent context.Context, name string, p *Process, fn func(ctx
 				}
 			}
 			t.done = true
+			t.sim.unqueue(t)
 			t.sim.back <- struct{}{}
 		}()
 		if t.killed {
@@ -185,12 +222,112 @@ func Yield(ctx context.Context) {
 	}
 }
 
+// park hands control back to the scheduler until the task is picked again.
+// A task that is not waiting (Yield) is runnable at once.
 func (t *task) park() {
+	if !t.waiting {
+		t.sim.enqueue(t)
+	}
 	t.sim.back <- struct{}{}
 	<-t.wake
 	if t.killed {
 		panic(killed{})
 	}
+}
+
+// wait parks the task until ready holds (nil: no predicate), a Signal
+// wakes it, or deadline passes (zero: none).
+func (t *task) wait(ready func() bool, deadline time.Time) {
+	s := t.sim
+	t.waiting, t.ready, t.deadline, t.notified = true, ready, deadline, false
+	if ready != nil {
+		s.pred = append(s.pred, t)
+	}
+	if !deadline.IsZero() {
+		heap.Push(&s.timers, timer{at: deadline, id: t.id, t: t, gen: t.gen})
+	}
+	t.park()
+	t.ready, t.deadline = nil, time.Time{}
+}
+
+// enqueue makes a task runnable.
+func (s *Sim) enqueue(t *task) {
+	if t.waiting {
+		t.waiting = false
+		t.gen++
+	}
+	if !t.queued && !t.done && !t.killed {
+		t.queued = true
+		s.runq.add(t.id, 1, s)
+	}
+}
+
+// unqueue takes a task off the run queue (it runs, finished or was killed).
+func (s *Sim) unqueue(t *task) {
+	if t.queued {
+		t.queued = false
+		s.runq.add(t.id, -1, s)
+	}
+}
+
+// fenwick counts queued task ids, to find the k-th runnable task (in
+// creation order) in O(log n) however many tasks are runnable.
+type fenwick struct{ tree []int }
+
+func (f *fenwick) add(id, d int, s *Sim) {
+	if id >= len(f.tree) {
+		f.grow(id, s) // counts the tasks already flagged queued, this one included
+		return
+	}
+	for i := id; i < len(f.tree); i += i & -i {
+		f.tree[i] += d
+	}
+}
+
+// grow rebuilds the tree for ids up to at least id, from the tasks' queued
+// flags.
+func (f *fenwick) grow(id int, s *Sim) {
+	n := 2 * len(f.tree)
+	if n <= id {
+		n = id + 1
+	}
+	f.tree = make([]int, n)
+	for _, t := range s.tasks {
+		if t.queued {
+			for i := t.id; i < n; i += i & -i {
+				f.tree[i]++
+			}
+		}
+	}
+}
+
+// count is the number of queued ids <= id.
+func (f *fenwick) count(id int) int {
+	if id >= len(f.tree) {
+		id = len(f.tree) - 1
+	}
+	c := 0
+	for i := id; i > 0; i -= i & -i {
+		c += f.tree[i]
+	}
+	return c
+}
+
+func (f *fenwick) total() int { return f.count(len(f.tree) - 1) }
+
+// kth is the id of the k-th (0-based) queued id.
+func (f *fenwick) kth(k int) int {
+	pos, step := 0, 1
+	for step*2 < len(f.tree) {
+		step *= 2
+	}
+	for ; step > 0; step /= 2 {
+		if next := pos + step; next < len(f.tree) && f.tree[next] <= k {
+			pos = next
+			k -= f.tree[next]
+		}
+	}
+	return pos + 1
 }
 
 // Wait blocks the task until ready holds. ready is evaluated by the
@@ -209,10 +346,39 @@ func WaitUntil(ctx context.Context, ready func() bool, deadline time.Time) bool 
 	if ready() {
 		return true
 	}
-	t.ready, t.deadline = ready, deadline
-	t.park()
-	t.ready, t.deadline = nil, time.Time{}
+	t.wait(ready, deadline)
 	return ready()
+}
+
+// A Signal wakes the tasks waiting on it. Waiting on a Signal costs the
+// scheduler nothing until Notify, unlike Wait's predicate, which it
+// evaluates at every step: use Signals where many tasks wait (requests
+// waiting for responses, workers waiting for work).
+type Signal struct {
+	waiters []*task
+}
+
+// Wait blocks until Notify or the virtual time reaches deadline (zero:
+// none). It reports whether Notify woke it.
+func (g *Signal) Wait(ctx context.Context, deadline time.Time) bool {
+	t := taskOf(ctx)
+	if t == nil {
+		panic("qenv: Signal.Wait outside a simulation")
+	}
+	g.waiters = append(g.waiters, t)
+	t.wait(nil, deadline)
+	return t.notified
+}
+
+// Notify wakes every task waiting on the signal.
+func (g *Signal) Notify() {
+	for _, t := range g.waiters {
+		if t.waiting && !t.done && !t.killed {
+			t.notified = true
+			t.sim.enqueue(t)
+		}
+	}
+	g.waiters = g.waiters[:0]
 }
 
 // Now is the virtual time in a simulation, else the real time.
@@ -234,7 +400,7 @@ func Sleep(ctx context.Context, d time.Duration) {
 		}
 		return
 	}
-	WaitUntil(ctx, func() bool { return false }, t.sim.now.Add(d))
+	t.wait(nil, t.sim.now.Add(d))
 }
 
 // ---- processes ---------------------------------------------------------------
@@ -290,6 +456,7 @@ func (p *Process) Crash() {
 	for _, t := range p.sim.tasks {
 		if t.proc == p && !t.done {
 			t.killed = true
+			p.sim.unqueue(t)
 		}
 	}
 	if p.sim.Log != nil {
@@ -340,8 +507,8 @@ func (s *Sim) Run(d time.Duration) error {
 		if s.steps >= s.MaxSteps {
 			return ErrMaxSteps
 		}
-		run := s.runnable()
-		if len(run) == 0 {
+		n, cands := s.runnable()
+		if n == 0 {
 			next, ok := s.nextDeadline()
 			if !ok || next.After(horizon) {
 				if s.now.Before(horizon) && ok {
@@ -355,13 +522,12 @@ func (s *Sim) Run(d time.Duration) error {
 		s.steps++
 		if !s.faultsOff {
 			s.maybeNemesis()
-			if run = s.runnable(); len(run) == 0 {
+			if n, cands = s.runnable(); n == 0 {
 				continue
 			}
 		}
-		t := run[s.Choose("sched.task", len(run))]
-		t.ready, t.deadline = nil, time.Time{}
-		t.started = true
+		t := s.pick(s.Choose("sched.task", n), cands)
+		s.dequeue(t)
 		t.wake <- struct{}{}
 		<-s.back
 		if s.panicked != nil {
@@ -389,34 +555,78 @@ func (s *Sim) Settle(d time.Duration) error {
 // Faults turns fault choices off or back on (Settle turns them off).
 func (s *Sim) Faults(on bool) { s.faultsOff = !on }
 
-func (s *Sim) runnable() []*task {
-	var out []*task
-	for _, t := range s.tasks {
-		if t.done || t.killed {
+// runnable reports how many tasks are runnable: the queued ones (yielded,
+// new, woken by a Signal or their deadline) and the predicate waiters
+// whose predicate holds now, which it returns in creation order. A
+// predicate waiter is only a candidate: if another task runs first and
+// falsifies its predicate, it waits on (a lock taken by another
+// transaction stays taken).
+func (s *Sim) runnable() (int, []*task) {
+	for len(s.timers) > 0 {
+		e := s.timers[0]
+		if e.t.gen != e.gen || e.t.done || e.t.killed || !e.t.waiting {
+			heap.Pop(&s.timers) // stale
 			continue
 		}
-		if !t.deadline.IsZero() && !s.now.Before(t.deadline) {
-			out = append(out, t)
+		if s.now.Before(e.at) {
+			break
+		}
+		heap.Pop(&s.timers)
+		s.enqueue(e.t)
+	}
+	var cands []*task
+	keep := s.pred[:0]
+	for _, t := range s.pred {
+		if t.done || t.killed || !t.waiting || t.ready == nil {
 			continue
 		}
-		if t.ready == nil || t.ready() {
-			out = append(out, t)
+		keep = append(keep, t)
+		if !t.queued && t.ready() {
+			cands = append(cands, t)
 		}
 	}
-	return out
+	for i := len(keep); i < len(s.pred); i++ {
+		s.pred[i] = nil
+	}
+	s.pred = keep
+	sort.Slice(cands, func(i, j int) bool { return cands[i].id < cands[j].id })
+	return s.runq.total() + len(cands), cands
+}
+
+// pick returns the k-th runnable task in creation order: queued tasks and
+// predicate candidates merged by id.
+func (s *Sim) pick(k int, cands []*task) *task {
+	for i, c := range cands {
+		pos := s.runq.count(c.id-1) + i
+		if pos == k {
+			return c
+		}
+		if pos > k {
+			return s.tasks[s.runq.kth(k-i)-1]
+		}
+	}
+	return s.tasks[s.runq.kth(k-len(cands))-1]
+}
+
+// dequeue takes the task picked to run off the run queue, ending its wait.
+func (s *Sim) dequeue(t *task) {
+	if t.waiting {
+		t.waiting = false
+		t.gen++
+	}
+	s.unqueue(t)
 }
 
 func (s *Sim) nextDeadline() (time.Time, bool) {
-	var next time.Time
-	for _, t := range s.tasks {
-		if t.done || t.killed || t.deadline.IsZero() {
+	for len(s.timers) > 0 {
+		e := s.timers[0]
+		if e.t.gen != e.gen || e.t.done || e.t.killed || !e.t.waiting {
+			heap.Pop(&s.timers)
 			continue
 		}
-		if next.IsZero() || t.deadline.Before(next) {
-			next = t.deadline
-		}
+		return e.at, true
 	}
-	return next, !next.IsZero()
+	return time.Time{}, false
 }
 
 func (s *Sim) maybeNemesis() {
@@ -466,7 +676,7 @@ func (s *Sim) Tasks() string {
 			continue
 		}
 		st := "runnable"
-		if t.ready != nil {
+		if t.waiting {
 			st = "waiting"
 		}
 		if !t.deadline.IsZero() {

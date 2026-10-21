@@ -226,3 +226,67 @@ func TestClockTranslation(t *testing.T) {
 		t.Fatalf("aged %v in real time, want the 45s of virtual time", age)
 	}
 }
+
+// Two tasks wait for the same lock: when it is released, only the first to
+// run gets it; the other's predicate is false again, and it waits on.
+func TestPredicateWaitersRecheck(t *testing.T) {
+	s := qenv.New(qenv.Nominal{})
+	defer s.Close()
+	held := true
+	inside := 0
+	for i := 0; i < 2; i++ {
+		s.Spawn(fmt.Sprintf("waiter%d", i), func(ctx context.Context) {
+			qenv.Wait(ctx, func() bool { return !held })
+			held = true
+			inside++
+			if inside > 1 {
+				t.Error("both waiters took the lock")
+			}
+		})
+	}
+	s.Spawn("releaser", func(ctx context.Context) {
+		qenv.Sleep(ctx, time.Second)
+		held = false
+	})
+	if err := s.Run(time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	if inside != 1 {
+		t.Fatalf("%d waiters got the lock, want 1", inside)
+	}
+}
+
+// Many waiting tasks cost the scheduler nothing per step: 20000 requests,
+// each waiting on a Signal with a timeout, finish in well under a second.
+func TestManyWaitersScale(t *testing.T) {
+	s := qenv.New(qenv.Nominal{})
+	defer s.Close()
+	sigs := make([]*qenv.Signal, 20000)
+	answered := 0
+	for i := range sigs {
+		sigs[i] = &qenv.Signal{}
+		s.Spawn("request", func(ctx context.Context) {
+			if sigs[i].Wait(ctx, qenv.Now(ctx).Add(time.Hour)) {
+				answered++
+			}
+		})
+	}
+	s.Spawn("server", func(ctx context.Context) {
+		for _, g := range sigs {
+			qenv.Sleep(ctx, time.Millisecond)
+			g.Notify()
+		}
+	})
+	t0 := time.Now()
+	s.MaxSteps = 1 << 30
+	if err := s.Run(time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	if answered != len(sigs) {
+		t.Fatalf("%d answered", answered)
+	}
+	if d := time.Since(t0); d > 30*time.Second { // ~0.2 s; generous for -race
+		t.Fatalf("took %v", d)
+	}
+	t.Logf("20000 waiting requests: %v", time.Since(t0))
+}
