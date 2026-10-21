@@ -11,6 +11,10 @@ echo "# output in $OUT"
 go run ./cmd/jobqueue -steps "$OUT/steps.jsonl" -mutation "${MUTATION:-}" || exit 2
 show() { grep -E 'issue|conformance|invariant|step \[|quint:|observed:|RESULT|violated'; }
 echo; echo "\$ quintgo validate -binding jobqueue.binding.yaml steps.jsonl"
-"$OUT/quintgo" validate -binding jobqueue.binding.yaml -dir "$OUT/v" "$OUT/steps.jsonl" | show
+"$OUT/quintgo" validate -binding jobqueue.binding.yaml -dir "$OUT/v" "$OUT/steps.jsonl" > "$OUT/verdict.txt"; rc=$?
+show < "$OUT/verdict.txt"
 echo; echo "\$ quintgo validate -binding jobqueue.binding.yaml -invariants exactlyOnce steps.jsonl"
-"$OUT/quintgo" validate -binding jobqueue.binding.yaml -invariants exactlyOnce -dir "$OUT/v1" "$OUT/steps.jsonl" | show
+# a violation here is the design's known limit, not a failure of the demo
+"$OUT/quintgo" validate -binding jobqueue.binding.yaml -invariants exactlyOnce -dir "$OUT/v1" "$OUT/steps.jsonl" | show || true
+# exit status: that of the check against the guarantees (0 unless MUTATION found a bug)
+exit $rc
