@@ -1,19 +1,16 @@
-# Recorded broadcast steps as calls of ../model/broadcast.qnt.
+# Recorded broadcast steps as calls of ../model/broadcast.qnt. Every
+# parameter is the step field of its name (gossip's values, a Set, is
+# converted from the recorded JSON array by default).
 spec: ../model/broadcast.qnt
 module: broadcast
 constants:
   NODES: '{{ set "node" "src" "dst" }}'
   VALUES: '{{ set "value" }}'
 actions:
-  broadcast:
-    args: { node: '{{.node}}', value: '{{.value}}' }
-  gossip:
-    # values is recorded as a JSON array; toSet makes it a Quint set
-    args: { id: '{{.id}}', src: '{{.src}}', dst: '{{.dst}}', values: '{{ toSet .values }}' }
-  deliver:
-    args: { id: '{{.id}}' }
+  broadcast: {}
+  gossip: {}
+  deliver: {}
   read:
-    args: { node: '{{.node}}' }
     expect: 'seen.get({{.node}}) == {{ toSet .obs.values }}'
   settle: {}
 invariants: [noInvention, convergedWhenSettled]

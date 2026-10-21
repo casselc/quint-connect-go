@@ -159,8 +159,7 @@ spec: model/bank.qnt
 module: bank
 constants: { ACCOUNTS: 'Set("alice", "bob", "carol")', MAX_AMOUNT: '{{ atLeast 5 (max "amount") }}' }
 actions:
-  deposit:
-    args: { account: '{{.account}}', amount: '{{.amount}}' }
+  deposit:                                         # account, amount: the step fields of those names
     outcomes: { error: skip }                      # a refused call is no model step
     expect: 'balances.get({{.account}}) == {{.obs.balance}}'
 invariants: [noOverdraft]
@@ -170,6 +169,8 @@ Then check, in a test or from files:
 
 ```go
 qtest.RecordAndCheck(t, "bank.binding.yaml", func(*qobs.Recorder) { payday(bank.New(accounts)) })
+// a mutant, and how it must show up: Conforms, Rejects(action), Mismatch(action), Violates(invariant)
+qtest.Record(t, "bank.binding.yaml", func(*qobs.Recorder) { payday(bank.New(accounts, bank.WithMutation(bank.LostDeposit))) }).Expect(t, qtest.Mismatch("deposit"))
 ```
 
 ```sh
@@ -198,7 +199,7 @@ action. See [docs/instrumentation.md](docs/instrumentation.md) and
 | Package | |
 |---|---|
 | `connect` | MBT driver runtime: `Run`, `Test`, `Replay`, `Switch`, `Pick[T]`, `StateDriver`, `GenerateRun`/`GenerateTest` |
-| `quinthegel` | Hegel integration: `Test` (modes `Each`/`After`/`Off`), `Recorder`, `CaseChecker`/`CheckCase`, `Replay`, `Traces` |
+| `quinthegel` | Hegel integration: `Test` (modes `Batched`/`Each`/`After`/`Off`), `FindViolation` (expected failures, shrunk), `Recorder`, `CaseChecker`/`CheckCase`, `Replay`, `Traces` |
 | `itf` | ITF traces: `Parse`, `Value`, `Decode`/`Encode` (Go ⇄ Quint values), `ParseQuint` (Quint literals) |
 | `qobs` | runtime recorder: `Record`, `Thread`; sinks `MemorySink`, `FileSink`/`JSONLSink`, `OTelSink`, `Tee`; `orchestrion.yml` |
 | `qtrace` | the step schema, `Reconstruct` (ordering, gaps, restarts), step log I/O |
@@ -206,7 +207,7 @@ action. See [docs/instrumentation.md](docs/instrumentation.md) and
 | `convert` | an application's own spans to steps, by YAML rules |
 | `binding` | the YAML binding: lint against `quint typecheck`, annotation scan, plan, Quint module and ITF generation |
 | `validate` | replay with `quint test`: `Checker.Check`, `CheckRuns`, `ValidateITF`, structured verdicts |
-| `qtest` | record-then-check inside a Go test |
+| `qtest` | record-then-check inside a Go test; `Expect` with `Conforms`/`Rejects`/`Mismatch`/`Violates`; `RequireQuint` |
 | `load` | read OTLP/JSON, a step log or ITF, detected by content |
 | `skills` | the agent skills below, embedded; install targets |
 | `cmd/quintgo` | CLI: `scaffold`, `lint`, `steps`, `validate`, `itf`, `convert`, `skills` |
@@ -237,7 +238,13 @@ The skills in [`skills/`](skills) teach a coding agent this toolkit:
 - `quint-model-for-go`: model conventions;
 - `quint-mbt-driver`: drivers;
 - `quint-trace-validation`: instrumentation, bindings and verdicts;
-- `quint-hegel`: Hegel + Quint.
+- `quint-hegel`: Hegel + Quint;
+- `quint-modeling-patterns`: what to put in the model: the requirement
+  rather than one solution, the environment's real guarantees,
+  linearization points, ghost variables, settle-conditioned properties,
+  mechanism models with a lemma;
+- `quint-verification-workflow`: the order of work (model, simulate,
+  record, bind, mutants, Hegel, real environment) and triage of verdicts.
 
 They are in the [Agent Skills](https://agentskills.io) format, one
 `SKILL.md` per directory. In this repository they are exposed where agents

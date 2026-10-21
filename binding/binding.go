@@ -52,8 +52,11 @@ type Binding struct {
 
 // Action says how to call one model action from an observed step.
 type Action struct {
-	// Args maps each model parameter to a Quint expression template over the
-	// step (see StepData). Every parameter of the action must be given.
+	// Args maps model parameters to Quint expression templates over the
+	// step (see StepData). A parameter not given is the step field of the
+	// same name, converted by the parameter's type (Param.DefaultTemplate):
+	// `{{.p}}`, or `{{ toSet .p }}` for a set, toList for a list, toMap for
+	// a map. An action whose parameters all default needs no entry.
 	Args map[string]string `yaml:"args"`
 	// Expect is a Quint boolean over the post-state that must hold after the
 	// step: the observed state projection (quint.obs.*) checked against the
@@ -110,9 +113,6 @@ func (b *Binding) Lint(m *Model) []string {
 		want := map[string]bool{}
 		for _, p := range ps {
 			want[p.Name] = true
-			if _, ok := a.Args[p.Name]; !ok {
-				errs = append(errs, fmt.Sprintf("action %s: parameter %s (%s) has no template; signature %s", name, p.Name, p.Type, m.Signature(name)))
-			}
 		}
 		for arg, tpl := range a.Args {
 			if !want[arg] {
@@ -159,11 +159,17 @@ func (b *Binding) Lint(m *Model) []string {
 }
 
 // Fields returns the step fields (.name) a template refers to: what the
-// instrumentation must record for this action.
-func (a Action) Fields() []string {
+// instrumentation must record for this action. ps are the action's
+// parameters, whose defaults count too (nil: only the given templates).
+func (a Action) Fields(ps ...Param) []string {
 	set := map[string]bool{}
 	for _, t := range a.Args {
 		collectFields(t, set)
+	}
+	for _, p := range ps {
+		if _, ok := a.Args[p.Name]; !ok {
+			collectFields(p.DefaultTemplate(), set)
+		}
 	}
 	collectFields(a.Expect, set)
 	delete(set, "outcome")
@@ -171,6 +177,15 @@ func (a Action) Fields() []string {
 	delete(set, "action")
 	delete(set, "seq")
 	return sortedKeys(set)
+}
+
+// Template is the template of an action's parameter: the binding's, else
+// the default.
+func (a Action) Template(p Param) string {
+	if t, ok := a.Args[p.Name]; ok {
+		return t
+	}
+	return p.DefaultTemplate()
 }
 
 func (a Action) usesOutcome() bool {

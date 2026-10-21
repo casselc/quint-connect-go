@@ -2,18 +2,11 @@ package bank
 
 import (
 	"context"
-	"os/exec"
 	"testing"
 
 	"github.com/casselc/quint-connect-go/connect"
+	"github.com/casselc/quint-connect-go/qtest"
 )
-
-func needQuint(t *testing.T) {
-	t.Helper()
-	if _, err := exec.LookPath("quint"); err != nil {
-		t.Skip("quint not installed (npm i -g @informalsystems/quint)")
-	}
-}
 
 var accounts = []string{"alice", "bob", "carol"}
 
@@ -54,7 +47,7 @@ func (d *driver) State() (any, error) { return modelState{Balances: d.bank.Balan
 // replayed on a fresh bank with the balances compared after every step.
 // Reproduce a failure with the QUINT_SEED it prints.
 func TestModelDrivesBank(t *testing.T) {
-	needQuint(t)
+	qtest.RequireQuint(t)
 	connect.Run(t, connect.Config{Spec: "model/bank.qnt", Main: "bankDesign", MaxSamples: 30, MaxSteps: 25},
 		func() connect.Driver { return &driver{} })
 }
@@ -66,7 +59,7 @@ func TestModelDrivesBank(t *testing.T) {
 // so no model trace can expose it: that takes the code driving and the
 // model judging (hegel_test.go's TestHegelCatchesSelfTransfer).
 func TestModelDrivenCatchesOnlyDivergence(t *testing.T) {
-	needQuint(t)
+	qtest.RequireQuint(t)
 	files, c, err := connect.GenerateRun(context.Background(), connect.Config{Spec: "model/bank.qnt", Main: "bankDesign",
 		MaxSamples: 40, MaxSteps: 25, Seed: "0x5eed", Dir: t.TempDir()})
 	if err != nil {

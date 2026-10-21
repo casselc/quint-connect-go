@@ -3,7 +3,6 @@ package kvstore
 import (
 	"context"
 	"net/http/httptest"
-	"os/exec"
 	"testing"
 
 	"github.com/casselc/quint-connect-go/connect"
@@ -19,13 +18,6 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"hegel.dev/go/hegel"
 )
-
-func needQuint(t *testing.T) {
-	t.Helper()
-	if _, err := exec.LookPath("quint"); err != nil {
-		t.Skip("quint not installed")
-	}
-}
 
 // service starts the HTTP service on a fresh store, its spans going to sr.
 func service(t testing.TB, m kv.Mutation, sr *tracetest.SpanRecorder) *kv.Client {
@@ -45,7 +37,7 @@ func service(t testing.TB, m kv.Mutation, sr *tracetest.SpanRecorder) *kv.Client
 // outcome, revision and read consistent with some serial history, namely
 // the one the store's lock produced.
 func TestServiceUnderLoadConforms(t *testing.T) {
-	needQuint(t)
+	qtest.RequireQuint(t)
 	qtest.RecordAndCheck(t, "kv.binding.yaml", func(*qobs.Recorder) {
 		cl := service(t, kv.Faithful, nil)
 		if err := kv.Load(context.Background(), cl.Base, 8, 40, []string{"a", "b"}, 1); err != nil {
@@ -58,7 +50,7 @@ func TestServiceUnderLoadConforms(t *testing.T) {
 // kv.convert.yaml. Spans of concurrent requests end in any order; kv.op
 // (the store's linearization index) puts them back in the store's order.
 func TestServiceSpansConform(t *testing.T) {
-	needQuint(t)
+	qtest.RequireQuint(t)
 	steps := loadSpans(t, kv.Faithful, 1)
 	rep := check(t, steps)
 	if !rep.OK() {
@@ -70,7 +62,7 @@ func TestServiceSpansConform(t *testing.T) {
 // that succeeded with an expected version the model's store no longer
 // had. Both the recorded steps and the converted spans show it.
 func TestStaleCASCaughtUnderLoad(t *testing.T) {
-	needQuint(t)
+	qtest.RequireQuint(t)
 	for attempt := uint64(1); attempt <= 5; attempt++ {
 		rep := check(t, loadSpans(t, kv.StaleCAS, attempt))
 		if rep.OK() {
@@ -169,7 +161,7 @@ func (d *driver) State() (any, error) {
 // Model traces drive the service through its HTTP API; the store must
 // match the model after every request.
 func TestModelDrivesService(t *testing.T) {
-	needQuint(t)
+	qtest.RequireQuint(t)
 	connect.Run(t, connect.Config{Spec: "model/kv.qnt", Main: "kvDesign", MaxSamples: 30, MaxSteps: 25},
 		func() connect.Driver { return &driver{t: t} })
 }
@@ -212,7 +204,7 @@ func (m *machine) RuleGet(tc hegel.TestCase) {
 // Hegel's rules call the service over HTTP; the store's model steps go to
 // each case's recorder (Global) and the runs are checked after the test.
 func TestHegelDrivesService(t *testing.T) {
-	needQuint(t)
+	qtest.RequireQuint(t)
 	quinthegel.Test(t, quinthegel.Config{Binding: "kv.binding.yaml", Mode: quinthegel.After, Global: true, AllowEmpty: true},
 		func(ht *hegel.T, _ *quinthegel.Recorder) {
 			hegel.RunStateful(ht, &machine{cl: service(ht, kv.Faithful, nil), versions: hegel.NewPool[int64](ht)},
@@ -224,30 +216,15 @@ func TestHegelDrivesService(t *testing.T) {
 // a failed CAS (the revision wrongly advances) caught by the next check of
 // the revision.
 func TestHegelShrinksRevisionOnConflict(t *testing.T) {
-	needQuint(t)
+	qtest.RequireQuint(t)
 	if testing.Short() {
 		t.Skip("shrinking against the model runs quint dozens of times")
 	}
-	c, err := quinthegel.Checker("kv.binding.yaml", validate.Options{Dir: t.TempDir()})
-	if err != nil {
-		t.Fatal(err)
-	}
-	cc := quinthegel.NewCaseChecker(c)
-	var last []qtrace.Step
-	err = hegel.Run(func(tc hegel.TestCase) {
-		rec := quinthegel.NewRecorder(tc)
-		defer rec.Install()()
+	v := quinthegel.FindViolation(t, quinthegel.Config{Binding: "kv.binding.yaml", Global: true}, func(tc hegel.TestCase, _ *quinthegel.Recorder) {
 		cl := service(t, kv.RevisionOnConflict, nil)
 		hegel.RunStateful(tc, &machine{cl: cl, versions: hegel.NewPool[int64](tc)}, hegel.WithStatefulStepCount(10))
-		last = rec.Steps()
-		quinthegel.CheckCase(tc, cc, last)
-	}, hegel.SuppressHealthCheck(hegel.TooSlow), hegel.WithTestCases(30), hegel.WithDatabase(""), hegel.WithSeed(11))
-	q, hits := cc.Stats()
-	t.Logf("%d quint checks, %d from the cache; shrunk run:\n%s", q, hits, quinthegel.Render(last))
-	if err == nil {
-		t.Fatal("the RevisionOnConflict mutant passed")
-	}
-	if len(last) != 1 || last[0].Action != "cas" || last[0].Outcome != "conflict" {
-		t.Fatalf("want a single failed CAS:\n%s", quinthegel.Render(last))
+	}, hegel.WithTestCases(30), hegel.WithSeed(11))
+	if last := v.Last(); len(v.Steps) != 1 || last.Action != "cas" || last.Outcome != "conflict" {
+		t.Fatalf("want a single failed CAS:\n%s", quinthegel.Render(v.Steps))
 	}
 }

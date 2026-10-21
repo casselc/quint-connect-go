@@ -22,7 +22,24 @@ type Model struct {
 	Consts  map[string]string // name -> type
 }
 
-type Param struct{ Name, Type string }
+// Param is an action parameter. Shape is the kind of its resolved type
+// (type aliases expanded): "set", "list", "map", or "" for anything else.
+type Param struct{ Name, Type, Shape string }
+
+// DefaultTemplate is the template of a parameter the binding does not
+// give: the step field of the same name, converted from its recorded JSON
+// form when the parameter is a set, list or map.
+func (p Param) DefaultTemplate() string {
+	switch p.Shape {
+	case "set":
+		return "{{ toSet ." + p.Name + " }}"
+	case "list":
+		return "{{ toList ." + p.Name + " }}"
+	case "map":
+		return "{{ toMap ." + p.Name + " }}"
+	}
+	return "{{." + p.Name + "}}"
+}
 
 // Signature renders an action as `name(p: T, ...)`.
 func (m *Model) Signature(action string) string {
@@ -84,6 +101,7 @@ type tcDecl struct {
 	Qualifier string          `json:"qualifier"`
 	Expr      *tcExpr         `json:"expr"`
 	Type      json.RawMessage `json:"typeAnnotation"`
+	Def       json.RawMessage `json:"type"` // of a typedef
 }
 
 type tcOut struct {
@@ -100,6 +118,15 @@ func parseTypecheck(b []byte, module string) (*Model, error) {
 	var tc tcOut
 	if err := json.Unmarshal(b, &tc); err != nil {
 		return nil, err
+	}
+	// type aliases, from every module: a parameter's Shape looks through them
+	aliases := map[string]json.RawMessage{}
+	for _, mod := range tc.Modules {
+		for _, d := range mod.Declarations {
+			if d.Kind == "typedef" && len(d.Def) > 0 {
+				aliases[d.Name] = d.Def
+			}
+		}
 	}
 	for _, mod := range tc.Modules {
 		if mod.Name != module {
@@ -127,11 +154,14 @@ func parseTypecheck(b []byte, module string) (*Model, error) {
 						}
 					}
 					for i, p := range d.Expr.Params {
-						typ := renderType(p.Type)
-						if typ == "?" && i < len(inferred) {
-							typ = renderType(inferred[i])
+						typ, shape := renderType(p.Type), typeShape(p.Type, aliases)
+						if i < len(inferred) {
+							if typ == "?" {
+								typ = renderType(inferred[i])
+							}
+							shape = typeShape(inferred[i], aliases)
 						}
-						ps = append(ps, Param{Name: p.Name, Type: typ})
+						ps = append(ps, Param{Name: p.Name, Type: typ, Shape: shape})
 					}
 				}
 				m.Actions[d.Name] = ps
@@ -182,6 +212,31 @@ func renderType(raw json.RawMessage) string {
 		return "(" + renderType(firstArg(t.Args)) + " -> ...)"
 	}
 	return t.Kind
+}
+
+// typeShape is the Param.Shape of a Quint type's JSON IR.
+func typeShape(raw json.RawMessage, aliases map[string]json.RawMessage) string {
+	var t struct {
+		Kind string `json:"kind"`
+		Name string `json:"name"`
+	}
+	for range 10 { // alias chains, bounded
+		if len(raw) == 0 || json.Unmarshal(raw, &t) != nil {
+			return ""
+		}
+		a, ok := aliases[t.Name]
+		if t.Kind != "const" || !ok {
+			break
+		}
+		raw = a
+	}
+	switch t.Kind {
+	case "set", "list":
+		return t.Kind
+	case "fun":
+		return "map"
+	}
+	return ""
 }
 
 func firstArg(a []json.RawMessage) json.RawMessage {

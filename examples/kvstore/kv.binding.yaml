@@ -16,16 +16,14 @@ outcomes:
 
 actions:
   write:
-    args: { key: '{{.key}}', value: '{{.value}}' }
     expect: 'revision == {{.obs.revision}}'
   cas:
-    args: { key: '{{.key}}', expected: '{{.expected}}', value: '{{.value}}', o: '{{.outcome}}' }
+    args: { o: '{{.outcome}}' }
     expect: 'revision == {{.obs.revision}}'
   del:
-    args: { key: '{{.key}}', o: '{{.outcome}}' }
+    args: { o: '{{.outcome}}' }
     expect: 'revision == {{.obs.revision}}'
   read:
-    args: { key: '{{.key}}' }
     # What the read returned must be what the model's store holds.
     expect: >-
       revision == {{.obs.revision}} and

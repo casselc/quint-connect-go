@@ -2,23 +2,14 @@ package gcounter
 
 import (
 	"math/rand/v2"
-	"os/exec"
 	"testing"
 
 	"github.com/casselc/quint-connect-go/examples/glomers/maelstrom"
 	"github.com/casselc/quint-connect-go/qobs"
 	"github.com/casselc/quint-connect-go/qtest"
 	"github.com/casselc/quint-connect-go/quinthegel"
-	"github.com/casselc/quint-connect-go/validate"
 	"hegel.dev/go/hegel"
 )
-
-func needQuint(t *testing.T) {
-	t.Helper()
-	if _, err := exec.LookPath("quint"); err != nil {
-		t.Skip("quint not installed")
-	}
-}
 
 var nodes = []string{"n1", "n2", "n3"}
 
@@ -77,32 +68,22 @@ func record(t *testing.T, m Mutation) *qtest.Run {
 // Every add is counted once everywhere once the network is quiet, through
 // loss, reordering and a partition.
 func TestCounterCountsEveryAdd(t *testing.T) {
-	needQuint(t)
-	if run := record(t, Faithful); !run.OK() {
-		t.Fatalf("%s", run.Report.Summary())
-	}
+	qtest.RequireQuint(t)
+	record(t, Faithful).Expect(t, qtest.Conforms())
 }
 
 // Merging by overwriting: a late, older vector takes counts back, and the
 // next read returns less than the node (in the model) knows.
 func TestOverwriteRejected(t *testing.T) {
-	needQuint(t)
-	run := record(t, Overwrite)
-	f := run.Report.Actors[0].Failure
-	if run.OK() || f == nil || f.Kind != "disabled" || f.Step.Action != "read" {
-		t.Fatalf("want a read the model cannot take:\n%s", run.Report.Summary())
-	}
+	qtest.RequireQuint(t)
+	record(t, Overwrite).Expect(t, qtest.Rejects("read"))
 }
 
 // Gossiping only after a change: every step is allowed, but a lost
 // vector is never resent, and a node is behind once quiet.
 func TestGossipOnChangeDoesNotConverge(t *testing.T) {
-	needQuint(t)
-	run := record(t, GossipOnChange)
-	a := run.Report.Actors[0]
-	if a.Conforms != validate.Pass || a.Invariants[1].Verdict != validate.Fail {
-		t.Fatalf("want countsEveryAdd to fail:\n%s", run.Report.Summary())
-	}
+	qtest.RequireQuint(t)
+	record(t, GossipOnChange).Expect(t, qtest.Violates("countsEveryAdd"))
 }
 
 type machine struct {
@@ -120,7 +101,7 @@ func (m *machine) RuleRead(tc hegel.TestCase) {
 // Hegel schedules adds, reads, deliveries, losses, partitions and timers;
 // rounds are checked in bulk.
 func TestHegelSchedules(t *testing.T) {
-	needQuint(t)
+	qtest.RequireQuint(t)
 	quinthegel.Test(t, quinthegel.Config{Binding: "gcounter.binding.yaml", Mode: quinthegel.Batched, Global: true, Rounds: 2},
 		func(ht *hegel.T, _ *quinthegel.Recorder) {
 			s := cluster(Faithful)

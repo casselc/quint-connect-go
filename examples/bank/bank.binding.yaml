@@ -12,16 +12,13 @@ constants:
 
 actions:
   deposit:
-    args: { account: '{{.account}}', amount: '{{.amount}}' }
     # A refused operation changed nothing: the model has no such step.
     outcomes: { error: skip }
     expect: 'balances.get({{.account}}) == {{.obs.balance}}'
   withdraw:
-    args: { account: '{{.account}}', amount: '{{.amount}}' }
     outcomes: { error: skip }
     expect: 'balances.get({{.account}}) == {{.obs.balance}}'
   transfer:
-    args: { src: '{{.src}}', dst: '{{.dst}}', amount: '{{.amount}}' }
     outcomes: { error: skip }
     expect: 'balances.get({{.src}}) == {{.obs.src_balance}} and balances.get({{.dst}}) == {{.obs.dst_balance}}'
 

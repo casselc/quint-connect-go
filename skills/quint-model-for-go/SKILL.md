@@ -57,6 +57,11 @@ code (`connect`), Hegel-driven Go runs are judged by the model
 
 ## Keep replays cheap
 
+(The quint-modeling-patterns skill covers what to put in the model:
+specifying the requirement, environment guarantees, linearization
+points, ghost variables, settle-conditioned properties, mechanism
+models.)
+
 Recorded runs can be thousands of steps long. Cost per step depends on
 the state and on how invariants are written:
 
@@ -85,7 +90,7 @@ quint run model.qnt --main design --mbt --max-steps 5 --n-traces 1 --out-itf /tm
 # look at mbt::actionTaken and mbt::nondetPicks in /tmp/t.itf.json: every action
 # named, every parameter picked under its own name
 quint test model.qnt --main design                          # named `run ...Test` scenarios
-quintgo scaffold -spec model.qnt -module M                  # binding skeleton from the signatures
+quintgo scaffold -spec model.qnt -module M                  # binding skeleton; parameters default to same-named step fields
 ```
 
 Backends: `--backend rust` (default, fast) or `--backend typescript`.

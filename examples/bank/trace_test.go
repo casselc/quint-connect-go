@@ -44,22 +44,16 @@ func payday(b *Bank) {
 // and a model-level ITF of the run are left in the test's directory
 // ($QUINTGO_KEEP keeps them).
 func TestRecordedRunConforms(t *testing.T) {
-	needQuint(t)
+	qtest.RequireQuint(t)
 	qtest.RecordAndCheck(t, "bank.binding.yaml", func(*qobs.Recorder) { payday(New(accounts)) })
 }
 
 // The same scenario on the LostDeposit mutant: the third deposit to each
 // account reports a balance the model does not have.
 func TestRecordedRunCatchesLostDeposit(t *testing.T) {
-	needQuint(t)
+	qtest.RequireQuint(t)
 	run := qtest.Record(t, "bank.binding.yaml", func(*qobs.Recorder) { payday(New(accounts, WithMutation(LostDeposit))) })
-	if run.OK() {
-		t.Fatal("the LostDeposit mutant conformed")
-	}
-	r := run.Report.Actors[0]
-	if r.Failure == nil || r.Failure.Kind != "state" || r.Failure.Step.Action != "deposit" {
-		t.Fatalf("want a state mismatch on a deposit:\n%s", run.Report.Summary())
-	}
+	run.Expect(t, qtest.Mismatch("deposit"))
 	t.Logf("as expected:\n%s", run.Report.Summary())
 }
 
@@ -70,7 +64,7 @@ func TestRecordedRunCatchesLostDeposit(t *testing.T) {
 //
 //	quintgo validate -binding bank.binding.yaml -convert bank.convert.yaml spans.jsonl
 func TestOTelSpansConvertedAndChecked(t *testing.T) {
-	needQuint(t)
+	qtest.RequireQuint(t)
 	rules, err := convert.Load("bank.convert.yaml")
 	if err != nil {
 		t.Fatal(err)

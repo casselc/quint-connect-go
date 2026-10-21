@@ -4,6 +4,5 @@ module: uniqueids
 constants:
   NODES: '{{ set "node" }}'
 actions:
-  generate:
-    args: { node: '{{.node}}', id: '{{.id}}' }
+  generate: {}
 invariants: [idsUnique]

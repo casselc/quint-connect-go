@@ -1,26 +1,25 @@
 # Recorded kafka steps as calls of ../model/kafka.qnt. log* and commit*
-# steps come from lin-kv; lists are recorded as JSON (toList).
+# steps come from lin-kv. Parameters default to the step fields of their
+# names; List parameters are converted from JSON arrays by their type.
 spec: ../model/kafka.qnt
 module: kafka
 constants:
   KEYS: '{{ set "key" }}'
   NODES: '{{ set "node" }}'
 actions:
-  logRead:    { args: { node: '{{.node}}', key: '{{.key}}', value: '{{ toList .value }}' } }
-  logCas:     { args: { node: '{{.node}}', key: '{{.key}}', from: '{{ toList .from }}', into: '{{ toList .into }}', ok: '{{.ok}}' } }
-  logWrite:   { args: { node: '{{.node}}', key: '{{.key}}', value: '{{ toList .value }}' } }
-  commitRead: { args: { node: '{{.node}}', key: '{{.key}}', value: '{{.value}}' } }
-  commitCas:  { args: { node: '{{.node}}', key: '{{.key}}', from: '{{.from}}', into: '{{.into}}', ok: '{{.ok}}' } }
-  sendOk:     { args: { node: '{{.node}}', key: '{{.key}}', msg: '{{.msg}}', offset: '{{.offset}}' } }
+  logRead:    {}
+  logCas:     {}
+  logWrite:   {}
+  commitRead: {}
+  commitCas:  {}
+  sendOk:     {}
   pollOk:
-    args: { node: '{{.node}}', key: '{{.key}}' }
     # every polled message is the log's at its offset, offsets consecutive from the one asked for
     expect: >-
       {{ toList .obs.msgs }}.indices().forall(i =>
         val p = {{ toList .obs.msgs }}[i]
         p._1 == {{.from}} + i and orEmpty(logs, {{.key}}).length() > p._1 and orEmpty(logs, {{.key}})[p._1] == p._2)
   listOk:
-    args: { node: '{{.node}}', key: '{{.key}}' }
     expect: 'orNone(commits, {{.key}}) >= {{.obs.offset}}'
   settle: {}
 invariants: [sentAtItsOffset, offsetsUnique, commitsInLog]

@@ -151,7 +151,7 @@ Everything else is generic.
 
 | | |
 |---|---|
-| `qtest.RecordAndCheck(t, binding, scenario)` | record a scenario in a test and check it; `qtest.Record` returns the result, `qtest.Check` takes steps |
+| `qtest.RecordAndCheck(t, binding, scenario)` | record a scenario in a test and check it; `qtest.Record` returns the result, `qtest.Check` takes steps; `.Expect(t, qtest.Mismatch("deposit"))` states how a mutant must show up |
 | `validate.NewChecker(binding, opts)`, `.Check(ctx, steps)`, `.CheckRuns(ctx, runs, n)` | the library entry points |
 | `validate.ValidateITF(ctx, trace, ITFOptions{...})` | a model-level ITF, including raw `quint run --mbt` output |
 | `quintgo validate [-binding b.yaml] [-convert r.yaml] FILE...` | from files (OTLP/JSON, step log or ITF, detected by content); exit 0 conforms, 1 violation, 2 error |

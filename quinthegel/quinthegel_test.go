@@ -6,9 +6,7 @@ import (
 	"testing"
 
 	"github.com/casselc/quint-connect-go/connect"
-	"github.com/casselc/quint-connect-go/qtrace"
 	"github.com/casselc/quint-connect-go/quinthegel"
-	"github.com/casselc/quint-connect-go/validate"
 	"hegel.dev/go/hegel"
 )
 
@@ -112,26 +110,12 @@ func TestStateMachineBugShrinks(t *testing.T) {
 	if testing.Short() {
 		t.Skip("shrinking against the model runs quint ~130 times (~1.5 min)")
 	}
-	c, err := quinthegel.Checker("testdata/bank.yaml", validate.Options{Dir: t.TempDir()})
-	if err != nil {
-		t.Fatal(err)
-	}
-	cc := quinthegel.NewCaseChecker(c)
-	var last []qtrace.Step
-	err = hegel.Run(func(tc hegel.TestCase) {
-		rec := quinthegel.NewRecorder(tc)
+	v := quinthegel.FindViolation(t, quinthegel.Config{Binding: "testdata/bank.yaml"}, func(tc hegel.TestCase, rec *quinthegel.Recorder) {
 		m := &bankMachine{b: &bank{bal: map[string]int{"alice": 0, "bob": 0}, buggy: true}, rec: rec}
 		hegel.RunStateful(tc, m, hegel.WithStatefulStepCount(8))
-		last = rec.Steps()
-		quinthegel.CheckCase(tc, cc, last)
-	}, hegel.SuppressHealthCheck(hegel.TooSlow), hegel.WithTestCases(40), hegel.WithDatabase(""), hegel.WithSeed(7))
-	q, hits := cc.Stats()
-	t.Logf("%d quint runs, %d cache hits; shrunk run:\n%s", q, hits, quinthegel.Render(last))
-	if err == nil {
-		t.Fatal("the buggy bank passed")
-	}
-	if len(last) == 0 || last[len(last)-1].Action != "transfer" || len(last) > 2 {
-		t.Fatalf("not shrunk to a self-transfer:\n%s", quinthegel.Render(last))
+	}, hegel.WithTestCases(40), hegel.WithSeed(7))
+	if v.Last().Action != "transfer" || len(v.Steps) > 2 {
+		t.Fatalf("not shrunk to a self-transfer:\n%s", quinthegel.Render(v.Steps))
 	}
 }
 

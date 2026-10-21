@@ -99,7 +99,7 @@ func scaffold(args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("# quintgo binding for %s (generated skeleton: fill in the templates)\nspec: %s   # relative to this file\nmodule: %s\n\nconstants:\n", *module, *spec, *module)
+	fmt.Printf("# quintgo binding for %s (generated skeleton: set the constants; override an argument by uncommenting it)\nspec: %s   # relative to this file\nmodule: %s\n\nconstants:\n", *module, *spec, *module)
 	for _, c := range sortedKeys(m.Consts) {
 		fmt.Printf("  %s: ''   # %s\n", c, m.Consts[c])
 	}
@@ -112,9 +112,10 @@ func scaffold(args []string) error {
 		}
 		fmt.Printf("  %s:   # %s\n", a, m.Signature(a))
 		if ps := m.Actions[a]; len(ps) > 0 {
-			fmt.Printf("    args:\n")
+			// the defaults, commented out: uncomment to map a field differently
+			fmt.Printf("    args:   # default: the step field of the same name\n")
 			for _, p := range ps {
-				fmt.Printf("      %s: ''   # %s\n", p.Name, p.Type)
+				fmt.Printf("      # %s: '%s'   # %s\n", p.Name, p.DefaultTemplate(), p.Type)
 			}
 		}
 		fmt.Printf("    # expect: ''  # Quint bool over the post-state, from observed .obs.<name>\n")

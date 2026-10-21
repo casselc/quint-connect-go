@@ -6,9 +6,8 @@ import (
 	"testing"
 
 	"github.com/casselc/quint-connect-go/connect"
-	"github.com/casselc/quint-connect-go/qtrace"
+	"github.com/casselc/quint-connect-go/qtest"
 	"github.com/casselc/quint-connect-go/quinthegel"
-	"github.com/casselc/quint-connect-go/validate"
 	"hegel.dev/go/hegel"
 )
 
@@ -58,7 +57,7 @@ func runMachine(m Mutation) func(*hegel.T, *quinthegel.Recorder) {
 // model, with the balances it reports, and keep noOverdraft. The runs are
 // checked after the test, in parallel (After).
 func TestHegelRunsConformToModel(t *testing.T) {
-	needQuint(t)
+	qtest.RequireQuint(t)
 	quinthegel.Test(t, cfg(quinthegel.After), runMachine(Faithful), hegel.WithTestCases(40), hegel.WithDatabase(""))
 }
 
@@ -67,34 +66,19 @@ func TestHegelRunsConformToModel(t *testing.T) {
 // shrinks to the shortest run that shows it (a deposit, then a transfer
 // to the same account). The machine's own invariant never fails.
 func TestHegelCatchesSelfTransfer(t *testing.T) {
-	needQuint(t)
+	qtest.RequireQuint(t)
 	if testing.Short() {
 		t.Skip("shrinking against the model runs quint ~100 times")
 	}
-	c, err := quinthegel.Checker("bank.binding.yaml", validate.Options{Dir: t.TempDir()})
-	if err != nil {
-		t.Fatal(err)
-	}
-	cc := quinthegel.NewCaseChecker(c)
-	var last []qtrace.Step
-	err = hegel.Run(func(tc hegel.TestCase) {
-		rec := quinthegel.NewRecorder(tc)
-		defer rec.Install()()
+	v := quinthegel.FindViolation(t, quinthegel.Config{Binding: "bank.binding.yaml", Global: true}, func(tc hegel.TestCase, _ *quinthegel.Recorder) {
 		hegel.RunStateful(tc, &machine{bank: New(accounts, WithMutation(SelfTransfer))}, hegel.WithStatefulStepCount(12))
-		last = rec.Steps()
-		quinthegel.CheckCase(tc, cc, last)
-	}, hegel.SuppressHealthCheck(hegel.TooSlow), hegel.WithTestCases(50), hegel.WithDatabase(""), hegel.WithSeed(3))
-	q, hits := cc.Stats()
-	t.Logf("%d quint checks, %d decided from earlier verdicts; shrunk run:\n%s", q, hits, quinthegel.Render(last))
-	if err == nil {
-		t.Fatal("the SelfTransfer mutant passed")
-	}
+	}, hegel.WithTestCases(50), hegel.WithSeed(3))
 	var self bool
-	for _, s := range last {
+	for _, s := range v.Steps {
 		self = self || (s.Action == "transfer" && s.Outcome == "ok" && s.Args["src"] == s.Args["dst"])
 	}
 	if !self {
-		t.Fatalf("the shrunk run has no successful self-transfer:\n%s", quinthegel.Render(last))
+		t.Fatalf("the shrunk run has no successful self-transfer:\n%s", quinthegel.Render(v.Steps))
 	}
 }
 
@@ -104,7 +88,7 @@ func TestHegelCatchesSelfTransfer(t *testing.T) {
 // amounts) that must fail and change nothing. The balances are compared
 // with the model after every step.
 func TestHegelVariesModelTraces(t *testing.T) {
-	needQuint(t)
+	qtest.RequireQuint(t)
 	traces := quinthegel.Traces(t, connect.Config{Spec: "model/bank.qnt", Main: "bankDesign", MaxSamples: 30, MaxSteps: 20, Seed: "0xb4"})
 	hegel.Test(t, func(ht *hegel.T) {
 		quinthegel.Replay(ht, traces, func(tc hegel.TestCase) connect.Driver {

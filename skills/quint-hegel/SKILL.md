@@ -61,10 +61,19 @@ func TestBankAgainstModel(t *testing.T) {
   recorder, for implementation-side `qobs.Record` or woven code. Rules
   can also call `rec.Step(action, err, kv...)`. Every step becomes a Hegel
   note, so the shrunk run prints as model actions.
-- **Expected failures** (a mutant, a known bug): use `hegel.Run` with
-  `quinthegel.NewRecorder(tc)`, `rec.Install()`, and
-  `quinthegel.CheckCase(tc, cc, rec.Steps())`. `hegel.Run` returns the
-  failure as an error.
+- **Expected failures** (a mutant, a known bug): use
+  `quinthegel.FindViolation`. It checks every case with the verdict
+  cache, lets Hegel shrink, fails the test if every case passes, and
+  returns the shrunk run to assert on:
+  ```go
+  v := quinthegel.FindViolation(t, quinthegel.Config{Binding: "bank.binding.yaml", Global: true},
+  	func(tc hegel.TestCase, _ *quinthegel.Recorder) {
+  		hegel.RunStateful(tc, &machine{bank: New(accounts, WithMutation(SelfTransfer))})
+  	}, hegel.WithTestCases(50), hegel.WithSeed(3))
+  if v.Last().Action != "transfer" { t.Fatalf("...%s", quinthegel.Render(v.Steps)) }
+  ```
+  (`hegel.Test` cannot express "expected to fail". `FindViolation`
+  wraps `hegel.Run`, `CaseChecker` and the TooSlow suppression.)
 - **Generators.** Draw invalid inputs too: unknown ids, non-positive
   amounts, duplicates. Map refused calls to `outcomes: { error: skip }` in
   the binding. A refused call is then no model step, but a wrongly

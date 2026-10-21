@@ -6,6 +6,5 @@ module: uniqueidsScheme
 constants:
   NODES: '{{ set "node" }}'
 actions:
-  generate:
-    args: { node: '{{.node}}', incarnation: '{{.incarnation}}', counter: '{{.counter}}' }
+  generate: {}
 invariants: [incarnationsOwnedAndCounting]

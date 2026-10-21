@@ -61,14 +61,19 @@ outcomes: { ok: Ok, error: Fail }
 restart: crash                  # inserted where the process identity changes
 actions:
   deposit:
-    args: { account: '{{.account}}', amount: '{{.amount}}' }   # rendered as Quint literals
+    # account, amount: the step fields of those names (the default)
     outcomes: { error: skip }   # a refused call is no model step
     expect: 'balances.get({{.account}}) == {{.obs.balance}}'
 invariants: [noOverdraft]
 ```
 
 Rules:
-- Every parameter needs a template.
+- A parameter with no template is the step field of its name, rendered as
+  a Quint literal. Set, list and map parameters (type aliases included)
+  are converted from the recorded JSON by `toSet`, `toList` and `toMap`.
+  Give a template only to map a field differently, e.g.
+  `args: { o: '{{.outcome}}' }`. An action that needs nothing else can
+  be `name: {}`.
 - A failed step whose templates ignore `{{.outcome}}` must be mapped in
   the action's `outcomes` (`skip`, or `call` to replay it as a success).
   The tool refuses to guess.
@@ -83,8 +88,16 @@ binding.
 
 - In a test:
   `qtest.RecordAndCheck(t, "bank.binding.yaml", func(*qobs.Recorder) { scenario() })`.
-  Use `qtest.Record` to inspect expected violations, and `qtest.Check` for
-  steps recorded elsewhere.
+  Use `qtest.Check` for steps recorded elsewhere. Start with
+  `qtest.RequireQuint(t)`, which skips the test without quint.
+- **Expected verdicts** (mutants): `qtest.Record(...).Expect(t, e...)`,
+  where each `e` says how the run must show up:
+  - `qtest.Conforms()`;
+  - `qtest.Rejects("ack")`: a step the model cannot take;
+  - `qtest.Mismatch("read")`: a failed `expect`;
+  - `qtest.Violates("prop")`: the run conforms and the invariant fails.
+
+  On a miss, the failure message is the report.
 - In code: `validate.NewChecker(binding, opts).Check(ctx, steps)`. Use
   `CheckRuns` for many runs in parallel.
 - From files: `quintgo validate -binding b.yaml FILE...`. FILE may be
@@ -98,7 +111,7 @@ binding.
 | Verdict | Meaning | Usual cause |
 |---|---|---|
 | `step [i] is not a transition` (disabled, QNT513) | the model cannot take the observed step from the state reached | implementation bug; or a wrong binding (argument mapping, missing restart, wrong outcome) |
-| `state does not match what was observed` (QNT508) | the step was possible but `expect` fails; the report shows `expect:` and `obs:` | implementation computed a different state, or a wrong `expect`/observation |
+| `state does not match what was observed` (QNT508) | the step was possible but `expect` fails; the report shows `expect:`, `obs:` and the model's state after the step | implementation computed a different state, or a wrong `expect`/observation |
 | `invariant X: FAIL, violated after step [i]` | the run is a behaviour of the model, and the model's own property fails on it | a **design** bug the model already allows, now seen in real code |
 | `issue: error gap` | sequence numbers are missing: steps were lost or sampled | fix the pipeline; the pass is unsound |
 | `issue: warn overlap` / `cycle` | two incarnations interleave / contradictory order keys | instrumentation identity or order keys are wrong |

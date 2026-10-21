@@ -75,6 +75,11 @@ type Failure struct {
 	Expect string // the post-state check of the step, if any
 	Step   *qtrace.Step
 	Quint  string // quint's error message
+	// State is the model's state at the failure: before the step for a
+	// step the model cannot take, after it for a failed expect or
+	// invariant (StateAfter). Variables as quint reports them.
+	State      map[string]itf.Value
+	StateAfter bool
 }
 
 type InvariantResult struct {
@@ -162,7 +167,7 @@ func evaluate(ctx context.Context, ms binding.ModuleSpec, runs [][]binding.Call,
 		all[i] = i
 	}
 	// phase writes the module of the given runs and test set, and runs it.
-	phase := func(set binding.TestSet, file string, idx []int) ([]*binding.Generated, string, string, error) {
+	phase := func(set binding.TestSet, file string, idx []int, opt Options) ([]*binding.Generated, string, string, error) {
 		m := ms
 		m.Tests = set
 		qnt := filepath.Join(opt.Dir, file+".qnt")
@@ -194,7 +199,7 @@ func evaluate(ctx context.Context, ms binding.ModuleSpec, runs [][]binding.Call,
 	}
 	detailed := all
 	if len(ms.Invariants) > 0 {
-		gs, qnt, out, err := phase(binding.FastTests, base, all)
+		gs, qnt, out, err := phase(binding.FastTests, base, all, opt)
 		if err != nil {
 			fail(all, err)
 			return errs
@@ -227,7 +232,11 @@ func evaluate(ctx context.Context, ms binding.ModuleSpec, runs [][]binding.Call,
 	if len(ms.Invariants) > 0 {
 		file = base + "_detail"
 	}
-	gs, qnt, out, err := phase(binding.DetailTests, file, detailed)
+	// The detail run writes ITF regardless of NoITF: failures are rare, and
+	// the model's state at the failure goes into the report.
+	withITF := opt
+	withITF.NoITF = false
+	gs, qnt, out, err := phase(binding.DetailTests, file, detailed, withITF)
 	if err != nil {
 		fail(detailed, err)
 		return errs
@@ -268,6 +277,23 @@ func fill(g *binding.Generated, output, qnt, itfPattern string, invariants []str
 	}
 	res.Conforms = verdicts[g.Tests.Conforms]
 	res.Failure = failures[g.Tests.Conforms]
+	// The model's state where each check failed, from the ITF quint writes
+	// for a failing run up to its failure.
+	for name, f := range failures {
+		if verdicts[name] != Fail {
+			continue
+		}
+		tr, err := itf.ReadFile(strings.ReplaceAll(itfPattern, "{test}", name))
+		if err != nil {
+			continue
+		}
+		for i := len(tr.States) - 1; i >= 0; i-- {
+			if len(tr.States[i].Vars) > 0 {
+				f.State, f.StateAfter = tr.States[i].Vars, f.Kind != "disabled"
+				break
+			}
+		}
+	}
 	// A failed run with no error position is quint failing, not the model
 	// rejecting the trace (e.g. the evaluator crashed): never a verdict.
 	names := []string{g.Tests.Conforms}
@@ -499,6 +525,31 @@ func (f *Failure) describe(pfx string) string {
 		}
 	}
 	fmt.Fprintf(&b, "%s  %s\n", pfx, f.Quint)
+	if len(f.State) > 0 {
+		when := "before the step"
+		if f.StateAfter {
+			when = "after the step"
+		}
+		fmt.Fprintf(&b, "%s  model state %s:\n", pfx, when)
+		names := make([]string, 0, len(f.State))
+		for k := range f.State {
+			if !strings.HasPrefix(k, "mbt::") {
+				names = append(names, k)
+			}
+		}
+		sort.Strings(names)
+		for i, k := range names {
+			if i == 12 {
+				fmt.Fprintf(&b, "%s    ... and %d more variables\n", pfx, len(names)-12)
+				break
+			}
+			v := f.State[k].String()
+			if len(v) > 240 {
+				v = v[:240] + " ..."
+			}
+			fmt.Fprintf(&b, "%s    %s = %s\n", pfx, k, v)
+		}
+	}
 	return b.String()
 }
 

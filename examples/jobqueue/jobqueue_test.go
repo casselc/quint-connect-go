@@ -2,7 +2,6 @@ package jobqueue
 
 import (
 	"context"
-	"os/exec"
 	"sync"
 	"testing"
 	"time"
@@ -10,18 +9,10 @@ import (
 	"github.com/casselc/quint-connect-go/examples/jobqueue/queue"
 	"github.com/casselc/quint-connect-go/qobs"
 	"github.com/casselc/quint-connect-go/qtest"
-	"github.com/casselc/quint-connect-go/qtrace"
 	"github.com/casselc/quint-connect-go/quinthegel"
 	"github.com/casselc/quint-connect-go/validate"
 	"hegel.dev/go/hegel"
 )
-
-func needQuint(t *testing.T) {
-	t.Helper()
-	if _, err := exec.LookPath("quint"); err != nil {
-		t.Skip("quint not installed")
-	}
-}
 
 const ttl = time.Second
 
@@ -62,7 +53,7 @@ func slowWorker(svc *queue.Service, c *clock) {
 // the second perform. That is a design-level verdict, not a bug in the
 // code: the run conforms.
 func TestSlowWorkerConformsButRunsTwice(t *testing.T) {
-	needQuint(t)
+	qtest.RequireQuint(t)
 	run := qtest.RecordAndCheck(t, "jobqueue.binding.yaml", func(*qobs.Recorder) { slowWorker(newService(queue.Faithful)) })
 
 	c, err := validate.NewChecker("jobqueue.binding.yaml", validate.Options{Dir: t.TempDir()})
@@ -77,10 +68,9 @@ func TestSlowWorkerConformsButRunsTwice(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := rep.Actors[0]
-	inv := r.Invariants[0]
-	if r.Conforms != validate.Pass || inv.Verdict != validate.Fail || inv.Failure.Step.Action != "perform" {
-		t.Fatalf("want a conforming run violating exactlyOnce at a perform:\n%s", rep.Summary())
+	qtest.Expect(t, rep, qtest.Violates("exactlyOnce"))
+	if inv := rep.Actors[0].Invariants[0]; inv.Failure.Step.Action != "perform" {
+		t.Fatalf("want exactlyOnce violated at a perform:\n%s", rep.Summary())
 	}
 	t.Logf("as designed:\n%s", rep.Summary())
 }
@@ -102,7 +92,7 @@ func restartScenario(svc *queue.Service) {
 }
 
 func TestRestartConforms(t *testing.T) {
-	needQuint(t)
+	qtest.RequireQuint(t)
 	run := qtest.RecordAndCheck(t, "jobqueue.binding.yaml", func(*qobs.Recorder) {
 		svc, _ := newService(queue.Faithful)
 		restartScenario(svc)
@@ -114,7 +104,7 @@ func TestRestartConforms(t *testing.T) {
 
 // Both mutants: the same scenarios, rejected at the step the bug makes.
 func TestMutantsRejected(t *testing.T) {
-	needQuint(t)
+	qtest.RequireQuint(t)
 	cases := []struct {
 		m      queue.Mutation
 		run    func(*queue.Service, *clock)
@@ -124,11 +114,10 @@ func TestMutantsRejected(t *testing.T) {
 		{queue.ForgetDone, func(s *queue.Service, _ *clock) { restartScenario(s) }, "lease"}, // job 1 leased again after the restart
 	}
 	for _, tc := range cases {
-		run := qtest.Record(t, "jobqueue.binding.yaml", func(*qobs.Recorder) { tc.run(newService(tc.m)) })
-		f := run.Report.Actors[0].Failure
-		if run.OK() || f == nil || f.Kind != "disabled" || f.Step.Action != tc.action {
-			t.Errorf("mutant %d: want %s rejected:\n%s", tc.m, tc.action, run.Report.Summary())
-		}
+		t.Run(tc.action, func(t *testing.T) {
+			run := qtest.Record(t, "jobqueue.binding.yaml", func(*qobs.Recorder) { tc.run(newService(tc.m)) })
+			run.Expect(t, qtest.Rejects(tc.action))
+		})
 	}
 }
 
@@ -182,7 +171,7 @@ func runMachine(tc hegel.TestCase, mut queue.Mutation) {
 // Every run Hegel generates is a behaviour of the model (checked after
 // the test, in parallel).
 func TestHegelRunsConform(t *testing.T) {
-	needQuint(t)
+	qtest.RequireQuint(t)
 	quinthegel.Test(t, quinthegel.Config{Binding: "jobqueue.binding.yaml", Mode: quinthegel.After, Global: true, AllowEmpty: true},
 		func(ht *hegel.T, _ *quinthegel.Recorder) { runMachine(ht, queue.Faithful) },
 		hegel.WithTestCases(40), hegel.WithDatabase(""))
@@ -192,29 +181,14 @@ func TestHegelRunsConform(t *testing.T) {
 // run in which a worker's ack is accepted after its lease was lost: taken
 // over after it expired, or lost in a restart.
 func TestHegelShrinksAckAnyLease(t *testing.T) {
-	needQuint(t)
+	qtest.RequireQuint(t)
 	if testing.Short() {
 		t.Skip("shrinking against the model runs quint dozens of times")
 	}
-	c, err := quinthegel.Checker("jobqueue.binding.yaml", validate.Options{Dir: t.TempDir()})
-	if err != nil {
-		t.Fatal(err)
-	}
-	cc := quinthegel.NewCaseChecker(c)
-	var last []qtrace.Step
-	err = hegel.Run(func(tc hegel.TestCase) {
-		rec := quinthegel.NewRecorder(tc)
-		defer rec.Install()()
+	v := quinthegel.FindViolation(t, quinthegel.Config{Binding: "jobqueue.binding.yaml", Global: true}, func(tc hegel.TestCase, _ *quinthegel.Recorder) {
 		runMachine(tc, queue.AckAnyLease)
-		last = rec.Steps()
-		quinthegel.CheckCase(tc, cc, last)
-	}, hegel.SuppressHealthCheck(hegel.TooSlow), hegel.WithTestCases(60), hegel.WithDatabase(""), hegel.WithSeed(5))
-	q, hits := cc.Stats()
-	t.Logf("%d quint checks, %d from the cache; shrunk run:\n%s", q, hits, quinthegel.Render(last))
-	if err == nil {
-		t.Fatal("the AckAnyLease mutant passed")
-	}
-	if n := len(last); n == 0 || last[n-1].Action != "ack" || last[n-1].Outcome != "ok" {
-		t.Fatalf("want the run to end in an accepted ack:\n%s", quinthegel.Render(last))
+	}, hegel.WithTestCases(60), hegel.WithSeed(5))
+	if last := v.Last(); last.Action != "ack" || last.Outcome != "ok" {
+		t.Fatalf("want the run to end in an accepted ack:\n%s", quinthegel.Render(v.Steps))
 	}
 }

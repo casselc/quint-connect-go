@@ -5,9 +5,9 @@ module: gcounter
 constants:
   NODES: '{{ set "node" "src" "dst" }}'
 actions:
-  add:     { args: { node: '{{.node}}', delta: '{{.delta}}' } }
-  gossip:  { args: { id: '{{.id}}', src: '{{.src}}', dst: '{{.dst}}', vec: '{{ toMap .vec }}' } }
-  deliver: { args: { id: '{{.id}}' } }
-  read:    { args: { node: '{{.node}}', value: '{{.value}}' } }
+  add:     {}
+  gossip:  {}
+  deliver: {}
+  read:    {}
   settle: {}
 invariants: [noOvercount, countsEveryAdd]

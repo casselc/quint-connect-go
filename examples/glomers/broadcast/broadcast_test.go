@@ -2,24 +2,15 @@ package broadcast
 
 import (
 	"math/rand/v2"
-	"os/exec"
+	"strings"
 	"testing"
 
 	"github.com/casselc/quint-connect-go/examples/glomers/maelstrom"
 	"github.com/casselc/quint-connect-go/qobs"
 	"github.com/casselc/quint-connect-go/qtest"
-	"github.com/casselc/quint-connect-go/qtrace"
 	"github.com/casselc/quint-connect-go/quinthegel"
-	"github.com/casselc/quint-connect-go/validate"
 	"hegel.dev/go/hegel"
 )
-
-func needQuint(t *testing.T) {
-	t.Helper()
-	if _, err := exec.LookPath("quint"); err != nil {
-		t.Skip("quint not installed")
-	}
-}
 
 var nodes = []string{"n0", "n1", "n2", "n3", "n4"}
 
@@ -75,11 +66,9 @@ func record(t *testing.T, m Mutation) (*qtest.Run, *maelstrom.Sim) {
 // Under loss, reordering and a partition, every node ends up with every
 // value; reads only ever return broadcast values.
 func TestBroadcastConverges(t *testing.T) {
-	needQuint(t)
+	qtest.RequireQuint(t)
 	run, s := record(t, Faithful)
-	if !run.OK() {
-		t.Fatalf("%s", run.Report.Summary())
-	}
+	run.Expect(t, qtest.Conforms())
 	t.Logf("%d steps; %d messages delivered, %d lost (%.1f messages per broadcast)", len(run.Steps), s.Delivered, s.Lost,
 		float64(s.Delivered+s.Lost)/20)
 }
@@ -88,25 +77,18 @@ func TestBroadcastConverges(t *testing.T) {
 // invented), but after the network heals some node never learns what it
 // missed. The verdict is "conforms, convergedWhenSettled FAIL", at settle.
 func TestNoRetryDoesNotConverge(t *testing.T) {
-	needQuint(t)
+	qtest.RequireQuint(t)
 	run, _ := record(t, NoRetry)
-	a := run.Report.Actors[0]
-	inv := a.Invariants[1]
-	if a.Conforms != validate.Pass || inv.Name != "convergedWhenSettled" || inv.Verdict != validate.Fail {
-		t.Fatalf("want convergence to fail after settle:\n%s", run.Report.Summary())
-	}
+	run.Expect(t, qtest.Violates("convergedWhenSettled"))
 	t.Logf("as expected:\n%s", run.Report.Summary())
 }
 
 // A read that misses gossiped values returns a state the model's node does
 // not have.
 func TestReadOwnOnlyRejected(t *testing.T) {
-	needQuint(t)
+	qtest.RequireQuint(t)
 	run, _ := record(t, ReadOwnOnly)
-	f := run.Report.Actors[0].Failure
-	if run.OK() || f == nil || f.Kind != "state" || f.Step.Action != "read" {
-		t.Fatalf("want a read the model rejects:\n%s", run.Report.Summary())
-	}
+	run.Expect(t, qtest.Mismatch("read"))
 }
 
 // ---- Hegel schedules the network ---------------------------------------------
@@ -130,7 +112,7 @@ func scenario(tc hegel.TestCase, mut Mutation, steps int) {
 // Hegel explores schedules: deliveries in any order, losses, partitions,
 // timers. Rounds of runs are checked in bulk against the model.
 func TestHegelSchedulesConverge(t *testing.T) {
-	needQuint(t)
+	qtest.RequireQuint(t)
 	quinthegel.Test(t, quinthegel.Config{Binding: "broadcast.binding.yaml", Mode: quinthegel.Batched, Global: true, Rounds: 2},
 		func(ht *hegel.T, _ *quinthegel.Recorder) { scenario(ht, Faithful, 30) },
 		hegel.WithTestCases(25), hegel.WithDatabase(""))
@@ -139,26 +121,14 @@ func TestHegelSchedulesConverge(t *testing.T) {
 // Hegel finds, and shrinks, a schedule in which NoRetry loses a value for
 // good: a broadcast, its gossip lost, and settle.
 func TestHegelShrinksNoRetry(t *testing.T) {
-	needQuint(t)
+	qtest.RequireQuint(t)
 	if testing.Short() {
 		t.Skip("shrinking against the model")
 	}
-	c, err := quinthegel.Checker("broadcast.binding.yaml", validate.Options{Dir: t.TempDir()})
-	if err != nil {
-		t.Fatal(err)
-	}
-	cc := quinthegel.NewCaseChecker(c)
-	var last []qtrace.Step
-	err = hegel.Run(func(tc hegel.TestCase) {
-		rec := quinthegel.NewRecorder(tc)
-		defer rec.Install()()
+	v := quinthegel.FindViolation(t, quinthegel.Config{Binding: "broadcast.binding.yaml", Global: true}, func(tc hegel.TestCase, _ *quinthegel.Recorder) {
 		scenario(tc, NoRetry, 20)
-		last = rec.Steps()
-		quinthegel.CheckCase(tc, cc, last)
-	}, hegel.SuppressHealthCheck(hegel.TooSlow), hegel.WithTestCases(40), hegel.WithDatabase(""), hegel.WithSeed(2))
-	q, hits := cc.Stats()
-	t.Logf("%d quint checks, %d from the cache; shrunk run:\n%s", q, hits, quinthegel.Render(last))
-	if err == nil {
-		t.Fatal("NoRetry passed")
+	}, hegel.WithTestCases(40), hegel.WithSeed(2))
+	if !strings.Contains(v.Summary, "convergedWhenSettled") {
+		t.Fatalf("want convergence to fail:\n%s", v.Summary)
 	}
 }

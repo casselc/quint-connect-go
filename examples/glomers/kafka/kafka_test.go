@@ -2,23 +2,14 @@ package kafka
 
 import (
 	"math/rand/v2"
-	"os/exec"
 	"testing"
 
 	"github.com/casselc/quint-connect-go/examples/glomers/maelstrom"
 	"github.com/casselc/quint-connect-go/qobs"
 	"github.com/casselc/quint-connect-go/qtest"
 	"github.com/casselc/quint-connect-go/quinthegel"
-	"github.com/casselc/quint-connect-go/validate"
 	"hegel.dev/go/hegel"
 )
-
-func needQuint(t *testing.T) {
-	t.Helper()
-	if _, err := exec.LookPath("quint"); err != nil {
-		t.Skip("quint not installed")
-	}
-}
 
 var (
 	nodes = []string{"n1", "n2"}
@@ -61,36 +52,22 @@ func record(t *testing.T, m Mutation) *qtest.Run {
 }
 
 func TestLogKeepsEverySend(t *testing.T) {
-	needQuint(t)
-	if run := record(t, Faithful); !run.OK() {
-		t.Fatalf("%s", run.Report.Summary())
-	}
+	qtest.RequireQuint(t)
+	record(t, Faithful).Expect(t, qtest.Conforms())
 }
 
 // Blind appends conform step by step (lin-kv allows a write), but an
 // acknowledged message is overwritten: sentAtItsOffset fails.
 func TestBlindAppendLosesSends(t *testing.T) {
-	needQuint(t)
-	run := record(t, BlindAppend)
-	a := run.Report.Actors[0]
-	failed := false
-	for _, inv := range a.Invariants {
-		failed = failed || (inv.Name == "sentAtItsOffset" && inv.Verdict == validate.Fail)
-	}
-	if a.Conforms != validate.Pass || !failed {
-		t.Fatalf("want sentAtItsOffset to fail:\n%s", run.Report.Summary())
-	}
+	qtest.RequireQuint(t)
+	record(t, BlindAppend).Expect(t, qtest.Violates("sentAtItsOffset"))
 }
 
 // A poll that skips a message returns something the model's log does not
 // have at those offsets.
 func TestPollSkipsRejected(t *testing.T) {
-	needQuint(t)
-	run := record(t, PollSkips)
-	f := run.Report.Actors[0].Failure
-	if run.OK() || f == nil || f.Kind != "state" || f.Step.Action != "pollOk" {
-		t.Fatalf("want a poll the model rejects:\n%s", run.Report.Summary())
-	}
+	qtest.RequireQuint(t)
+	record(t, PollSkips).Expect(t, qtest.Mismatch("pollOk"))
 }
 
 type machine struct {
@@ -119,7 +96,7 @@ func (m *machine) RuleList(tc hegel.TestCase) {
 }
 
 func TestHegelSchedules(t *testing.T) {
-	needQuint(t)
+	qtest.RequireQuint(t)
 	quinthegel.Test(t, quinthegel.Config{Binding: "kafka.binding.yaml", Mode: quinthegel.Batched, Global: true, AllowEmpty: true, Rounds: 2},
 		func(ht *hegel.T, _ *quinthegel.Recorder) {
 			s := cluster(Faithful)

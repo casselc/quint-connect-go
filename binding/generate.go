@@ -181,20 +181,17 @@ func (b *Binding) Plan(m *Model, t *qtrace.Trace) (*Plan, error) {
 		}
 		prevProc = s.Process
 		ab := b.Actions[s.Action]
-		var params []string
+		var params []Param
 		if m != nil {
 			ps, ok := m.Actions[s.Action]
 			if !ok {
 				return nil, fmt.Errorf("step %d: %s is not an action of %s", i, s.Action, m.Module)
 			}
-			for _, p := range ps {
-				if _, ok := ab.Args[p.Name]; !ok {
-					return nil, fmt.Errorf("step %d: binding gives no template for %s", i, m.Signature(s.Action))
-				}
-				params = append(params, p.Name)
-			}
+			params = ps
 		} else {
-			params = sortedKeys(ab.Args)
+			for _, p := range sortedKeys(ab.Args) {
+				params = append(params, Param{Name: p})
+			}
 		}
 		outcome, err := b.outcome(ab, s)
 		if err != nil {
@@ -207,11 +204,12 @@ func (b *Binding) Plan(m *Model, t *qtrace.Trace) (*Plan, error) {
 		c := Call{Step: s, Action: s.Action, Args: map[string]string{}}
 		var vals []string
 		for _, p := range params {
-			v, err := render(ab.Args[p], data, funcs)
+			tpl := ab.Template(p)
+			v, err := render(tpl, data, funcs)
 			if err != nil {
-				return nil, fmt.Errorf("step %d (%s, %s): arg %s: %w", i, s.Action, s.Source, p, err)
+				return nil, fmt.Errorf("step %d (%s, %s): arg %s (template %s, signature %s): %w", i, s.Action, s.Source, p.Name, tpl, sig(m, s.Action), err)
 			}
-			c.Args[p] = v
+			c.Args[p.Name] = v
 			vals = append(vals, v)
 		}
 		c.Quint = s.Action
@@ -559,4 +557,12 @@ func jsonElem(x any) string {
 		return strconv.FormatBool(y)
 	}
 	return strconv.Quote(fmt.Sprint(x))
+}
+
+// sig is an action's signature, if the model is known.
+func sig(m *Model, action string) string {
+	if m == nil {
+		return action
+	}
+	return m.Signature(action)
 }

@@ -113,12 +113,8 @@ func (b *Binding) LintAnnotations(m *Model, anns []Annotation) (errs, warns []st
 			errs = append(errs, fmt.Sprintf("%s: %s: %s is not an action of %s", a.Pos, a.Func, a.Action, m.Module))
 			continue
 		}
-		ab, ok := b.Actions[a.Action]
-		if !ok && len(m.Actions[a.Action]) > 0 {
-			errs = append(errs, fmt.Sprintf("%s: %s: the binding has no entry for %s", a.Pos, a.Func, m.Signature(a.Action)))
-			continue
-		}
-		for _, f := range ab.Fields() {
+		ab := b.Actions[a.Action]
+		for _, f := range ab.Fields(m.Actions[a.Action]...) {
 			if _, ok := a.Keys[f]; !ok { // obs fields are recorded as obs.<name> too
 				errs = append(errs, fmt.Sprintf("%s: %s: the binding for %s uses .%s, which this annotation does not record", a.Pos, a.Func, a.Action, f))
 			}

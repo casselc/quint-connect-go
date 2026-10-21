@@ -13,16 +13,12 @@ restart: restart
 
 actions:
   enqueue:
-    args: { job: '{{.job}}' }
     outcomes: { error: skip }      # a duplicate is refused and changes nothing
-  lease:
-    args: { worker: '{{.worker}}', job: '{{.job}}' }
-  perform:
-    args: { worker: '{{.worker}}', job: '{{.job}}' }
+  lease: {}
+  perform: {}
   ack:
-    args: { worker: '{{.worker}}', job: '{{.job}}', o: '{{.outcome}}' }
-  expire:
-    args: { job: '{{.job}}' }
+    args: { o: '{{.outcome}}' }
+  expire: {}
 
 # What the design guarantees. exactlyOnce is not among them (an
 # at-least-once queue performs a job twice when a lease expires while its
