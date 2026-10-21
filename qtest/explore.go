@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/casselc/quint-connect-go/qenv"
@@ -55,11 +57,18 @@ type ExploreConfig struct {
 	Seeds int        // runs, with seeds 1..Seeds (default 50)
 	Rates qenv.Rates // fault rates (default qenv.DefaultRates)
 	Opts  []Option   // artifacts, quint options
+	// Parallel runs this many seeds at once (default GOMAXPROCS; 1: one
+	// after another). Each run records into its own recorder, carried by
+	// the chooser's context (qenv.WithContext), so the scenario must build
+	// its simulation from the chooser it is given, keep no state across
+	// runs, and record through the simulation's contexts (a task's, or
+	// Sim.Context outside tasks), not context.Background().
+	Parallel int
 }
 
-// Explore runs scenario once per seed, each time with a fresh recorder
-// installed as the global one and a seeded qenv chooser (wrapped in a
-// qenv.Recorder, so every run can be replayed), then checks every run in
+// Explore runs scenario once per seed, each time with a seeded qenv chooser
+// (wrapped in a qenv.Recorder, so every run can be replayed) whose context
+// carries a fresh step recorder, then checks every run in
 // one batch (validate.Checker.CheckBatch, without ITF). It is how a
 // simulated system is explored like Maelstrom or Jepsen explore real
 // ones: many random schedules and faults, every one judged by the model.
@@ -72,26 +81,38 @@ func Explore(t testing.TB, bindingPath string, cfg ExploreConfig, scenario func(
 	if cfg.Rates.Default == 0 && cfg.Rates.Kinds == nil {
 		cfg.Rates = qenv.DefaultRates
 	}
+	if cfg.Parallel <= 0 {
+		cfg.Parallel = runtime.GOMAXPROCS(0)
+	}
 	c := config(t, cfg.Opts)
-	x := &Exploration{}
-	var runs [][]qtrace.Step
-	prev := qobs.Global()
-	for seed := uint64(1); seed <= uint64(cfg.Seeds); seed++ {
-		mem := &qobs.MemorySink{}
-		qobs.SetGlobal(qobs.NewRecorder(mem, c.Recorder...))
-		ch := qenv.NewSeeded(seed)
-		ch.Rates = cfg.Rates
-		rec := &qenv.Recorder{C: ch}
-		func() {
-			defer qobs.SetGlobal(prev)
-			scenario(rec)
+	x := &Exploration{Runs: make([]*Explored, cfg.Seeds)}
+	runs := make([][]qtrace.Step, cfg.Seeds)
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, cfg.Parallel)
+	for i := range cfg.Seeds {
+		seed := uint64(i + 1)
+		wg.Add(1)
+		sem <- struct{}{}
+		go func() {
+			defer func() { <-sem; wg.Done() }()
+			mem := &qobs.MemorySink{}
+			ch := qenv.NewSeeded(seed)
+			ch.Rates = cfg.Rates
+			rec := &qenv.Recorder{C: ch}
+			scenario(qenv.WithContext(rec, qobs.WithRecorder(context.Background(), qobs.NewRecorder(mem, c.Recorder...))))
+			x.Runs[i] = &Explored{Seed: seed, Steps: mem.Steps(), Choices: rec.Choices}
+			runs[i] = mem.Steps()
 		}()
-		x.Runs = append(x.Runs, &Explored{Seed: seed, Steps: mem.Steps(), Choices: rec.Choices})
-		runs = append(runs, mem.Steps())
+	}
+	wg.Wait()
+	if t.Failed() {
+		// a scenario failed t (t.Fatal from a run's goroutine ends only
+		// that run)
+		t.FailNow()
 	}
 	o := c.Options
 	o.Dir, o.NoITF = filepath.Join(c.Dir, "quint"), true
-	ch := checker(t, bindingPath, o)
+	ch := checkerFor(t, bindingPath, o, c)
 	cc := *ch
 	cc.Options = o
 	reps, errs := cc.CheckBatch(context.Background(), runs, 0)

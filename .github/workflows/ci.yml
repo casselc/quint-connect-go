@@ -30,6 +30,8 @@ jobs:
         run: go vet ./...
       - name: test
         run: go test -count=1 ./...
+      - name: test (qenv self-checks)
+        run: QENV_CHECK=1 go test -short -count=1 ./qenv/ ./qload/ ./qtest/
       - name: test (typescript backend)
         run: QUINT_BACKEND=typescript go test -short -count=1 ./connect/ ./validate/ ./examples/bank/
       - name: example app demos

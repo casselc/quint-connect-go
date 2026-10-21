@@ -104,15 +104,7 @@ var Spike = qmeta.Trigger{ExtraRate: 5, Duration: time.Minute}
 // Recoveries counts the seeds (1..n) whose run recovers from the trigger
 // within 5 minutes.
 func Recoveries(p Policy, lambda float64, tr qmeta.Trigger, n int) int {
-	ok := 0
-	for seed := 1; seed <= n; seed++ {
-		cfg := p.Config(lambda)
-		cfg.Seed = uint64(seed)
-		if qmeta.Recovers(cfg, lambda, tr, 5*time.Minute).Recovered {
-			ok++
-		}
-	}
-	return ok
+	return qmeta.Count(qmeta.OfSimulation(p.Config(lambda), lambda, 5*time.Minute), tr, n)
 }
 
 // Burst is a scenario a client might see: a few requests and a burst of

@@ -170,6 +170,6 @@ func Run(c qenv.Chooser, cfg Config) (*Deployment, error) {
 	if err := s.Settle(60 * time.Second); err != nil {
 		return d, err
 	}
-	qobs.Record(context.Background(), "settle", nil)
+	qobs.Record(s.Context(), "settle", nil)
 	return d, nil
 }

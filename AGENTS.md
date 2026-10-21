@@ -150,7 +150,19 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   panic is re-raised by `Sim.Run` with its original value, because Hegel
   aborts a test case by panicking from whichever goroutine draws.
 - A nemesis (crash) is considered at every scheduling step: its rate is
-  per step (`DefaultRates` 1 in 200), not per operation.
+  per step (`DefaultRates` 1 in 200), not per operation. Under load that
+  means far more crashes per second: set `Sim.NemesisEvery`
+  (`qload.Experiment` does when it injects faults).
+- Simulated runs record through their own context: `qtest.Explore` runs
+  seeds in parallel, each with a recorder in the chooser's context
+  (`qenv.WithContext`, `qobs.WithRecorder`). Code in a simulation records
+  through a task's context or `Sim.Context()`. `context.Background()`
+  falls back to the global recorder, and the step is lost from the run.
+- Run qenv's tests, and tests of new doubles, with `QENV_CHECK=1`: the
+  scheduler checks its invariants at every step. CI does.
+- A recovery verdict needs a healthy baseline (`Experiment.Healthy`). A
+  system already collapsed before the trigger "recovers" to its collapsed
+  goodput otherwise.
 - Libraries that read the real clock (crossplane-runtime's create
   annotations and grace period) see no virtual time passing. Translate
   their timestamps at the seam (`Sim.ToVirtual` on write, `Sim.ToReal` on

@@ -1,7 +1,8 @@
 package qmeta
 
 import (
-	"fmt"
+	"math"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -11,32 +12,25 @@ import (
 	"github.com/casselc/quint-connect-go/qload"
 )
 
-// A Trigger is a transient stressor: for Duration, starting at Start, the
-// load is ExtraRate requests per second above the base rate and service
-// times are multiplied by Slowdown (1: none).
-type Trigger struct {
-	Start     time.Duration
-	Duration  time.Duration
-	ExtraRate float64
-	Slowdown  float64
-}
+// A Trigger is a transient stressor (qload.Trigger).
+type Trigger = qload.Trigger
 
-func (tr Trigger) String() string {
-	s := fmt.Sprintf("+%.1f req/s", tr.ExtraRate)
-	if tr.Slowdown > 1 {
-		s += fmt.Sprintf(" and %.2gx slower", tr.Slowdown)
-	}
-	return s + " for " + tr.Duration.String()
-}
+// Window is the length of the windows goodput is compared over: before the
+// trigger, and after the check window.
+const Window = 100 * time.Second
 
 // Recovery is the outcome of one run with a trigger.
 type Recovery struct {
 	Trigger   Trigger
 	Recovered bool
-	// Goodput (successes per second) over the last 100 s before the
-	// trigger, and over the 100 s after the check window.
+	// Goodput (per second) over the Window before the trigger, and over the
+	// Window after the check window.
 	Before, After float64
-	Metrics       *qload.Metrics
+	// Baseline, if set, is the healthy goodput Judge compares After with,
+	// instead of Before (Experiment.Healthy).
+	Baseline float64
+	Metrics  *qload.Metrics // a qload.Simulate run's
+	Series   *qload.Series  // an Experiment's
 }
 
 // Recovers runs cfg (whose client rate is replaced by base, plus the
@@ -48,25 +42,54 @@ func Recovers(cfg qload.Config, base float64, tr Trigger, within time.Duration) 
 	if tr.Start == 0 {
 		tr.Start = 100 * time.Second
 	}
-	if tr.Slowdown == 0 {
-		tr.Slowdown = 1
-	}
-	end := tr.Start + tr.Duration
-	cfg.Client.Rate = qload.Spike(base, base+tr.ExtraRate, tr.Start, end)
-	cfg.Server.Slowdown = qload.Spike(1, tr.Slowdown, tr.Start, end)
-	cfg.Horizon = end + within + 100*time.Second
+	end := tr.End()
+	cfg.Client.Rate = tr.Rate(base)
+	cfg.Server.Slowdown = tr.Factor()
+	cfg.Horizon = end + within + Window
 	m := qload.Simulate(cfg)
 	goodput := func(s qload.Sample) float64 { return float64(s.Successes) }
 	r := Recovery{Trigger: tr, Metrics: m,
-		Before: m.Mean(tr.Start-100*time.Second, tr.Start, goodput),
+		Before: m.Mean(tr.Start-Window, tr.Start, goodput),
 		After:  m.Mean(end+within, cfg.Horizon, goodput)}
 	r.Judge()
 	return r
 }
 
 // Judge sets Recovered from Before and After: goodput back to at least 90%
-// of what it was.
-func (r *Recovery) Judge() { r.Recovered = r.After >= 0.9*r.Before }
+// of what it was, give or take two standard errors of the difference
+// (counts over a Window are roughly Poisson). Without the tolerance a
+// healthy run at a few requests per second fails one time in ten.
+func (r *Recovery) Judge() {
+	base := r.Before
+	if r.Baseline > 0 {
+		base = r.Baseline
+	}
+	se := math.Sqrt((base + r.After) / Window.Seconds())
+	r.Recovered = r.After >= 0.9*base-2*se
+}
+
+// Assess runs an experiment with seed through tr and judges its recovery:
+// the rate of the goodput action (a model step: "markPaid") over the
+// Window after `within` past the trigger's end, against the experiment's
+// Healthy goodput or, if unknown, the Window before the trigger. tr.Start defaults to Window; start it later for a closed loop,
+// which takes a think time to reach its steady state.
+func Assess(x qload.Experiment, goodput string, tr Trigger, within time.Duration, seed uint64) Recovery {
+	if tr.Start == 0 {
+		tr.Start = Window
+	}
+	after := tr.End() + within
+	series := x.Run(seed, tr, after+Window)
+	r := Recovery{Trigger: tr, Series: series, Baseline: x.Healthy,
+		Before: series.Rate(goodput, tr.Start-Window, tr.Start),
+		After:  series.Rate(goodput, after, after+Window)}
+	r.Judge()
+	return r
+}
+
+// Of is an experiment as a System, for Mostly and Search.
+func Of(x qload.Experiment, goodput string, within time.Duration) System {
+	return func(tr Trigger, seed uint64) Recovery { return Assess(x, goodput, tr, within, seed) }
+}
 
 // TriggerSpace bounds the triggers FindTrigger draws.
 type TriggerSpace struct {
@@ -85,22 +108,57 @@ type TriggerSpace struct {
 // RecoversMostly runs the trigger with seeds 1..n and reports whether most
 // runs recover, with the first run that did not (if any).
 func RecoversMostly(cfg qload.Config, base float64, tr Trigger, within time.Duration, n int) (bool, Recovery) {
-	return Mostly(func(tr Trigger, seed uint64) Recovery {
-		cfg.Seed = seed
-		return Recovers(cfg, base, tr, within)
-	}, tr, n)
+	return Mostly(OfSimulation(cfg, base, within), tr, n)
 }
 
 // A System runs a trigger against a system with a seed and judges its
-// recovery: qload's Recovers, or an application's own load harness.
+// recovery: a qload simulation (OfSimulation), an application's
+// experiment (Of), or anything else.
 type System func(tr Trigger, seed uint64) Recovery
 
-// Mostly runs the trigger with seeds 1..n and reports whether most runs
-// recover, with the first run that did not (if any).
+// OfSimulation is a qload simulation as a System: Recovers with the seed.
+func OfSimulation(cfg qload.Config, base float64, within time.Duration) System {
+	return func(tr Trigger, seed uint64) Recovery {
+		cfg.Seed = seed
+		return Recovers(cfg, base, tr, within)
+	}
+}
+
+// Runs runs the trigger with seeds 1..n, in parallel, and returns the
+// runs in seed order. sys must be safe to call concurrently: a qenv
+// simulation is, if it records through its own context (qenv.WithContext).
+func Runs(sys System, tr Trigger, n int) []Recovery {
+	rs := make([]Recovery, n)
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, runtime.GOMAXPROCS(0))
+	for i := range n {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func() {
+			defer func() { <-sem; wg.Done() }()
+			rs[i] = sys(tr, uint64(i+1))
+		}()
+	}
+	wg.Wait()
+	return rs
+}
+
+// Count is how many of seeds 1..n recover from the trigger.
+func Count(sys System, tr Trigger, n int) int {
+	ok := 0
+	for _, r := range Runs(sys, tr, n) {
+		if r.Recovered {
+			ok++
+		}
+	}
+	return ok
+}
+
+// Mostly reports whether most of seeds 1..n recover from the trigger,
+// with the lowest-seeded run that did not (if any).
 func Mostly(sys System, tr Trigger, n int) (bool, Recovery) {
 	stuck, first := 0, Recovery{}
-	for i := 1; i <= n; i++ {
-		r := sys(tr, uint64(i))
+	for _, r := range Runs(sys, tr, n) {
 		if !r.Recovered {
 			if stuck == 0 {
 				first = r
@@ -122,10 +180,7 @@ func FindTrigger(t testing.TB, cfg qload.Config, base float64, space TriggerSpac
 	if space.MaxExtraRate == 0 {
 		space.MaxExtraRate = base
 	}
-	return Search(t, func(tr Trigger, seed uint64) Recovery {
-		cfg.Seed = seed
-		return Recovers(cfg, base, tr, within)
-	}, space, opts...)
+	return Search(t, OfSimulation(cfg, base, within), space, opts...)
 }
 
 // Search is FindTrigger for any System: Hegel draws triggers from space,

@@ -94,6 +94,14 @@ func (r *Recorder) Install() (restore func()) {
 	return func() { qobs.SetGlobal(prev) }
 }
 
+// Context returns ctx carrying r (qobs.WithRecorder): code recording
+// through it, such as a qenv simulation made with
+// qenv.WithContext(qenv.Hegel(tc), rec.Context(ctx)), records into r
+// without the global recorder (Config.Global).
+func (r *Recorder) Context(ctx context.Context) context.Context {
+	return qobs.WithRecorder(ctx, r.Recorder)
+}
+
 // Mode says when recorded runs are checked against the model.
 type Mode int
 
@@ -151,6 +159,17 @@ type Config struct {
 	// Seed of the first round (later rounds add 1 each); 0: random. The
 	// seed of a failing round is logged, to reproduce it.
 	Seed int64
+	// Constants override the binding's (validate.Checker.WithConstants).
+	Constants map[string]string
+}
+
+// checker is the binding's checker, with cfg's constants.
+func (cfg Config) checker(vo validate.Options) (*validate.Checker, error) {
+	c, err := Checker(cfg.Binding, vo)
+	if err != nil || len(cfg.Constants) == 0 {
+		return c, err
+	}
+	return c.WithConstants(cfg.Constants)
 }
 
 // Test runs a Hegel test whose cases record model steps, and checks the
@@ -173,7 +192,7 @@ func Test(t *testing.T, cfg Config, body func(ht *hegel.T, rec *Recorder), opts 
 	if cfg.Mode != Off {
 		vo := cfg.Validate
 		vo.Dir = filepath.Join(keep, "quint")
-		c, err := Checker(cfg.Binding, vo)
+		c, err := cfg.checker(vo)
 		if err != nil {
 			t.Fatalf("quinthegel: %v", err)
 		}
@@ -310,7 +329,7 @@ func batched(t *testing.T, cfg Config, body func(ht *hegel.T, rec *Recorder), op
 	keep := keepDir(t, cfg.Keep)
 	vo := cfg.Validate
 	vo.Dir = filepath.Join(keep, "quint")
-	c, err := Checker(cfg.Binding, vo)
+	c, err := cfg.checker(vo)
 	if err != nil {
 		t.Fatalf("quinthegel: %v", err)
 	}

@@ -95,7 +95,7 @@ transient provider slowdown leaves the shop stuck.
 | 4 consumers | recovers from a 3x slowdown for a minute (3/3); its backlog stays small with no trigger |
 | 6 or more consumers | **collapses with no trigger at all**. A few timeouts send redeliveries back, every consumer is busy, and 6 queued captures are 1.2 s of work against a 1 s timeout. Everything times out while the provider works on calls nobody waits for. The backlog grows past 1300 events in 8 minutes |
 | 8 consumers + a retry budget (examples/retrystorm's `retry.Policy`) | **no help** (0/3). A capture the budget refuses goes back to the broker, which redelivers it at once: the broker is a second retry loop the budget does not see |
-| 8 consumers + redelivery after 5 s | slows the storm, rarely ends it (0–1/3) |
+| 8 consumers + redelivery after 5 s | slows the storm, does not end it (0/3) |
 | 8 consumers + the provider dropping calls whose caller gave up (`Capacity.Shed`, deadline propagation) | recovers (3/3) |
 
 The threshold is the provider's capacity times the timeout: 5 capture
@@ -126,4 +126,4 @@ go test -run 'Consumers|Mitigations|Storm' -v .   # ~2 min; under -short only th
 | `model/checkout.qnt`, `checkout.binding.yaml` | the model and its binding (every parameter a same-named step field) |
 | `cmd/checkout-sim` | simulate seeds and write step logs |
 | `checkout_test.go` | the table above as explorations; Hegel shrinking a write skew; Hegel in batches |
-| `load.go`, `load_test.go`, `load.binding.yaml` | the shop under load: provider capacity, consumer count, retry and redelivery designs; recovery and correctness under a storm |
+| `load.go`, `load_test.go` | the shop as a `qload.Experiment`: provider capacity, consumer count, retry and redelivery designs; recovery (`qmeta.Assess`) and correctness under a storm (checked with `qtest.Constants` for the load run's stock) |

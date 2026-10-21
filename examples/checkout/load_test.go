@@ -18,14 +18,7 @@ import (
 var dip = qmeta.Trigger{Slowdown: 3, Duration: time.Minute}
 
 func recoveries(cfg checkout.LoadConfig, tr qmeta.Trigger, n int) int {
-	ok := 0
-	for seed := 1; seed <= n; seed++ {
-		cfg.Seed = uint64(seed)
-		if checkout.Load(cfg, tr, 5*time.Minute).Recovery.Recovered {
-			ok++
-		}
-	}
-	return ok
+	return qmeta.Count(cfg.System(5*time.Minute), tr, n)
 }
 
 func consumers(n int) checkout.LoadConfig {
@@ -43,12 +36,9 @@ func consumers(n int) checkout.LoadConfig {
 // provider's capacity times the timeout: 5 consumers.
 func TestConsumersBeyondCapacityCollapse(t *testing.T) {
 	for _, c := range []struct{ consumers, maxBacklog, minBacklog int }{{4, 100, 0}, {6, 1 << 30, 200}} {
-		for seed := uint64(1); seed <= 2; seed++ {
-			cfg := consumers(c.consumers)
-			cfg.Seed = seed
-			r := checkout.Load(cfg, qmeta.Trigger{}, 5*time.Minute)
-			backlog := r.Samples[len(r.Samples)-1].Backlog
-			t.Logf("%d consumers, seed %d: %d payment events in the backlog after %v", c.consumers, seed, backlog, r.Samples[len(r.Samples)-1].T)
+		for i, r := range qmeta.Runs(consumers(c.consumers).System(5*time.Minute), qmeta.Trigger{}, 2) {
+			backlog := r.Series.Last("backlog")
+			t.Logf("%d consumers, seed %d: %d payment events in the backlog after %v", c.consumers, i+1, backlog, r.Series.Points[len(r.Series.Points)-1].T)
 			if backlog > c.maxBacklog || backlog < c.minBacklog {
 				t.Errorf("%d consumers: backlog %d; want %d to %d", c.consumers, backlog, c.minBacklog, c.maxBacklog)
 			}
@@ -93,6 +83,10 @@ func TestMitigations(t *testing.T) {
 	}
 }
 
+// loadStock checks a load run against the instance of the model with its
+// stock (checkout.LoadConfig stocks math.MaxInt32 units).
+var loadStock = qtest.Constants(map[string]string{"STOCK": "2147483647"})
+
 // stormRun records a collapsing run: 8 consumers, a dip at 30 s.
 func stormRun(t *testing.T, cfg checkout.LoadConfig) (checkout.LoadRun, *qobs.MemorySink) {
 	mem := &qobs.MemorySink{}
@@ -113,9 +107,10 @@ func TestStormIsCorrect(t *testing.T) {
 	}
 	cfg := consumers(8)
 	cfg.NoCrashes = false
-	cfg.Faults = qenv.Rates{Kinds: map[string]float64{"fault.nemesis": 0.0005, "fault.rpc": 0.01, "fault.queue": 0.01}}
+	// a crash every 20 s on average; one lost response or ack in a hundred
+	cfg.Faults = qenv.Rates{Kinds: map[string]float64{"fault.nemesis": 0.05, "fault.rpc": 0.01, "fault.queue": 0.01}}
 	_, mem := stormRun(t, cfg)
-	qtest.Check(t, "load.binding.yaml", mem.Steps()).Expect(t, qtest.Conforms())
+	qtest.Check(t, binding, mem.Steps(), loadStock).Expect(t, qtest.Conforms())
 }
 
 // Without idempotency keys, the storm alone, with no injected fault,
@@ -132,5 +127,5 @@ func TestStormChargesTwiceWithoutKeys(t *testing.T) {
 	if r.Overpaid == 0 {
 		t.Error("no order charged twice")
 	}
-	qtest.Validate(t, "load.binding.yaml", mem.Steps()).Expect(t, qtest.Violates("chargedAtMostOnce"))
+	qtest.Validate(t, binding, mem.Steps(), loadStock).Expect(t, qtest.Violates("chargedAtMostOnce"))
 }

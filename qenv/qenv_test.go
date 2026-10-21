@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"testing"
 	"time"
 
@@ -279,6 +280,7 @@ func TestManyWaitersScale(t *testing.T) {
 	})
 	t0 := time.Now()
 	s.MaxSteps = 1 << 30
+	s.Check = false // O(tasks) per step: this test is about scale
 	if err := s.Run(time.Hour); err != nil {
 		t.Fatal(err)
 	}
@@ -356,6 +358,119 @@ func TestServiceCapacity(t *testing.T) {
 		}
 		if svc.Calls != wantCalls || (shed && svc.Shed != 1) {
 			t.Errorf("shed=%v: %d calls served, %d shed; want %d served", shed, svc.Calls, svc.Shed, wantCalls)
+		}
+	}
+}
+
+// The scheduler's semantics, as a property over random programs: tasks
+// sleep, yield, wait on Signals with timeouts and notify them, under a
+// Hegel-chosen schedule, with the scheduler checking its own invariants.
+//   - a Sleep lasts exactly its duration, a Yield no time;
+//   - a Wait that reports a Notify ends at the time of a Notify of its
+//     Signal made while it waited; one that reports none lasts its timeout;
+//   - the same choices replay the same run.
+func TestSchedulerSemantics(t *testing.T) {
+	type op struct {
+		kind       int // 0 sleep, 1 yield, 2 wait, 3 notify
+		sig        int
+		d          time.Duration
+		start, end time.Duration
+		notified   bool
+	}
+	run := func(c qenv.Chooser, progs [][]op) ([][]op, map[int][]time.Duration) {
+		s := qenv.New(c)
+		s.Check = true
+		defer s.Close()
+		sigs := []*qenv.Signal{{}, {}}
+		notifies := map[int][]time.Duration{}
+		out := make([][]op, len(progs))
+		for i, prog := range progs {
+			out[i] = append([]op(nil), prog...)
+			s.Spawn("task", func(ctx context.Context) {
+				for j := range out[i] {
+					o := &out[i][j]
+					o.start = s.Elapsed()
+					switch o.kind {
+					case 0:
+						qenv.Sleep(ctx, o.d)
+					case 1:
+						qenv.Yield(ctx)
+					case 2:
+						o.notified = sigs[o.sig].Wait(ctx, qenv.Now(ctx).Add(o.d))
+					case 3:
+						notifies[o.sig] = append(notifies[o.sig], s.Elapsed())
+						sigs[o.sig].Notify()
+					}
+					o.end = s.Elapsed()
+				}
+			})
+		}
+		if err := s.Run(time.Hour); err != nil {
+			t.Fatal(err)
+		}
+		return out, notifies
+	}
+	hegel.Test(t, func(ht *hegel.T) {
+		progs := make([][]op, hegel.Draw(ht, hegel.Integers(1, 4)))
+		for i := range progs {
+			for range hegel.Draw(ht, hegel.Integers(1, 6)) {
+				progs[i] = append(progs[i], op{kind: hegel.Draw(ht, hegel.Integers(0, 3)), sig: hegel.Draw(ht, hegel.Integers(0, 1)),
+					d: time.Duration(hegel.Draw(ht, hegel.Integers(0, 5))) * time.Second})
+			}
+		}
+		rec := &qenv.Recorder{C: qenv.Hegel(ht)}
+		got, notifies := run(rec, progs)
+		for _, prog := range got {
+			for _, o := range prog {
+				switch {
+				case o.kind == 0 && o.end-o.start != o.d:
+					ht.Fatalf("Sleep(%v) lasted %v", o.d, o.end-o.start)
+				case o.kind == 1 && o.end != o.start:
+					ht.Fatalf("Yield took %v", o.end-o.start)
+				case o.kind == 2 && !o.notified && o.end-o.start != o.d:
+					ht.Fatalf("Wait(%v) timed out after %v", o.d, o.end-o.start)
+				case o.kind == 2 && o.notified:
+					ok := false
+					for _, n := range notifies[o.sig] {
+						ok = ok || (n == o.end && n >= o.start)
+					}
+					if !ok {
+						ht.Fatalf("Wait from %v reported a Notify at %v; notifies of signal %d: %v", o.start, o.end, o.sig, notifies[o.sig])
+					}
+				}
+			}
+		}
+		again, _ := run(qenv.Replay(rec.Choices), progs)
+		if !reflect.DeepEqual(got, again) {
+			ht.Fatalf("replay differs:\n%v\n%v", got, again)
+		}
+	}, hegel.WithTestCases(200))
+}
+
+// With NemesisEvery, a nemesis is a choice once per period of virtual
+// time, however many steps the system takes.
+func TestNemesisEvery(t *testing.T) {
+	for _, busy := range []int{1, 50} {
+		c := qenv.NewSeeded(1)
+		c.Rates = qenv.Rates{Kinds: map[string]float64{"fault.nemesis": 1}}
+		s := qenv.New(c)
+		s.NemesisEvery = time.Second
+		crashes := 0
+		s.OnCrash(func(*qenv.Process) { crashes++ })
+		s.Process("worker", true, func(ctx context.Context) {
+			for {
+				for range busy {
+					qenv.Yield(ctx)
+				}
+				qenv.Sleep(ctx, 10*time.Millisecond)
+			}
+		})
+		if err := s.Run(10 * time.Second); err != nil {
+			t.Fatal(err)
+		}
+		s.Close()
+		if crashes < 8 || crashes > 10 {
+			t.Errorf("%d yields per tick: %d crashes in 10 s, want about one a second", busy, crashes)
 		}
 	}
 }

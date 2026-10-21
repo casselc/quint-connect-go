@@ -35,6 +35,8 @@ type Config struct {
 	Dir         string           // artifacts; default $QUINTGO_KEEP/<test> or t.TempDir()
 	Recorder    []qobs.Option    // e.g. qobs.WithActor("acct-1")
 	SkipIfEmpty bool             // skip (not fail) when nothing was recorded, e.g. an unwoven build
+	// Constants override the binding's (validate.Checker.WithConstants).
+	Constants map[string]string
 }
 
 // Option changes a Config.
@@ -46,6 +48,33 @@ func RecorderOptions(opts ...qobs.Option) Option {
 	return func(c *Config) { c.Recorder = append(c.Recorder, opts...) }
 }
 func SkipIfEmpty() Option { return func(c *Config) { c.SkipIfEmpty = true } }
+
+// Constants checks against another instance of the binding's model: these
+// constants override the binding's, e.g. Constants(map[string]string{"STOCK": "1000"}).
+func Constants(m map[string]string) Option {
+	return func(c *Config) {
+		if c.Constants == nil {
+			c.Constants = map[string]string{}
+		}
+		for k, v := range m {
+			c.Constants[k] = v
+		}
+	}
+}
+
+// checkerFor is the cached checker for a binding, with c's constants.
+func checkerFor(t testing.TB, bindingPath string, o validate.Options, c Config) *validate.Checker {
+	t.Helper()
+	ch := checker(t, bindingPath, o)
+	if len(c.Constants) == 0 {
+		return ch
+	}
+	cc, err := ch.WithConstants(c.Constants)
+	if err != nil {
+		t.Fatalf("quintgo: %v", err)
+	}
+	return cc
+}
 
 // Run is the outcome of a recorded run.
 type Run struct {
@@ -166,7 +195,7 @@ func check(t testing.TB, bindingPath string, run *Run, c Config) *Run {
 	t.Helper()
 	o := c.Options
 	o.Dir = filepath.Join(c.Dir, "quint")
-	ch := checker(t, bindingPath, o)
+	ch := checkerFor(t, bindingPath, o, c)
 	// The model-level trace, emitted in-process from the same steps.
 	if itfs, _, err := ch.Binding.StepsToITF(run.Steps); err == nil {
 		for actor, data := range itfs {

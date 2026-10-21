@@ -236,8 +236,8 @@ func Run(c qenv.Chooser, cfg Config) error {
 	if err := s.Settle(60 * time.Second); err != nil {
 		return err
 	}
-	Audit(context.Background(), raw, cfg.Resources)
-	qobs.Record(context.Background(), "settle", nil)
+	Audit(s.Context(), raw, cfg.Resources)
+	qobs.Record(s.Context(), "settle", nil)
 	return nil
 }
 

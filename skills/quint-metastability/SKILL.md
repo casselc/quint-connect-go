@@ -67,24 +67,42 @@ r := qmeta.Recovers(cfg, 9, qmeta.Trigger{ExtraRate: 5, Duration: time.Minute}, 
   the metastable region, a run's escape is a coin toss.
   `RecoversMostly` takes the majority.
 
-## 2b. Or run the application itself
+## 2b. Or run the application itself (`qload.Experiment`)
 
-qload is an abstraction. To put the real system under load, give the
-dependency a capacity and keep everything else real:
+qload's servers and clients are an abstraction. To put the real system
+under load, give its dependency a capacity, keep everything else real,
+and let the experiment drive it:
 
 ```go
-svc := qenv.NewService(s, "provider", nil, handler)
-svc.Capacity = &qenv.Capacity{Workers: 1, Queue: 50, Shed: false,
-	Time: func() time.Duration { return time.Duration(rnd.ExpFloat64() / 5 * float64(time.Second)) },
-	Slowdown: func(t time.Duration) float64 { /* the trigger */ }}
+x := qload.Experiment{
+	Rate: 3, Healthy: 3, // or Population + Think for a closed loop (a controller's objects)
+	Deploy: func(env *qload.Env) func(ctx context.Context, i int) {
+		svc := qenv.NewService(env.Sim, "provider", nil, handler)
+		rnd := env.Rand("provider.service")         // a seeded stream, not the Chooser
+		svc.Capacity = &qenv.Capacity{Workers: 1, Queue: 50, Slowdown: env.Trigger.Factor(),
+			Time: func() time.Duration { return time.Duration(rnd.ExpFloat64() / 5 * float64(time.Second)) }}
+		env.Probe("backlog", queue.Pending)
+		return func(ctx context.Context, i int) { app.PlaceOrder(ctx, i) }
+	},
+	Sink: mem, // optional: the same steps, to check against the model
+}
+r := qmeta.Assess(x, "markPaid", qmeta.Trigger{Slowdown: 3, Duration: time.Minute}, 5*time.Minute, seed)
+ok, first := qmeta.Mostly(qmeta.Of(x, "markPaid", 5*time.Minute), trigger, 3)   // seeds in parallel
 ```
 
-Drive it with seeded open-loop customers and count goodput from the app's
-own model steps, with a counting `qobs.Sink`. Wrap the run as a
-`qmeta.System` for `qmeta.Mostly` and `qmeta.Search`. Record the same run
-and check it with `qtest.Check`/`qtest.Validate`: recovery and
-correctness are separate verdicts on one run. See examples/checkout
-`load.go`.
+- **Goodput is a model step's rate.** The app's own recorded steps are
+  counted per tick (`r.Series.Rate("markPaid", from, to)`), so
+  performance and correctness come from one run:
+  `qtest.Check(t, binding, mem.Steps(), qtest.Constants(...))`.
+- **Set `Healthy`.** A system that collapsed before the trigger would
+  otherwise "recover" to its collapsed goodput. With 8 consumers, the
+  checkout shop collapses on its own, and that bug was hidden this way.
+- **The verdict allows for noise.** Recovery means goodput is back to at
+  least 90% of healthy, give or take two standard errors over the
+  100-second window. At a few requests per second, a plain 90% threshold
+  fails a healthy run one time in ten.
+- **Faults in load runs.** `Experiment.Faults` injects them, and crashes
+  are a rate per virtual second (`NemesisEvery`).
 
 Look for loops around the retry loop. A broker's redelivery, a client's
 retry or a controller's requeue each retries too. A budget on the inner
@@ -100,7 +118,7 @@ r := qmeta.FindTrigger(t, cfg, base, qmeta.TriggerSpace{MaxExtraRate: 10, MaxSlo
 
 Assert `r != nil` for a design that should be shown fragile, and
 `r == nil` for the mitigation. `qmeta.Search(t, sys, space)` does the same
-for any `qmeta.System`. If it returns the empty trigger, the system
+for any `qmeta.System` (`qmeta.Of(experiment, goodput, within)`). If it returns the empty trigger, the system
 collapses on noise alone: look for a design bound, such as more
 concurrency than capacity × timeout. Each case runs `Seeds` (default 3)
 simulations, so keep it out of `-short`.

@@ -15,11 +15,18 @@ module jobqueue {
   type AckOutcome = Ok | Stale
 
   var jobs: int -> Status
-  var working: Set[(str, int)]   // a worker leased the job and is performing it
-  var finished: Set[(str, int)]  // a worker performed the job and has not acked it yet
-  var performed: int -> int      // how many times each job's side effect happened
+  // Multisets (how many of each): a worker may hold two leases of one job,
+  // when its first expired and it leased the job again, and perform it
+  // under each.
+  var working: (str, int) -> int   // a worker leased the job and is performing it
+  var finished: (str, int) -> int  // a worker performed the job and has not acked it yet
+  var performed: int -> int        // how many times each job's side effect happened
 
-  action init = all { jobs' = Map(), working' = Set(), finished' = Set(), performed' = Map() }
+  pure def count(m: (str, int) -> int, k: (str, int)): int = if (m.keys().contains(k)) m.get(k) else 0
+  pure def add(m: (str, int) -> int, k: (str, int)): (str, int) -> int = m.put(k, count(m, k) + 1)
+  pure def take(m: (str, int) -> int, k: (str, int)): (str, int) -> int = m.put(k, count(m, k) - 1)
+
+  action init = all { jobs' = Map(), working' = Map(), finished' = Map(), performed' = Map() }
 
   action enqueue(job: int): bool = all {
     JOBS.contains(job),
@@ -35,30 +42,30 @@ module jobqueue {
     jobs.keys().contains(job),
     jobs.get(job) == Pending,
     jobs' = jobs.set(job, Leased(worker)),
-    working' = working.union(Set((worker, job))),
+    working' = working.add((worker, job)),
     finished' = finished,
     performed' = performed,
   }
 
   // A worker performs a job it leased, whether or not its lease is still valid.
   action perform(worker: str, job: int): bool = all {
-    working.contains((worker, job)),
+    count(working, (worker, job)) > 0,
     jobs' = jobs,
-    working' = working.exclude(Set((worker, job))),
-    finished' = finished.union(Set((worker, job))),
+    working' = working.take((worker, job)),
+    finished' = finished.add((worker, job)),
     performed' = performed.setBy(job, n => n + 1),
   }
 
   // A worker acks a job it performed. Only the current lease holder's ack
   // completes it; a stale ack is refused.
   action ack(worker: str, job: int, o: AckOutcome): bool = all {
-    finished.contains((worker, job)),
+    count(finished, (worker, job)) > 0,
     if (jobs.get(job) == Leased(worker))
       all { o == Ok, jobs' = jobs.set(job, Done) }
     else
       all { o == Stale, jobs' = jobs },
     working' = working,
-    finished' = finished.exclude(Set((worker, job))),
+    finished' = finished.take((worker, job)),
     performed' = performed,
   }
 

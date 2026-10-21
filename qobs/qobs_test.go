@@ -22,3 +22,17 @@ func TestDurableFileSink(t *testing.T) {
 	}
 	sink.Close()
 }
+
+// A context's recorder takes precedence over the global one, so parallel
+// runs record separately.
+func TestWithRecorder(t *testing.T) {
+	var global, local MemorySink
+	SetGlobal(NewRecorder(&global))
+	defer SetGlobal(nil)
+	ctx := WithRecorder(context.Background(), NewRecorder(&local))
+	Record(ctx, "a", nil)
+	Record(context.Background(), "b", nil)
+	if l, g := local.Steps(), global.Steps(); len(l) != 1 || l[0].Action != "a" || len(g) != 1 || g[0].Action != "b" {
+		t.Fatalf("local %v, global %v", l, g)
+	}
+}

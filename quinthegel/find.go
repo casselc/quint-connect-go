@@ -39,7 +39,7 @@ func FindViolation(t testing.TB, cfg Config, body func(tc hegel.TestCase, rec *R
 	vo := cfg.Validate
 	vo.Dir = filepath.Join(keepDir(t, cfg.Keep), "quint")
 	vo.NoITF = true
-	c, err := Checker(cfg.Binding, vo)
+	c, err := cfg.checker(vo)
 	if err != nil {
 		t.Fatalf("quinthegel: %v", err)
 	}

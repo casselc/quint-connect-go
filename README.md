@@ -238,6 +238,13 @@ qtest.Explore(t, "checkout.binding.yaml", qtest.ExploreConfig{Seeds: 100}, func(
 }).Expect(t, qtest.AnyOf(qtest.Rejects("ship"), qtest.Rejects("cancel")))   // write skew
 ```
 
+Seeds run in parallel. Each run records into its own recorder, which
+travels in the chooser's context (`qenv.WithContext`) to every task of
+the simulation. Code under test therefore records through a task's
+context, or `Sim.Context()` outside tasks, never `context.Background()`.
+A Hegel test does the same with
+`qenv.WithContext(qenv.Hegel(tc), rec.Context(ctx))`.
+
 Each seeded run is checked in one quint batch, and the failing seed's
 faults and step log are reported. `quinthegel.FindViolation` with
 `qenv.Hegel` shrinks a failure to the interleaving and faults it needs.
@@ -261,9 +268,17 @@ tier:
   budgets, or the retry library under test itself (`ClientConfig.Retrier`,
   on virtual time). Servers have queues and workers, and every run yields
   a time series.
-- `qmeta.FindTrigger`: Hegel searches transient triggers (extra load, a
-  slowdown, a duration) for one after which goodput does not recover, and
-  shrinks it.
+- `qload.Experiment`: the application itself under load. Customers
+  (open-loop or a closed population) call it in a qenv simulation, and
+  goodput is the rate of one of its own model steps. Probes sample
+  backlogs, and the same steps can be checked against the model.
+  `qmeta.Assess` judges a run's recovery: goodput back to the healthy
+  rate, within the noise of the counts.
+- `qmeta.FindTrigger` (qload systems) and `qmeta.Search` (any
+  `qmeta.System`, such as `qmeta.Of(experiment)`): Hegel searches
+  transient triggers (extra load, a slowdown, a duration) for one after
+  which goodput does not recover, and shrinks it. Seeds of a trigger run
+  in parallel.
 
 ```go
 c := qmeta.New(qmeta.Params{Lambda: 9, Mu: 10, Timeout: 9, Retries: 3, Queue: 100})
@@ -279,9 +294,17 @@ Correctness stays with the model: the retry budget's accounting is
 checked against Quint, which catches a bug that load tests hardly see.
 [examples/crossdb](examples/crossdb) applies the tiers to a Crossplane
 provider's requeue policy. [examples/checkout](examples/checkout) puts
-the saga itself under load: `qenv.Capacity` gives a service workers, a
-queue and service times, and `qmeta.Search` takes any system, not only
-qload's.
+the saga itself under load as a `qload.Experiment`, its payment provider
+given a `qenv.Capacity` (workers, queue, service times, shedding):
+
+```go
+x := qload.Experiment{Rate: 3, Healthy: 3, Deploy: func(env *qload.Env) func(ctx context.Context, i int) {
+	d := checkout.Deploy(env.Sim, cfg)   // cfg.Provider.Slowdown = env.Trigger.Factor()
+	env.Probe("backlog", d.PayQueue.Pending)
+	return func(ctx context.Context, i int) { d.Shop.PlaceOrder(ctx, fmt.Sprintf("o%d", i), "widget", 1) }
+}}
+r := qmeta.Assess(x, "markPaid", qmeta.Trigger{Slowdown: 3, Duration: time.Minute}, 5*time.Minute, seed)
+```
 
 ## Packages
 
@@ -290,16 +313,16 @@ qload's.
 | `connect` | MBT driver runtime: `Run`, `Test`, `Replay`, `Switch`, `Pick[T]`, `StateDriver`, `GenerateRun`/`GenerateTest` |
 | `quinthegel` | Hegel integration: `Test` (modes `Batched`/`Each`/`After`/`Off`), `FindViolation` (expected failures, shrunk), `Recorder`, `CaseChecker`/`CheckCase`, `Replay`, `Traces` |
 | `itf` | ITF traces: `Parse`, `Value`, `Decode`/`Encode` (Go ⇄ Quint values), `ParseQuint` (Quint literals) |
-| `qobs` | runtime recorder: `Record`, `Thread`; sinks `MemorySink`, `FileSink`/`DurableFileSink`/`JSONLSink`, `OTelSink`, `Tee`; `orchestrion.yml` |
+| `qobs` | runtime recorder: `Record`, `Thread`, `WithRecorder` (a context's own recorder, so runs in parallel record apart); sinks `MemorySink`, `FileSink`/`DurableFileSink`/`JSONLSink`, `OTelSink`, `Tee`; `orchestrion.yml` |
 | `qtrace` | the step schema, `Reconstruct` (ordering, gaps, restarts), step log I/O |
 | `otelio` | OTLP/JSON file exporter and reader; SDK spans to steps |
 | `convert` | an application's own spans to steps, by YAML rules |
 | `binding` | the YAML binding: lint against `quint typecheck`, annotation scan, plan, Quint module and ITF generation |
 | `validate` | replay with `quint test`: `Checker.Check`, `CheckRuns`, `ValidateITF`, structured verdicts |
-| `qtest` | record-then-check inside a Go test; `Expect` with `Conforms`/`Rejects`/`Mismatch`/`Violates`/`AnyOf`; `Explore` (seeded simulated runs checked in bulk); `Check`/`Validate` for steps recorded elsewhere; `RequireQuint` |
-| `qenv` | deterministic simulated environments: scheduler, virtual time, crashable processes, choosers (Hegel, seeded, replay, swarm), `Store` (isolation levels), `Queue`, `Service` (RPC, with optional `Capacity`: workers, queue, service times, shedding) |
-| `qload` | load simulation on qenv: open- and closed-loop clients with timeouts, retries, backoff, budgets or a `Retrier` under test; queued servers; triggers (`Spike`, slowdowns); time series |
-| `qmeta` | metastability: a CTMC (`Field`/`SVG`, `HittingTimes`, `Expect`, `Calibrate`), the recovery property (`Recovers`, `Mostly`), Hegel trigger search (`FindTrigger`, and `Search` over any `System`) |
+| `qtest` | record-then-check inside a Go test; `Expect` with `Conforms`/`Rejects`/`Mismatch`/`Violates`/`AnyOf`; `Explore` (seeded simulated runs, in parallel, checked in bulk); `Check`/`Validate` for steps recorded elsewhere; `Constants` (another instance of the binding's model); `RequireQuint` |
+| `qenv` | deterministic simulated environments: scheduler, virtual time, crashable processes, choosers (Hegel, seeded, replay, swarm), `Store` (isolation levels), `Queue`, `Service` (RPC, with optional `Capacity`: workers, queue, service times, shedding); `WithContext` (what every task's context carries, e.g. the run's recorder); crashes per virtual second (`NemesisEvery`); scheduler self-checks (`Check`, `QENV_CHECK=1`) |
+| `qload` | load on qenv: `Experiment` (an application under open- or closed-loop load, goodput from its model steps, probes, seeded streams, `Trigger`s); `Simulate` (an abstract server and clients with timeouts, retries, backoff, budgets or a `Retrier` under test) |
+| `qmeta` | metastability: a CTMC (`Field`/`SVG`, `HittingTimes`, `Expect`, `Calibrate`), the recovery property (`Recovers`, `Assess`, `Mostly`; judged against the healthy goodput within the counts' noise), Hegel trigger search (`FindTrigger`, and `Search` over any `System`) |
 | `load` | read OTLP/JSON, a step log or ITF, detected by content |
 | `skills` | the agent skills below, embedded; install targets |
 | `cmd/quintgo` | CLI: `scaffold`, `lint`, `steps`, `validate`, `itf`, `convert`, `skills` |

@@ -6,6 +6,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -37,10 +38,11 @@ func main() {
 		if err != nil {
 			fail(err)
 		}
-		qobs.SetGlobal(qobs.NewRecorder(sink, qobs.WithActor(fmt.Sprintf("seed%d", seed))))
 		c := qenv.NewSeeded(uint64(seed))
 		c.Rates.Kinds = map[string]float64{"fault.nemesis": *crash}
-		if _, err := checkout.Run(c, cfg); err != nil {
+		// the run records through its simulation's context
+		rec := qobs.NewRecorder(sink, qobs.WithActor(fmt.Sprintf("seed%d", seed)))
+		if _, err := checkout.Run(qenv.WithContext(c, qobs.WithRecorder(context.Background(), rec)), cfg); err != nil {
 			fail(err)
 		}
 		if err := sink.Close(); err != nil {

@@ -63,6 +63,7 @@ $ quintgo validate -binding jobqueue.binding.yaml -invariants exactlyOnce steps.
 | Test | Shows |
 |---|---|
 | `TestSlowWorkerConformsButRunsTwice` | a slow worker's lease expires and the job runs twice: the run conforms, and `exactlyOnce` fails at the second perform |
+| `TestTwoLeasesOfOneJob` | a worker re-leases a job while holding its expired lease, and performs it under both. Hegel found it occasionally: the model kept leases as a set and lost the second. Leases are now a multiset in the model |
 | `TestRestartConforms` | a restart loses a lease: the ack after it is stale, and the restart is inferred |
 | `TestMutantsRejected` | both mutants, rejected at the step the bug makes |
 | `TestHegelRunsConform` | Hegel interleaves enqueues, leases, work, time and restarts; every run conforms |

@@ -11,6 +11,7 @@
 package qenv
 
 import (
+	"context"
 	"fmt"
 	"math/rand/v2"
 	"strings"
@@ -24,6 +25,17 @@ import (
 // option is normal and 0 is the canonical one (the oldest, the first).
 type Chooser interface {
 	Choose(kind string, n int) int
+}
+
+// WithContext returns c carrying ctx: every task of a simulation made with
+// it (New) has a context derived from ctx. Put what the whole run shares
+// there, above all its step recorder (qobs.WithRecorder), so that runs in
+// parallel do not share the global one.
+func WithContext(c Chooser, ctx context.Context) Chooser { return ctxChooser{c, ctx} }
+
+type ctxChooser struct {
+	Chooser
+	ctx context.Context
 }
 
 // IsFault reports whether a choice kind is a fault choice.

@@ -3,6 +3,7 @@ package validate
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	"github.com/casselc/quint-connect-go/binding"
 	"github.com/casselc/quint-connect-go/qtrace"
@@ -31,6 +32,36 @@ func NewChecker(bindingPath string, opt Options) (*Checker, error) {
 		return nil, fmt.Errorf("binding %s does not fit %s: %v", bindingPath, b.Module, errs)
 	}
 	return &Checker{Binding: b, Model: m, Options: opt}, nil
+}
+
+// WithConstants returns a checker for another instance of the same model:
+// the binding's constants with these overridden (Quint expressions, or
+// templates as in the binding). One binding then serves runs of different
+// sizes, such as a load run's stock and a small exploration's.
+func (c *Checker) WithConstants(constants map[string]string) (*Checker, error) {
+	b := *c.Binding
+	b.Constants = map[string]string{}
+	for k, v := range c.Binding.Constants {
+		b.Constants[k] = v
+	}
+	for k, v := range constants {
+		if _, ok := c.Model.Consts[k]; !ok {
+			return nil, fmt.Errorf("constant %s: not a const of %s (it has %v)", k, c.Model.Module, sortedConsts(c.Model.Consts))
+		}
+		b.Constants[k] = v
+	}
+	cc := *c
+	cc.Binding = &b
+	return &cc, nil
+}
+
+func sortedConsts(m map[string]string) []string {
+	var ks []string
+	for k := range m {
+		ks = append(ks, k)
+	}
+	sort.Strings(ks)
+	return ks
 }
 
 // Report is the result of Check: global reconstruction issues and one

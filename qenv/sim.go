@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"runtime/debug"
 	"sort"
 	"strings"
@@ -30,8 +31,21 @@ type Sim struct {
 	MaxSteps int
 	// Log, if set, receives one line per fault and crash.
 	Log func(string)
+	// NemesisEvery, if set, makes a nemesis (a crash) a choice once per
+	// period of virtual time, at the first step after each period ends,
+	// rather than at every scheduling step. A per-step rate means more
+	// crashes per second the busier the system: under load, steps per
+	// second grow a hundredfold. Set it for load runs.
+	NemesisEvery time.Duration
+	// Check makes the scheduler verify its own invariants at every step
+	// and panic on a violation (also on with QENV_CHECK=1). For tests of
+	// qenv and of code that extends it; it costs O(tasks) per step.
+	Check bool
 
 	c         Chooser
+	base      context.Context // every task's context derives from it
+	nextNem   time.Time       // with NemesisEvery: when the next nemesis choice is due
+	lastNow   time.Time       // Check: time never goes backwards
 	now       time.Time
 	start     time.Time
 	tasks     []*task   // every task, in creation order (task id-1)
@@ -105,7 +119,12 @@ var Epoch = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 
 // New returns a simulation whose choices c makes.
 func New(c Chooser) *Sim {
-	return &Sim{c: c, now: Epoch, start: Epoch, back: make(chan struct{}), MaxSteps: 100000}
+	base := context.Background()
+	if cc, ok := c.(ctxChooser); ok {
+		base = cc.ctx
+	}
+	return &Sim{c: c, base: base, now: Epoch, start: Epoch, back: make(chan struct{}), MaxSteps: 100000,
+		Check: os.Getenv("QENV_CHECK") == "1"}
 }
 
 // Choose makes a choice of the environment. While the simulation settles,
@@ -142,6 +161,10 @@ func (s *Sim) ToVirtual(real time.Time) time.Time { return s.now.Add(real.Sub(ti
 // of ToVirtual, as of now).
 func (s *Sim) ToReal(virtual time.Time) time.Time { return time.Now().Add(virtual.Sub(s.now)) }
 
+// Context is the context every task derives from (see WithContext): for
+// code that runs outside any task, such as a scenario's final step.
+func (s *Sim) Context() context.Context { return s.base }
+
 // Elapsed is the virtual time since the start.
 func (s *Sim) Elapsed() time.Duration { return s.now.Sub(s.start) }
 
@@ -176,7 +199,7 @@ func Go(ctx context.Context, name string, fn func(ctx context.Context)) {
 
 // Spawn starts a task outside any process (a client, a test driver).
 func (s *Sim) Spawn(name string, fn func(ctx context.Context)) {
-	s.spawn(context.Background(), name, nil, fn)
+	s.spawn(s.base, name, nil, fn)
 }
 
 func (s *Sim) spawn(parent context.Context, name string, p *Process, fn func(ctx context.Context)) {
@@ -436,7 +459,7 @@ func (p *Process) Down() bool { return p.down }
 func (s *Sim) Process(name string, crashable bool, start func(ctx context.Context)) *Process {
 	p := &Process{Name: name, Incarnation: 1, sim: s, start: start}
 	s.procs = append(s.procs, p)
-	s.spawn(context.Background(), name+".main", p, start)
+	s.spawn(s.base, name+".main", p, start)
 	if crashable {
 		s.Nemesis("crash."+name, func() bool { return !p.down }, func() { p.Crash(); p.Restart() })
 	}
@@ -481,7 +504,7 @@ func (p *Process) Restart() {
 	}
 	p.down = false
 	p.Incarnation++
-	p.sim.spawn(context.Background(), p.Name+".main", p, p.start)
+	p.sim.spawn(p.sim.base, p.Name+".main", p, p.start)
 }
 
 // OnCrash registers a hook run when a process crashes.
@@ -527,7 +550,10 @@ func (s *Sim) Run(d time.Duration) error {
 			continue
 		}
 		s.steps++
-		if !s.faultsOff {
+		if s.Check {
+			s.selfCheck()
+		}
+		if !s.faultsOff && s.nemesisDue() {
 			s.maybeNemesis()
 			if n, cands = s.runnable(); n == 0 {
 				continue
@@ -634,6 +660,65 @@ func (s *Sim) nextDeadline() (time.Time, bool) {
 		return e.at, true
 	}
 	return time.Time{}, false
+}
+
+// nemesisDue reports whether a nemesis is to be considered at this step:
+// at every step, or with NemesisEvery once per period.
+func (s *Sim) nemesisDue() bool {
+	if s.NemesisEvery <= 0 {
+		return true
+	}
+	if s.nextNem.IsZero() {
+		s.nextNem = s.start.Add(s.NemesisEvery)
+	}
+	if s.now.Before(s.nextNem) {
+		return false
+	}
+	// once per step, however many periods a jump of the clock skipped
+	for !s.now.Before(s.nextNem) {
+		s.nextNem = s.nextNem.Add(s.NemesisEvery)
+	}
+	return true
+}
+
+// selfCheck verifies the scheduler's invariants (Check).
+func (s *Sim) selfCheck() {
+	fail := func(format string, args ...any) {
+		panic(fmt.Sprintf("qenv: scheduler invariant: "+format+"\n%s", append(args, s.Tasks())...))
+	}
+	queued := 0
+	for _, t := range s.tasks {
+		if t.queued {
+			queued++
+			if t.done || t.killed {
+				fail("task %s is queued but finished", t.name)
+			}
+			if t.waiting {
+				fail("task %s is both queued and waiting", t.name)
+			}
+		}
+	}
+	if total := s.runq.total(); total != queued {
+		fail("run queue holds %d tasks, %d are flagged queued", total, queued)
+	}
+	timers := map[*task]bool{}
+	for _, e := range s.timers {
+		if e.t.gen == e.gen && e.t.waiting {
+			timers[e.t] = true
+		}
+	}
+	for _, t := range s.tasks {
+		if t.waiting && !t.done && !t.killed && !t.deadline.IsZero() && !timers[t] {
+			fail("task %s waits until %v with no live timer", t.name, t.deadline.Sub(s.start))
+		}
+		if t.waiting && !t.deadline.IsZero() && t.deadline.Before(s.now) && !t.queued {
+			fail("task %s is past its deadline (%v) and not runnable", t.name, t.deadline.Sub(s.start))
+		}
+	}
+	if s.now.Before(s.lastNow) {
+		fail("time went backwards: %v after %v", s.now.Sub(s.start), s.lastNow.Sub(s.start))
+	}
+	s.lastNow = s.now
 }
 
 func (s *Sim) maybeNemesis() {

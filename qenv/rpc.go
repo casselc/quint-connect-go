@@ -131,7 +131,7 @@ func (svc *Service[Req, Resp]) Call(ctx context.Context, req Req, timeout time.D
 	deadline := s.now.Add(timeout)
 	for i := 0; i < deliveries; i++ {
 		first := i == 0
-		s.spawn(context.Background(), svc.Name+".handle", svc.Proc, func(hctx context.Context) {
+		s.spawn(s.base, svc.Name+".handle", svc.Proc, func(hctx context.Context) {
 			if svc.Capacity != nil {
 				ok, rejected := svc.serve(hctx, deadline)
 				if rejected && first {

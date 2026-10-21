@@ -1,6 +1,7 @@
 package checkout_test
 
 import (
+	"context"
 	"fmt"
 	"regexp"
 	"testing"
@@ -82,8 +83,9 @@ func TestHegelShrinksWriteSkew(t *testing.T) {
 	if testing.Short() {
 		t.Skip("shrinking against the model")
 	}
-	v := quinthegel.FindViolation(t, quinthegel.Config{Binding: binding, Global: true}, func(tc hegel.TestCase, _ *quinthegel.Recorder) {
-		if _, err := checkout.Run(qenv.Hegel(tc), checkout.Config{Isolation: qenv.SnapshotIsolation, Mutation: shop.LockWithoutWrite}); err != nil {
+	v := quinthegel.FindViolation(t, quinthegel.Config{Binding: binding}, func(tc hegel.TestCase, rec *quinthegel.Recorder) {
+		c := qenv.WithContext(qenv.Hegel(tc), rec.Context(context.Background())) // the run records into rec
+		if _, err := checkout.Run(c, checkout.Config{Isolation: qenv.SnapshotIsolation, Mutation: shop.LockWithoutWrite}); err != nil {
 			tc.Errorf("%v", err)
 		}
 	}, hegel.WithTestCases(50), hegel.WithSeed(1))
@@ -95,8 +97,8 @@ func TestHegelShrinksWriteSkew(t *testing.T) {
 // Hegel explores the faithful shop under snapshot isolation, in batches.
 func TestHegelFaithful(t *testing.T) {
 	qtest.RequireQuint(t)
-	quinthegel.Test(t, quinthegel.Config{Binding: binding, Mode: quinthegel.Batched, Global: true}, func(ht *hegel.T, _ *quinthegel.Recorder) {
-		if _, err := checkout.Run(qenv.Hegel(ht), checkout.Config{Isolation: qenv.SnapshotIsolation}); err != nil {
+	quinthegel.Test(t, quinthegel.Config{Binding: binding, Mode: quinthegel.Batched}, func(ht *hegel.T, rec *quinthegel.Recorder) {
+		if _, err := checkout.Run(qenv.WithContext(qenv.Hegel(ht), rec.Context(context.Background())), checkout.Config{Isolation: qenv.SnapshotIsolation}); err != nil {
 			ht.Fatalf("%v", err)
 		}
 	}, hegel.WithTestCases(30))

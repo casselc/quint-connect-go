@@ -47,6 +47,26 @@ func slowWorker(svc *queue.Service, c *clock) {
 	_ = w1.Once(ctx, j)
 }
 
+// A worker holding two leases of one job: its first expired and it leased
+// the job again. It performs under both; the second ack is stale. Hegel
+// found this; the model first recorded leases as a set, lost the second
+// lease, and rejected the second perform. The run is a behaviour of the
+// design (at least once), and now of the model.
+func TestTwoLeasesOfOneJob(t *testing.T) {
+	qtest.RequireQuint(t)
+	qtest.RecordAndCheck(t, "jobqueue.binding.yaml", func(*qobs.Recorder) {
+		svc, c := newService(queue.Faithful)
+		ctx := context.Background()
+		w1 := &queue.Worker{Name: "w1", Svc: svc}
+		_ = svc.Enqueue(ctx, 3)
+		j, _ := svc.Lease(ctx, "w1")
+		c.advance(2 * ttl)
+		k, _ := svc.Lease(ctx, "w1") // the same job, again
+		_ = w1.Once(ctx, k)          // completes it
+		_ = w1.Once(ctx, j)          // under the expired lease: performed again, stale ack
+	})
+}
+
 // The scenario is a behaviour of the model, and the design's guarantee
 // (doneImpliesPerformed) holds. Job 1 was performed twice: the model's
 // exactlyOnce, which the design does not promise, fails on this run, at

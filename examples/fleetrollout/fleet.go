@@ -61,8 +61,8 @@ func Run(c qenv.Chooser, cfg Config) (*kubesim.Fleet, error) {
 	}
 	final := newController()
 	for _, m := range f.Members {
-		final.Observe(context.Background(), m.Name, m.Read())
+		final.Observe(s.Context(), m.Name, m.Read())
 	}
-	qobs.Record(context.Background(), "settle", nil)
+	qobs.Record(s.Context(), "settle", nil)
 	return f, nil
 }

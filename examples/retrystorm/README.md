@@ -42,7 +42,7 @@ Results (recovery is from a full queue with 30 requests in the orbit):
 |---|---|---|---|
 | immediate | 2 600 s / 85 000 s / 820 000 s | 3/6 | +1.0 req/s for 3m36s (at 9 req/s) |
 | backoff | 21 000 s / 1.4 M s / 22 M s | 0/6 | +2.0 req/s for 2m8s (at 8 req/s) |
-| budget | 57 s / 139 s / 360 s | 5/6 | none in 30 cases |
+| budget | 57 s / 139 s / 360 s | 6/6 | none in 30 cases |
 | budget+backoff | 60 s / 154 s / 440 s | 6/6 | none in 30 cases |
 
 What the tiers taught:

@@ -83,17 +83,35 @@ qtest.Explore(t, "app.binding.yaml", qtest.ExploreConfig{Seeds: 100, Rates: rate
 
 - **Batching:** every seeded run is checked in one quint batch. On a
   miss, the report names the seed, its faults and its step log.
+- **Parallel seeds:** seeds run in parallel (`ExploreConfig.Parallel`,
+  default GOMAXPROCS). Each run's recorder travels in the chooser's
+  context (`qenv.WithContext`), so:
+  - build the simulation from the chooser you are given;
+  - keep no state across runs;
+  - record through a task's context, or `s.Context()` outside tasks
+    (the final `settle`), never `context.Background()`, which falls back
+    to the global recorder and loses the step.
+- **Other instances:** `qtest.Constants(map[string]string{"STOCK":
+  "1000"})` checks against the model with other constants, so one
+  binding serves runs of every size.
 - **Rates:**
   - A nemesis (crash) is considered at every scheduling step, so its rate
-    is per step (default 1 in 200).
+    is per step (default 1 in 200). Under load, steps per second grow a
+    hundredfold, and so would crashes. Set `s.NemesisEvery = time.Second`
+    to make the rate per virtual second (`qload.Experiment` does this
+    when it injects faults).
   - A bug with a one-step window needs a higher rate:
     `Kinds: {"fault.nemesis": 0.05}`.
   - Turn whole kinds off with `{"fault.kube": 0}`, or per run with
     `qenv.Swarm`.
 - **Shrinking:**
-  `quinthegel.FindViolation(t, cfg, func(tc, _) { app.Run(qenv.Hegel(tc), cfg) })`
+  `quinthegel.FindViolation(t, cfg, func(tc, rec) { app.Run(qenv.WithContext(qenv.Hegel(tc), rec.Context(ctx)), cfg) })`
   shrinks a failure to the interleaving and faults it needs; faults
   appear as notes. Skip it under `testing.Short()`.
+- **Extending qenv** (a new double, a scheduler change): run its tests
+  with `QENV_CHECK=1` (or `s.Check = true`). The scheduler then verifies
+  its own invariants at every step. `TestSchedulerSemantics` states its
+  semantics as a Hegel property over random programs.
 - **Profiles:** run each property under every contract you might run
   on. For each mutant, a row per isolation level (or store, or broker
   mode) says where the bug is real (see examples/checkout's table).

@@ -2,11 +2,13 @@ package qtest
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/casselc/quint-connect-go/qenv"
 	"github.com/casselc/quint-connect-go/qobs"
+	"github.com/casselc/quint-connect-go/validate"
 )
 
 func TestExpectations(t *testing.T) {
@@ -42,7 +44,7 @@ func TestExplore(t *testing.T) {
 			defer s.Close()
 			st := qenv.NewStore(s, "db", qenv.ReadCommitted)
 			st.Load("balance", 10)
-			ctx := context.Background()
+			ctx := s.Context() // carries the run's recorder
 			qobs.Record(ctx, "deposit", nil, "amount", 10, "obs.balance", 10)
 			for i := 0; i < 2; i++ {
 				s.Spawn("withdraw", func(ctx context.Context) {
@@ -72,5 +74,21 @@ func TestExplore(t *testing.T) {
 	x.Expect(t, AnyOf(Mismatch("withdraw"), Rejects("withdraw")))
 	if len(x.Failing()) == 20 {
 		t.Fatal("every interleaving overdrew: the schedule is not being explored")
+	}
+}
+
+// One binding, two instances: Constants overrides the binding's LIMIT.
+func TestConstants(t *testing.T) {
+	RequireQuint(t)
+	b := "../validate/testdata/account.yaml"
+	steps := Record(t, b, func(rec *qobs.Recorder) {
+		for i := range 2 {
+			rec.Record(context.Background(), "deposit", nil, "amount", 60, "obs.balance", 60*(i+1))
+		}
+	}).Steps
+	Validate(t, b, steps).Expect(t, Violates("underLimit"))
+	Validate(t, b, steps, Constants(map[string]string{"LIMIT": "200"})).Expect(t, Conforms())
+	if _, err := checker(t, b, validate.Options{}).WithConstants(map[string]string{"LIMT": "1"}); err == nil || !strings.Contains(err.Error(), "LIMIT") {
+		t.Errorf("a misspelt constant: %v, want an error naming the model's constants", err)
 	}
 }

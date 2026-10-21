@@ -2,8 +2,9 @@
 // running Go program. It is what the //quint:action Orchestrion aspect calls,
 // and it can be called directly.
 //
-// Recording is off until SetGlobal installs a Recorder (or a Recorder is used
-// directly), so linking qobs into a program changes nothing by itself.
+// Recording is off until SetGlobal installs a Recorder, a context carries
+// one (WithRecorder), or a Recorder is used directly, so linking qobs into a
+// program changes nothing by itself.
 package qobs
 
 import (
@@ -83,10 +84,32 @@ func SetGlobal(r *Recorder) { global.Store(r) }
 // Global returns the installed recorder, or nil.
 func Global() *Recorder { return global.Load() }
 
-// Record records one step through the global recorder; a no-op when none is
-// installed. This is the function //quint:action advice calls.
+type recorderKey struct{}
+
+// WithRecorder returns a context whose steps Record sends to r rather than
+// to the global recorder. Runs in parallel (seeds of an exploration,
+// simulations of a trigger search) each record into their own: a qenv
+// simulation passes its context to every task (qenv.WithContext).
+func WithRecorder(ctx context.Context, r *Recorder) context.Context {
+	return context.WithValue(ctx, recorderKey{}, r)
+}
+
+// From returns the recorder Record uses for ctx: the one WithRecorder set,
+// else the global one (nil if none).
+func From(ctx context.Context) *Recorder {
+	if ctx != nil {
+		if r, ok := ctx.Value(recorderKey{}).(*Recorder); ok {
+			return r
+		}
+	}
+	return global.Load()
+}
+
+// Record records one step through the context's recorder (WithRecorder) or
+// the global one; a no-op when there is none. This is the function
+// //quint:action advice calls.
 func Record(ctx context.Context, action string, err error, kv ...any) {
-	if r := global.Load(); r != nil {
+	if r := From(ctx); r != nil {
 		r.Record(ctx, action, err, kv...)
 	}
 }

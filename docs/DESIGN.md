@@ -979,3 +979,68 @@ model. What that showed, which no abstraction had:
   crashes, lost responses and redeliveries added, the faithful shop
   conformed through the storm. Correctness and recovery are separate
   checks on the same run.
+
+## 12. What the examples changed in the core
+
+After checkout, fleetrollout, crossdb, retrystorm and checkout-under-load,
+the same workarounds kept appearing in examples. They are now in the core.
+- **A recorder per run, carried by the context.** `qobs.WithRecorder`
+  puts a recorder in a context. `qenv.WithContext` makes it the root of
+  every task's context in a simulation (`Sim.Context` outside tasks).
+  `qtest.Explore` gives each seed its own recorder and runs seeds in
+  parallel, and `qmeta.Runs`, `Count` and `Mostly` run a trigger's seeds
+  in parallel. A Hegel test records the same way
+  (`quinthegel.Recorder.Context`). The global recorder remains for real
+  processes and woven code. One consequence: a step recorded through
+  `context.Background()` inside a simulation now goes to the global
+  recorder and is missing from the run. Four call sites did this
+  (`settle` in three examples, a test scenario), and the model caught
+  each one at once.
+- **Load experiments on the application itself** (`qload.Experiment`).
+  Before this, checkout's load harness had its own sampler, step counter,
+  recovery windows and arrival process. Now an experiment:
+  - deploys the app;
+  - drives it open-loop or closed-loop;
+  - counts its model steps per tick, so goodput is the rate of a model
+    action;
+  - samples probes;
+  - gives each source of randomness its own seeded stream (`Env.Rand`).
+
+  `qmeta.Assess` and `qmeta.Of` turn an experiment into a recovery
+  verdict and into a `System` for `Search`.
+- **A recovery verdict that tolerates noise and needs a healthy
+  baseline.** Comparing two 100-second windows at a 90% threshold failed
+  healthy runs about one time in ten, and `Judge` now allows two standard
+  errors. Comparing with the goodput before the trigger hid a real bug:
+  with 8 consumers, the checkout shop had collapsed before any trigger,
+  and "recovered" to its collapsed rate. An experiment states its healthy
+  goodput (`Healthy`), and the verdict uses it.
+- **Crashes per virtual second** (`Sim.NemesisEvery`). Load multiplies
+  scheduling steps per second, so a per-step crash rate turns into a
+  crash storm. Experiments with faults use one crash choice per second.
+- **The scheduler checks itself.** `Sim.Check` (or `QENV_CHECK=1`)
+  verifies, at every step, that:
+  - the run queue agrees with the queued flags;
+  - no task is both queued and waiting;
+  - every timed wait has a live timer;
+  - no deadline has passed unserved;
+  - time does not go backwards.
+
+  `TestSchedulerSemantics` states the scheduler's semantics as a Hegel
+  property over random programs. It fails within a second on the `Signal`
+  bug of §11.3, reintroduced. CI runs qenv's tests with the checks on.
+- **Constants per check** (`qtest.Constants`, `quinthegel.Config.Constants`,
+  `validate.Checker.WithConstants`). One binding serves runs of any size.
+  Checkout's load runs had needed a copy of the binding with a different
+  stock.
+
+Not done, and why:
+- **A clock seam for libraries.** Code we write already takes `Sim.Now`.
+  The libraries that read the wall clock (crossplane-runtime,
+  `x/time/rate` inside client-go's limiters) can't be reached by a seam,
+  only by rewriting their calls at build time. That's the same problem as
+  scheduling goroutines that bypass `qenv.Go`, and edgepublish (real
+  `sync.RWMutex`, a background goroutine) is the place to work on it.
+- **A closed-loop chain in qmeta, splitting long runs per key, and one
+  vocabulary for performance expectations.** These are useful, but no
+  example is blocked on them.

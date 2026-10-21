@@ -13,16 +13,7 @@ import (
 var Dip = qmeta.Trigger{Start: 10 * time.Minute, Slowdown: 3, Duration: time.Minute}
 
 func recoveries(r Requeue, tr qmeta.Trigger, n int) int {
-	cp := DefaultControlPlane(r)
-	ok := 0
-	for seed := 1; seed <= n; seed++ {
-		cfg := cp.Config()
-		cfg.Seed = uint64(seed)
-		if qmeta.Recovers(cfg, 0, tr, 5*time.Minute).Recovered {
-			ok++
-		}
-	}
-	return ok
+	return qmeta.Count(qmeta.OfSimulation(DefaultControlPlane(r).Config(), 0, 5*time.Minute), tr, n)
 }
 
 // The performance tier of the provider: 600 Databases polled every
