@@ -868,3 +868,89 @@ with steps from two processes merged by a wall-clock domain clock.
 - **Go's own scheduler.** Goroutines that bypass `qenv.Go` run
   uncontrolled, and a run that depends on them is not reproducible.
   Replay detects this but cannot prevent it.
+
+## 11. Metastable failures (`qload`, `qmeta`)
+
+A metastable failure leaves no wrong answer to check. The system enters
+a degraded state and stays in it after its trigger is gone: a spike
+fills a queue, requests time out, and their retries keep the queue full.
+No Quint invariant over individual steps says "the system came back".
+That is a property of rates over time. Two papers set out how to analyse
+it, and this is their pipeline, with each tier checking the next:
+- Isaacs et al., "Analyzing Metastable Failures", HotOS '25;
+- Alvaro et al., "Formal Analysis of Metastable Failures in Software
+  Systems", 2025.
+
+| Tier | Package | Cost | Answers |
+|---|---|---|---|
+| CTMC over (queue, orbit) | `qmeta.New`, `HittingTimes`, `Field`/`SVG` | ~0.1–1 s per configuration | where the tipping point is; how policies rank |
+| calibration | `qmeta.Calibrate` (simulated trajectories) | seconds | the chain's rates, so its numbers mean something |
+| simulation | `qload.Simulate`, `qmeta.Recovers` | ~0.1–0.5 s per run of 20 simulated minutes | does this policy, this code, recover from this trigger |
+| trigger search | `qmeta.FindTrigger` (Hegel) | ~1 min | the smallest trigger that breaks it, shrunk |
+| the real system | (load tests) | hours | confirms the one trigger the search found |
+
+### 11.1 Recovery as the property
+
+`qmeta.Recovers` takes the papers' definition. Within W after the
+stressor ends, goodput is back to at least 90% of what it was before. A
+trigger is extra load, a slowdown (a capacity dip in a dependency) and a
+duration. All three shrink toward none, so Hegel's result is the smallest
+stressor that tips the system. A run's escape from the metastable region
+is chance, so each candidate trigger runs several seeds and a majority
+decides (`RecoversMostly`). Per-request randomness comes from a seeded
+generator, not the Chooser: a run has tens of thousands of requests, and
+what the search should vary is the trigger.
+
+### 11.2 The code under test on virtual time
+
+qload runs on qenv. That is what lets the retry library itself sit in the
+loop (`ClientConfig.Retrier`), rather than a model of it. The library
+receives the virtual time as an argument, and limiters such as
+`x/time/rate` already accept one. Clients are open-loop (Poisson
+arrivals) or closed-loop (`Population`, `Think`). The difference
+decides results. A controller's objects are a closed loop: the workqueue
+merges a failing object's poll into its retry. The open-loop version of
+the Crossplane provider found storms under crossplane-runtime's defaults
+that cannot happen. The closed-loop version found none.
+
+### 11.3 What the tiers taught each other
+
+- **Rejection semantics.** In examples/retrystorm the simulation showed
+  that backoff alone recovers worse than immediate retries. An immediate
+  retry rejected by a full queue spends its retries at once and gives up,
+  which sheds load. A retry after backoff comes back. The first chain
+  dropped rejected transitions and predicted the opposite. It now has
+  both rules.
+- **Truncation.** With the orbit bounded at 60, the chain predicted quick
+  recovery for backoff. At 120 it predicted a storm. A finite chain must
+  be big enough to hold the storm it is asked about.
+- **Absolute times.** The chain's recovery times were orders of magnitude
+  above the simulation's (immediate retries at 9.5 req/s from (100, 30):
+  minutes simulated against days predicted). It ranks policies and places
+  the tipping point; for numbers it must be calibrated.
+- **A simulator bug.** A `qenv.Signal` wait that timed out stayed in the
+  signal's waiter list, so a later `Notify` cut short the task's next
+  wait, a backoff sleep. Requests in the orbit outnumbered the controller's
+  objects, which is impossible, and that exposed it. The fix tags each
+  wait with its generation (`TestSignalTimeoutIsForgotten`). Checking a
+  simulation's own invariants (population ≥ orbit) is cheap. Do it.
+
+### 11.4 Correctness stays with Quint
+
+A mitigation is code. The retry budget's accounting is recorded and
+checked against `model/retry.qnt`, whose invariant is the amplification
+bound. Its `Uncapped` mutant passed the load tier: after 6000 s of quiet
+the overfilled bucket still let 4 of 5 runs recover. The model rejected
+its first wrong step. The tiers are complementary: Quint for what each
+step does, qmeta and qload for what the rates do.
+
+### 11.5 Not yet
+
+- **Multi-server chains.** The chain has one server. A dependency chain,
+  where retries amplify at every hop, needs a product of chains or
+  simulation only.
+- **Calibration of mitigations.** `Calibrate` fits λ and τ. A budget's
+  or backoff's effective parameters could be fitted too.
+- **Real-system confirmation.** Run the trigger Hegel found against the
+  real provider on kind, with a throttling dbaas server (`dbaas-server
+  -throttle-rps`).

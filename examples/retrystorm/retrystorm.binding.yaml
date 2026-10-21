@@ -1,0 +1,19 @@
+# How the retry budget's steps (retry/retry.go's qobs.Record calls) become
+# calls of model/retry.qnt's actions, with the bucket's balance compared at
+# every step.
+spec: model/retry.qnt
+module: retry
+
+constants:
+  RATIO: '100'
+  CAP: '10000'
+
+actions:
+  request:
+    expect: 'tokens == {{.obs.tokens}}'
+  retry:
+    expect: 'tokens == {{.obs.tokens}}'
+  refuse:
+    expect: 'tokens == {{.obs.tokens}}'
+
+invariants: [bounded, capped]

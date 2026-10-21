@@ -63,7 +63,9 @@ func TestSVG(t *testing.T) {
 }
 
 // Hegel finds the smallest stressor that leaves the paper's example
-// (9.5 req/s against 10) stuck, and none at 8 req/s.
+// (9.5 req/s against 10) stuck, and none at 8 req/s that the system does
+// not recover from within 15 minutes (from a full queue the chain predicts
+// about 8).
 func TestFindTrigger(t *testing.T) {
 	if testing.Short() {
 		t.Skip("searches hundreds of simulated runs")
@@ -79,7 +81,7 @@ func TestFindTrigger(t *testing.T) {
 		t.Fatal("no trigger found at 9.5 req/s")
 	}
 	t.Logf("searched in %v", time.Since(t0))
-	if r := qmeta.FindTrigger(t, sim(8), 8, space, 300*time.Second, hegel.WithTestCases(30), hegel.WithSeed(1)); r != nil {
+	if r := qmeta.FindTrigger(t, sim(8), 8, space, 15*time.Minute, hegel.WithTestCases(30), hegel.WithSeed(1)); r != nil {
 		t.Fatalf("at 8 req/s the system should always recover; %v did not", r.Trigger)
 	}
 }

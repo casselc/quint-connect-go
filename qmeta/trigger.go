@@ -22,7 +22,11 @@ type Trigger struct {
 }
 
 func (tr Trigger) String() string {
-	return fmt.Sprintf("+%.1f req/s and %.2gx slower for %v", tr.ExtraRate, tr.Slowdown, tr.Duration)
+	s := fmt.Sprintf("+%.1f req/s", tr.ExtraRate)
+	if tr.Slowdown > 1 {
+		s += fmt.Sprintf(" and %.2gx slower", tr.Slowdown)
+	}
+	return s + " for " + tr.Duration.String()
 }
 
 // Recovery is the outcome of one run with a trigger.
@@ -30,7 +34,7 @@ type Recovery struct {
 	Trigger   Trigger
 	Recovered bool
 	// Goodput (successes per second) over the last 100 s before the
-	// trigger, and over the check window after it.
+	// trigger, and over the 100 s after the check window.
 	Before, After float64
 	Metrics       *qload.Metrics
 }
@@ -65,6 +69,9 @@ type TriggerSpace struct {
 	MaxExtraRate float64       // default: the base rate
 	MaxSlowdown  float64       // default 1 (no capacity triggers)
 	MaxDuration  time.Duration // default 300 s
+	// Start of the trigger (default 100 s): late enough that the system is
+	// in its steady state, which a closed loop takes a think time to reach.
+	Start time.Duration
 	// Seeds per trigger (default 3): a trigger breaks the system when most
 	// of its runs do not recover, so the noise of one run is not mistaken
 	// for the trigger's effect.
@@ -113,6 +120,7 @@ func FindTrigger(t testing.TB, cfg qload.Config, base float64, space TriggerSpac
 	runs := 0
 	err := hegel.Run(func(tc hegel.TestCase) {
 		tr := Trigger{
+			Start:     space.Start,
 			ExtraRate: float64(hegel.Draw(tc, hegel.Integers(0, int(space.MaxExtraRate*10)))) / 10,
 			Slowdown:  1 + float64(hegel.Draw(tc, hegel.Integers(0, int((space.MaxSlowdown-1)*10))))/10,
 			Duration:  time.Duration(hegel.Draw(tc, hegel.Integers(0, int(space.MaxDuration/time.Second)))) * time.Second,

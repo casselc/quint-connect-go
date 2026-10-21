@@ -137,8 +137,15 @@ func (sv *Server) InSystem() int { return len(sv.queue) + sv.busy }
 type ClientConfig struct {
 	Name string
 	// Rate of new requests (per second) over time: a Poisson process.
-	Rate    Shape
-	Timeout time.Duration
+	Rate Shape
+	// Population, if positive, adds a closed loop: Population users, each
+	// starting a request Think (exponential, with that mean) after its last
+	// one finished, succeeded or given up. A controller polling its objects
+	// is one: a failing object is retried, not polled as well, so its load
+	// is bounded. Rate's arrivals (if any) come on top: other clients.
+	Population int
+	Think      time.Duration
+	Timeout    time.Duration
 	// Retries after the first attempt (0: none).
 	Retries int
 	// Backoff before retry n (1-based); nil retries at once.
@@ -148,6 +155,20 @@ type ClientConfig struct {
 	// RetryBudget tokens, each retry takes one, at most 10 kept): the
 	// mitigation that bounds a retry storm's amplification.
 	RetryBudget float64
+	// Retrier, if set, makes the policy that decides each retry in place of
+	// Backoff and RetryBudget (Retries still bounds them): the retry policy
+	// of the code under test, run on virtual time. It is called once per
+	// run, with the run's generator, so runs share no state.
+	Retrier func(rnd *rand.Rand) Retrier
+}
+
+// A Retrier is a client-side retry policy: a library under test.
+type Retrier interface {
+	// Request is called when a new request starts.
+	Request(now time.Time)
+	// Retry is called before retry n (1-based) of a request: it returns how
+	// long to wait first, or false to give up.
+	Retry(n int, now time.Time) (wait time.Duration, ok bool)
 }
 
 // Client generates requests to a server.
@@ -158,13 +179,44 @@ type Client struct {
 	sv     *Server
 	m      *Metrics
 	tokens float64
+	policy Retrier
 }
 
 // NewClient starts a client in s.
 func NewClient(s *qenv.Sim, rnd *rand.Rand, m *Metrics, sv *Server, cfg ClientConfig) *Client {
 	c := &Client{cfg: cfg, sim: s, rnd: rnd, sv: sv, m: m}
-	s.Spawn(cfg.Name+".arrivals", c.arrivals)
+	if cfg.Retrier != nil {
+		c.policy = cfg.Retrier(rnd)
+	}
+	if cfg.Rate != nil {
+		s.Spawn(cfg.Name+".arrivals", c.arrivals)
+	}
+	for i := 0; i < cfg.Population; i++ {
+		s.Spawn(cfg.Name+".user", c.user)
+	}
 	return c
+}
+
+// user is one of a closed loop's users.
+func (c *Client) user(ctx context.Context) {
+	// the first request at a uniform time within the think time, so the
+	// users do not start in step
+	qenv.Sleep(ctx, time.Duration(c.rnd.Float64()*float64(c.cfg.Think)))
+	for {
+		c.start()
+		c.request(ctx)
+		qenv.Sleep(ctx, time.Duration(c.rnd.ExpFloat64()*float64(c.cfg.Think)))
+	}
+}
+
+// start counts a new request.
+func (c *Client) start() {
+	c.m.arrivals++
+	if c.policy != nil {
+		c.policy.Request(c.sim.Now())
+	} else if c.cfg.RetryBudget > 0 {
+		c.tokens = math.Min(10, c.tokens+c.cfg.RetryBudget)
+	}
 }
 
 func (c *Client) arrivals(ctx context.Context) {
@@ -175,10 +227,7 @@ func (c *Client) arrivals(ctx context.Context) {
 			continue
 		}
 		qenv.Sleep(ctx, time.Duration(c.rnd.ExpFloat64()/rate*float64(time.Second)))
-		c.m.arrivals++
-		if c.cfg.RetryBudget > 0 {
-			c.tokens = math.Min(10, c.tokens+c.cfg.RetryBudget)
-		}
+		c.start()
 		qenv.Go(ctx, c.cfg.Name+".request", c.request)
 	}
 }
@@ -190,9 +239,7 @@ func (c *Client) request(ctx context.Context) { c.requestFrom(ctx, 0) }
 func (c *Client) requestFrom(ctx context.Context, first int) {
 	start := c.sim.Now()
 	for attempt := first; ; attempt++ {
-		if attempt > 0 {
-			c.m.orbit--
-		}
+		began := c.sim.Elapsed()
 		j := c.sv.submit()
 		if j != nil && (j.done || j.sig.Wait(ctx, c.sim.Now().Add(c.cfg.Timeout))) {
 			c.m.successes++
@@ -201,21 +248,34 @@ func (c *Client) requestFrom(ctx context.Context, first int) {
 		}
 		if j != nil {
 			c.m.timeouts++
+			// in hindsight, the attempt was in the orbit from its start
+			c.m.inOrbit(began, c.sim.Elapsed())
 		}
 		if attempt >= c.cfg.Retries {
 			c.m.failed++
 			return
 		}
-		if c.cfg.RetryBudget > 0 {
-			if c.tokens < 1 {
+		var wait time.Duration
+		switch {
+		case c.policy != nil:
+			w, ok := c.policy.Retry(attempt+1, c.sim.Now())
+			if !ok {
 				c.m.failed++
 				return
 			}
+			wait = w
+		case c.cfg.RetryBudget > 0 && c.tokens < 1:
+			c.m.failed++
+			return
+		case c.cfg.RetryBudget > 0:
 			c.tokens--
 		}
-		c.m.orbit++
-		if c.cfg.Backoff != nil {
-			qenv.Sleep(ctx, c.cfg.Backoff(attempt+1, c.rnd))
+		if c.policy == nil && c.cfg.Backoff != nil {
+			wait = c.cfg.Backoff(attempt+1, c.rnd)
+		}
+		if wait > 0 {
+			c.m.inOrbit(c.sim.Elapsed(), c.sim.Elapsed()+wait)
+			qenv.Sleep(ctx, wait)
 		}
 		c.m.retries++
 	}
@@ -224,8 +284,10 @@ func (c *Client) requestFrom(ctx context.Context, first int) {
 // Sample is one tick of a run's time series.
 type Sample struct {
 	T time.Duration
-	// Queue is the server's requests in system (queued or in service);
-	// Orbit the requests waiting to be retried (the papers' orbit).
+	// Queue is the server's requests in system (queued or in service).
+	// Orbit is the papers' orbit: requests whose current attempt will time
+	// out, or that wait to retry. Known only in hindsight, it is filled in
+	// when the run ends.
 	Queue, Orbit int
 	// Counts over the tick.
 	Arrivals, Retries, Successes, Timeouts, Rejected, Failed, Completions int
@@ -238,13 +300,14 @@ type Metrics struct {
 	Samples []Sample
 
 	arrivals, retries, successes, timeouts, rejected, failed, completions int
-	orbit                                                                 int
+	tick                                                                  time.Duration
+	orbit                                                                 map[int]int // sample index -> change of Orbit
 	latencies                                                             []time.Duration
 }
 
 // sample records the tick ending now and resets the tick's counters.
 func (m *Metrics) sample(t time.Duration, sv *Server) {
-	s := Sample{T: t, Queue: sv.InSystem(), Orbit: m.orbit, Arrivals: m.arrivals, Retries: m.retries,
+	s := Sample{T: t, Queue: sv.InSystem(), Arrivals: m.arrivals, Retries: m.retries,
 		Successes: m.successes, Timeouts: m.timeouts, Rejected: m.rejected, Failed: m.failed, Completions: m.completions}
 	if n := len(m.latencies); n > 0 {
 		sort.Slice(m.latencies, func(i, j int) bool { return m.latencies[i] < m.latencies[j] })
@@ -253,6 +316,27 @@ func (m *Metrics) sample(t time.Duration, sv *Server) {
 	m.Samples = append(m.Samples, s)
 	m.arrivals, m.retries, m.successes, m.timeouts, m.rejected, m.failed, m.completions = 0, 0, 0, 0, 0, 0, 0
 	m.latencies = m.latencies[:0]
+}
+
+// inOrbit counts a request in the orbit over [from, to): in the samples
+// taken at times T with from <= T < to (sample k is taken at (k+1) ticks).
+func (m *Metrics) inOrbit(from, to time.Duration) {
+	ceil := func(d time.Duration) int { return int((d + m.tick - 1) / m.tick) }
+	k0, k1 := max(ceil(from)-1, 0), ceil(to)-1
+	if k1 <= k0 {
+		return
+	}
+	m.orbit[k0]++
+	m.orbit[k1]--
+}
+
+// fill sets the samples' Orbit from the intervals counted.
+func (m *Metrics) fill() {
+	v := 0
+	for k := range m.Samples {
+		v += m.orbit[k]
+		m.Samples[k].Orbit = v
+	}
 }
 
 // Config is a single-server, single-client system: the papers' running
@@ -283,7 +367,7 @@ func (sv *Server) prefill(n int) {
 func (c *Client) inject(n int) {
 	for i := 0; i < n; i++ {
 		delay := time.Duration(c.rnd.Float64() * float64(c.cfg.Timeout))
-		c.m.orbit++
+		c.m.inOrbit(0, delay)
 		c.sim.Spawn(c.cfg.Name+".orbit", func(ctx context.Context) {
 			qenv.Sleep(ctx, delay)
 			c.requestFrom(ctx, 1)
@@ -303,7 +387,7 @@ func Simulate(cfg Config) *Metrics {
 	defer s.Close()
 	s.MaxSteps = math.MaxInt
 	rnd := rand.New(rand.NewPCG(cfg.Seed, 0x51ab1e))
-	m := &Metrics{}
+	m := &Metrics{tick: cfg.Tick, orbit: map[int]int{}}
 	sv := NewServer(s, rnd, m, cfg.Server)
 	c := NewClient(s, rnd, m, sv, cfg.Client)
 	sv.prefill(cfg.Initial.Queue)
@@ -315,6 +399,7 @@ func Simulate(cfg Config) *Metrics {
 		}
 	})
 	_ = s.Run(cfg.Horizon)
+	m.fill()
 	return m
 }
 

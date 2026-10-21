@@ -15,7 +15,11 @@ testing, where Quint traces drive the implementation). It adds:
   runs deterministically against a store, queues and networks that do what
   their contracts allow (lost responses, redeliveries, crashes, an
   isolation level's anomalies), every choice made by Hegel or a seed, and
-  every run checked by the model.
+  every run checked by the model;
+- **metastable failures** (`qload`, `qmeta`): whether a system recovers
+  after a load spike or a capacity dip, or stays stuck in a retry storm.
+  A CTMC predicts it, a simulation confirms it, and Hegel finds the
+  smallest trigger.
 
 ```
                      ┌──────────── one Quint model ────────────┐
@@ -241,6 +245,41 @@ See [examples/checkout](examples/checkout) (a saga at three isolation
 levels) and [examples/fleetrollout](examples/fleetrollout) (a
 multicluster-runtime controller, simulated and on real kwok clusters).
 
+## 5. Metastable failures (`qload`, `qmeta`)
+
+Some failures are not wrong answers but a state the system cannot leave.
+A spike fills a queue, requests time out, and their retries keep the
+queue full after the spike has passed. Isaacs et al. (HotOS '25) and
+Alvaro et al. (2025) analyse these in tiers. quint-connect-go has each
+tier:
+- `qmeta`: a CTMC over (queue length, requests waiting to retry). It
+  draws the field (`Chain.SVG`) and gives expected recovery times
+  (`HittingTimes`) in seconds. `Calibrate` fits it to simulated
+  trajectories.
+- `qload`: a load simulation on qenv. Clients can be open-loop or closed
+  (a controller polling its objects), with timeouts, retries, backoff and
+  budgets, or the retry library under test itself (`ClientConfig.Retrier`,
+  on virtual time). Servers have queues and workers, and every run yields
+  a time series.
+- `qmeta.FindTrigger`: Hegel searches transient triggers (extra load, a
+  slowdown, a duration) for one after which goodput does not recover, and
+  shrinks it.
+
+```go
+c := qmeta.New(qmeta.Params{Lambda: 9, Mu: 10, Timeout: 9, Retries: 3, Queue: 100})
+h := c.HittingTimes(func(s qmeta.State) bool { return s.U <= 10 })   // seconds to drain, per state
+r := qmeta.FindTrigger(t, cfg, 9, qmeta.TriggerSpace{MaxExtraRate: 10}, 5*time.Minute)
+// r.Trigger: "+1.0 req/s for 3m36s" tips immediate retries into a storm
+```
+
+The tiers check each other. In
+[examples/retrystorm](examples/retrystorm), the simulation showed that
+backoff alone makes recovery worse, which the first chain had missed.
+Correctness stays with the model: the retry budget's accounting is
+checked against Quint, which catches a bug that load tests hardly see.
+[examples/crossdb](examples/crossdb) applies the tiers to a Crossplane
+provider's requeue policy.
+
 ## Packages
 
 | Package | |
@@ -256,6 +295,8 @@ multicluster-runtime controller, simulated and on real kwok clusters).
 | `validate` | replay with `quint test`: `Checker.Check`, `CheckRuns`, `ValidateITF`, structured verdicts |
 | `qtest` | record-then-check inside a Go test; `Expect` with `Conforms`/`Rejects`/`Mismatch`/`Violates`/`AnyOf`; `Explore` (seeded simulated runs checked in bulk); `RequireQuint` |
 | `qenv` | deterministic simulated environments: scheduler, virtual time, crashable processes, choosers (Hegel, seeded, replay, swarm), `Store` (isolation levels), `Queue`, `Service` (RPC) |
+| `qload` | load simulation on qenv: open- and closed-loop clients with timeouts, retries, backoff, budgets or a `Retrier` under test; queued servers; triggers (`Spike`, slowdowns); time series |
+| `qmeta` | metastability: a CTMC (`Field`/`SVG`, `HittingTimes`, `Expect`, `Calibrate`), the recovery property (`Recovers`), Hegel trigger search (`FindTrigger`) |
 | `load` | read OTLP/JSON, a step log or ITF, detected by content |
 | `skills` | the agent skills below, embedded; install targets |
 | `cmd/quintgo` | CLI: `scaffold`, `lint`, `steps`, `validate`, `itf`, `convert`, `skills` |
@@ -270,7 +311,8 @@ which bug.
 |---|---|---|
 | [`examples/checkout`](examples/checkout) | a checkout saga: orders, payments with idempotency keys and voids, shipping, cancellation, a transactional outbox | fault injection with `qenv`: crashable services, a database at three isolation levels, an at-least-once broker, a lossy network; which bug is a bug at which isolation level (lost update, write skew); a double charge; a lost event; Hegel shrinking a write skew |
 | [`examples/fleetrollout`](examples/fleetrollout) | a multicluster-runtime controller rolling a Deployment across member clusters within a budget (own module) | the same controller simulated (fake clients behind interceptors: status lag, lost responses, crashes) and on three real kwok clusters (`kill -9` included), checked by one evidence-based model; `observedGeneration` and in-memory-state bugs caught in both |
-| [`examples/crossdb`](examples/crossdb) | a Crossplane provider for a database-as-a-service (crossplane-runtime's managed reconciler), with connection details written back as Secrets (own module) | Crossplane's real reconcile logic simulated under lost responses, crashes, throttling and an eventually consistent cloud, then the same provider on kind with full Crossplane composing `AppDatabase`s; why the external name must be deterministic and the create idempotent; a leak with no crash; translating a library's real-clock timestamps at the seam |
+| [`examples/crossdb`](examples/crossdb) | a Crossplane provider for a database-as-a-service (crossplane-runtime's managed reconciler), with connection details written back as Secrets (own module) | Crossplane's real reconcile logic simulated under lost responses, crashes, throttling and an eventually consistent cloud, then the same provider on kind with full Crossplane composing `AppDatabase`s; why the external name must be deterministic and the create idempotent; a leak with no crash; translating a library's real-clock timestamps at the seam; the provider's requeue policy against a capacity dip in the cloud (`qload`, closed loop) |
+| [`examples/retrystorm`](examples/retrystorm) | a client retry library: bounded retries, backoff with jitter, a retry budget | metastable failures in tiers: a CTMC predicts which policies recover from a spike, a simulation (the library on virtual time) confirms it, and Hegel shrinks the smallest trigger; backoff alone made things worse; the budget's accounting checked against a Quint model, which catches a bug load tests barely see |
 | [`examples/glomers`](examples/glomers) | Fly.io's Gossip Glomers: unique ids, broadcast, grow-only counter, kafka-style log, on a Maelstrom runtime and simulator | distributed systems: models of each challenge with their properties; Lamport clocks to merge per-node step logs; Hegel scheduling deliveries, losses and partitions, and shrinking a lost-update bug to three steps; the same nodes under real Maelstrom, their logs conforming to the models |
 | [`examples/kvstore`](examples/kvstore) | an HTTP key-value service with compare-and-swap (`kvserver`, `kvload`) | a concurrent service checked as a serial behaviour of its model, from its steps or its plain OTel spans (`kv.op` as a linearization key); a CAS race caught under load; errors that classify themselves; reads checked against the model; Hegel over HTTP |
 | [`examples/jobqueue`](examples/jobqueue) | an at-least-once job queue with leases, workers and restarts (`jobqueue`) | all three verdicts: an implementation bug, a design property the run violates (`exactlyOnce`, checked with `-invariants`), and conformance; restarts inferred from incarnations; when model-driven testing does not fit |
@@ -300,7 +342,9 @@ The skills in [`skills/`](skills) teach a coding agent this toolkit:
 - `quint-verification-workflow`: the order of work (model, simulate,
   record, bind, mutants, Hegel, real environment) and triage of verdicts;
 - `quint-fault-injection`: seams, `qenv` deployments, contract profiles,
-  `qtest.Explore`, shrinking with `qenv.Hegel`, and the real environment.
+  `qtest.Explore`, shrinking with `qenv.Hegel`, and the real environment;
+- `quint-metastability`: retry storms and other metastable failures: the
+  CTMC, the load simulation, trigger search, mitigations.
 
 They are in the [Agent Skills](https://agentskills.io) format, one
 `SKILL.md` per directory. In this repository they are exposed where agents

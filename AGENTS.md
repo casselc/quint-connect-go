@@ -6,7 +6,8 @@ for you (`quintgo skills install`).
 
 ## What this is
 
-A Go toolkit for checking Go code against Quint models in four ways:
+A Go toolkit for checking Go code against Quint models in four ways, and
+its load behaviour in a fifth:
 - **MBT** (`connect`): Quint traces drive the code.
 - **Hegel integration** (`quinthegel`): Hegel drives and the model
   judges, or the model drives and Hegel varies.
@@ -15,9 +16,13 @@ A Go toolkit for checking Go code against Quint models in four ways:
 - **Simulated environments** (`qenv`, `qtest.Explore`): the system runs
   deterministically against fault-injecting doubles, every choice made by
   Hegel or a seed, every run checked by the model.
+- **Metastability** (`qload`, `qmeta`): whether a system recovers after a
+  load spike or capacity dip. A CTMC predicts it, a load simulation on qenv
+  confirms it, and Hegel shrinks the smallest trigger.
 
 The design record is `docs/DESIGN.md`. Read §9 before changing `connect`
-or `quinthegel`, and §10 before changing `qenv`.
+or `quinthegel`, §10 before changing `qenv`, and §11 before changing
+`qload` or `qmeta`.
 
 ## Layout
 
@@ -28,6 +33,7 @@ itf/          ITF decode/encode, Go <-> Quint values (Decode/Encode), Quint lite
 qobs/ qtrace/ otelio/ convert/ load/   recording, schema/reconstruction, OTLP, span conversion, input sniffing
 binding/ validate/ qtest/              binding YAML, quint-test-based validator, test helpers (Expect, Explore)
 qenv/         deterministic simulation: scheduler, virtual time, processes, choosers; Store, Queue, Service doubles
+qload/ qmeta/ load simulation (open/closed-loop clients, servers, triggers); CTMC, recovery property, Hegel trigger search
 cmd/quintgo/  CLI
 skills/       agent skills, the source of truth (embedded by package skills;
               symlinked into .agents/skills and .claude/skills, checked by skills_test.go)
@@ -38,6 +44,7 @@ examples/jobqueue     app: at-least-once queue with leases and restarts; design-
 examples/checkout     app: checkout saga on qenv (isolation levels, outbox, idempotency, crashes); cmd/checkout-sim
 examples/fleetrollout separate module: multicluster-runtime controller, simulated (kubesim) and on kwok (kwok-demo.sh)
 examples/crossdb      separate module: Crossplane provider (crossplane-runtime) for a dbaas, simulated and on kind with Crossplane (kind/)
+examples/retrystorm   library: retry policies (backoff, budget); budget checked by a model, policies by qmeta/qload/FindTrigger
 examples/bank         library example; every workflow on one small system
 examples/edgepublish  separate module (Orchestrion); the spike's real-world case, model vendored in model/
 docs/         DESIGN.md, instrumentation.md
@@ -154,6 +161,18 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   (`issue: error cycle`).
 - `FileSink` buffers: a killed process loses its last steps, undetectably.
   Use `DurableFileSink` where crashes are part of the test.
+- A `qenv.Signal` waiter is tagged with the task's wait generation; a
+  timed-out wait must not be woken by a later `Notify` (it once shortened
+  the next sleep). Keep the tag when touching the scheduler.
+- qload metrics are time series of rates; sample counters reset every
+  tick. `Sample.Orbit` is known only in hindsight (an attempt is in the
+  orbit from its start if it times out) and is filled when the run ends.
+- `qmeta`'s chain ranks policies; its absolute times are not the
+  simulation's. Keep its orbit bound well above the storm's size, and
+  assert orderings or orders of magnitude, not seconds.
+- Controllers are closed loops (`ClientConfig.Population`). An open-loop
+  abstraction double-counts a failing object's polls and finds storms
+  that cannot happen.
 - `quinthegel.CaseChecker` prefix reuse is only sound for one actor with
   no `order.*` keys, where the recording order is the reconstructed order,
   and with equal instance constants. Keep those guards.

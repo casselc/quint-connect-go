@@ -31,6 +31,16 @@ type Params struct {
 	Retries int     // retries after the first attempt
 	Queue   int     // the most requests in the system (u's bound)
 	Orbit   int     // the bound of the orbit in the finite chain (default 2*Queue)
+
+	// Mitigations, as the chain sees them (0: none).
+	//   - Backoff: mean seconds a request waits before a retry, on top of
+	//     the timeout; requests stay in the orbit longer.
+	//   - RetryBudget: retries per new request (a token bucket's ratio);
+	//     RetryRate: retries per second (a client-wide rate limiter). Either
+	//     caps the orbit's retry rate, and requests over it give up.
+	Backoff     float64
+	RetryBudget float64
+	RetryRate   float64
 }
 
 // Chain is the CTMC of a single server with timeouts and retries.
@@ -105,17 +115,49 @@ func (c *Chain) Out(s State) []Transition {
 		out = append(out, Transition{to, rate})
 	}
 	r := c.fail[u]
-	tau, lam := c.P.Timeout, c.P.Lambda
+	lam := c.P.Lambda
 	add(1, 1, lam*r)
 	add(1, 0, lam*(1-r))
+	if u == c.N && c.P.Backoff > 0 {
+		// a full queue rejects a new request at once: retrying at once, it
+		// spends its retries on the same full queue and gives up (the
+		// transition is lost), but after a backoff it comes back later
+		add(0, 1, lam)
+	}
 	if u > 0 {
 		add(-1, 0, float64(min(u, c.P.Workers))*c.P.Mu)
 	}
-	fv := float64(v)
-	add(1, 0, c.alpha*fv*r/tau)
-	add(1, -1, c.alpha*fv*(1-r)/tau)
-	add(0, -1, (1-c.alpha)*fv/tau)
+	// each request in the orbit leaves it after the timeout and the backoff:
+	// a retry with probability alpha (scaled down to what the caps admit),
+	// otherwise it gives up
+	stay := c.P.Timeout + c.P.Backoff
+	leave := float64(v) / stay
+	retry := c.alpha
+	if limit := c.retryCap(); limit > 0 && retry*leave > limit {
+		retry = limit / leave
+	}
+	add(1, 0, retry*leave*r)
+	add(1, -1, retry*leave*(1-r))
+	add(0, -1, (1-retry)*leave)
+	if u == c.N && c.P.Backoff == 0 {
+		// a retry rejected by the full queue retries at once until it gives
+		// up (after a backoff it would stay in the orbit: no transition)
+		add(0, -1, retry*leave)
+	}
 	return out
+}
+
+// retryCap is the most retries per second the mitigations admit (0: no
+// cap).
+func (c *Chain) retryCap() float64 {
+	limit := 0.0
+	if c.P.RetryBudget > 0 {
+		limit = c.P.RetryBudget * c.P.Lambda
+	}
+	if c.P.RetryRate > 0 && (limit == 0 || c.P.RetryRate < limit) {
+		limit = c.P.RetryRate
+	}
+	return limit
 }
 
 // Drift is the expected rate of change of (u, v) at a state: the field the

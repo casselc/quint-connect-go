@@ -355,7 +355,14 @@ func WaitUntil(ctx context.Context, ready func() bool, deadline time.Time) bool 
 // evaluates at every step: use Signals where many tasks wait (requests
 // waiting for responses, workers waiting for work).
 type Signal struct {
-	waiters []*task
+	waiters []waiter
+}
+
+// waiter is a task's wait on a Signal: gen tells it from the task's later
+// waits, which a stale entry (the wait timed out) must not end.
+type waiter struct {
+	t   *task
+	gen int
 }
 
 // Wait blocks until Notify or the virtual time reaches deadline (zero:
@@ -365,15 +372,15 @@ func (g *Signal) Wait(ctx context.Context, deadline time.Time) bool {
 	if t == nil {
 		panic("qenv: Signal.Wait outside a simulation")
 	}
-	g.waiters = append(g.waiters, t)
+	g.waiters = append(g.waiters, waiter{t, t.gen})
 	t.wait(nil, deadline)
 	return t.notified
 }
 
 // Notify wakes every task waiting on the signal.
 func (g *Signal) Notify() {
-	for _, t := range g.waiters {
-		if t.waiting && !t.done && !t.killed {
+	for _, w := range g.waiters {
+		if t := w.t; t.waiting && t.gen == w.gen && !t.done && !t.killed {
 			t.notified = true
 			t.sim.enqueue(t)
 		}

@@ -290,3 +290,30 @@ func TestManyWaitersScale(t *testing.T) {
 	}
 	t.Logf("20000 waiting requests: %v", time.Since(t0))
 }
+
+// A Signal wait that timed out leaves no trace: a later Notify does not
+// cut short the task's next wait.
+func TestSignalTimeoutIsForgotten(t *testing.T) {
+	s := qenv.New(qenv.Nominal{})
+	defer s.Close()
+	var sig qenv.Signal
+	var slept time.Duration
+	s.Spawn("waiter", func(ctx context.Context) {
+		if sig.Wait(ctx, s.Now().Add(time.Second)) {
+			t.Error("woken before any Notify")
+		}
+		start := s.Elapsed()
+		qenv.Sleep(ctx, 10*time.Second)
+		slept = s.Elapsed() - start
+	})
+	s.Spawn("notifier", func(ctx context.Context) {
+		qenv.Sleep(ctx, 5*time.Second)
+		sig.Notify()
+	})
+	if err := s.Run(time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	if slept != 10*time.Second {
+		t.Errorf("slept %v, want 10s: a stale Signal entry woke the sleep", slept)
+	}
+}

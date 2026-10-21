@@ -111,6 +111,47 @@ the ID. The faithful provider's answer:
   copied a localhost proxy into the node, so the cluster is created
   without the proxy variables.
 
+## Under load: the requeue policy (`load.go`, `metastable_test.go`)
+
+The checks above concern correctness: what each reconcile does. A
+separate question is whether the provider and the cloud recover together
+from an incident. In the scenario, the cloud API slows down for a
+minute, the provider's calls time out, and its requeues might keep the
+API saturated after the slowdown ends. This is the performance tier, on
+[`qload`](../../qload) and [`qmeta`](../../qmeta). It is an abstraction:
+- each Database is a user of a closed loop, observed a poll interval
+  after its last reconcile, or requeued after a delay if it failed;
+- the cloud API is a queued server.
+
+The abstraction keeps what decides a retry storm: what is in flight, how
+soon a failure comes back, and the rate limits. It drops the rest. The
+requeue is crossplane-runtime's own limiter logic on virtual time:
+per-item exponential backoff, `x/time/rate` for the global limit.
+
+The setup is 600 Databases polled every minute. The cloud API serves 20
+calls/s, and the provider times out after 2 s. The cloud slows to a
+third for a minute.
+
+| Requeue policy | Runs that recover (4 seeds) | CTMC recovery from a full queue | Hegel's smallest breaking dip (≤4x, ≤5 min) |
+|---|---|---|---|
+| crossplane-runtime defaults: per-item 1 s→60 s, global 10 reconciles/s | 4/4 | 9 s | none in 25 cases |
+| no global limit (`--max-reconcile-rate` out of the way) | 4/4 | 10 s | |
+| fixed 1 s requeue on error (`RequeueAfter: time.Second`, a hand-written controller) | 0/4 | 3·10¹⁴ s | 1.6x slower for 2m21s |
+| fixed 1 s requeue, with the global limit | 4/4 | 9 s | |
+
+With a fixed requeue, each failing object returns every 3 s (timeout
+plus requeue): 200 calls/s against 20. Either half of crossplane-runtime's
+defaults prevents the storm on its own. The per-item backoff's 60 s cap
+is about the poll interval, so a failing object costs no more than a
+healthy one. The global limit caps the provider's total. An open-loop
+version of this abstraction counted a failing object's polls on top of
+its retries, and found storms under the defaults that the workqueue makes
+impossible. Model controllers as closed loops.
+
+```sh
+go test -run ControlPlane -v .     # the table; the trigger search is skipped under -short
+```
+
 ## Layout
 
 | | |
@@ -119,6 +160,7 @@ the ID. The faithful provider's answer:
 | `dbaas/` | the cloud: `Cloud` (contract, step recording), HTTP server and client, simulated client |
 | `provider/` | the external client and reconciler options; mutants |
 | `crossdb.go` | the simulated deployment: fake kube API with faults and clock translation, provider process, clients, audit |
+| `load.go` | the control plane under load: the provider's requeue policies as a `qload` system and a `qmeta` chain |
 | `model/crossdb.qnt`, `crossdb.binding.yaml` | the model and its binding |
 | `cmd/provider`, `cmd/dbaas-server`, `cmd/driver` | the real environment's processes |
 | `kind/` | `setup.sh` (kind + Crossplane), `platform.yaml` (XRD, Composition, RBAC), `demo.sh` |
