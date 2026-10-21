@@ -27,6 +27,8 @@ binding/ validate/ qtest/              binding YAML, quint-test-based validator,
 cmd/quintgo/  CLI
 skills/       agent skills, the source of truth (embedded by package skills;
               symlinked into .agents/skills and .claude/skills, checked by skills_test.go)
+examples/glomers      Gossip Glomers on a Maelstrom runtime + simulator (maelstrom/); per-challenge model, impl, binding, mutants;
+                      cmd/* run under real Maelstrom (maelstrom.sh)
 examples/kvstore      app: HTTP KV service with CAS (kvserver, kvload); concurrency, span conversion
 examples/jobqueue     app: at-least-once queue with leases and restarts; design-level verdicts
 examples/bank         library example; every workflow on one small system
@@ -107,6 +109,11 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   and `validate/segments_test.go` covers them.
 - A failed quint test with no error position is a tool failure (e.g. the
   evaluator crashed). The validator returns an error, never a verdict.
+- Distributed examples order steps across nodes with a Lamport clock
+  (`order.lamport`). Domain-clock steps with equal values are concurrent,
+  and every one of them precedes every step with a larger value
+  (`qtrace` links whole groups, not neighbours). A service's operations
+  are recorded at the service, where they take effect.
 - `quinthegel.CaseChecker` prefix reuse is only sound for one actor with
   no `order.*` keys, where the recording order is the reconstructed order,
   and with equal instance constants. Keep those guards.

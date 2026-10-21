@@ -1,0 +1,9 @@
+# Recorded uniqueids steps as calls of ../model/uniqueids.qnt.
+spec: ../model/uniqueids.qnt
+module: uniqueids
+constants:
+  NODES: '{{ set "node" }}'
+actions:
+  generate:
+    args: { node: '{{.node}}', id: '{{.id}}' }
+invariants: [idsUnique]

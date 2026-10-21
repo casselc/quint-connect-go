@@ -10,8 +10,10 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -207,6 +209,15 @@ func Normalize(v any) any {
 		return x.String()
 	case error:
 		return x.Error()
+	}
+	// Collections (slices, arrays, maps) travel as JSON text: an attribute
+	// or step-log field holds a scalar. A binding's toSet / toList turn it
+	// back into a Quint value.
+	switch reflect.ValueOf(v).Kind() {
+	case reflect.Slice, reflect.Array, reflect.Map:
+		if b, err := json.Marshal(v); err == nil {
+			return string(b)
+		}
 	}
 	return fmt.Sprint(v)
 }

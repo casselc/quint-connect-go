@@ -35,6 +35,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/casselc/quint-connect-go/qobs"
 	"github.com/casselc/quint-connect-go/qtrace"
@@ -102,10 +103,20 @@ const (
 	// is one `quint test` process (about half a second with the Rust
 	// backend), and shrinking runs many, so keep test-case counts modest.
 	Each Mode = iota
-	// After collects the runs (distinct ones only) and checks them all,
-	// in parallel, when the Hegel test is over. A violation fails the Go
-	// test with the run's steps; Hegel's own failures still shrink.
+	// After collects the runs (distinct ones only) and checks them all
+	// in bulk when the Hegel test is over (validate.Checker.CheckBatch:
+	// one quint process per instance and chunk). A violation fails the Go
+	// test with the run's steps, unshrunk; Hegel's own failures still shrink.
 	After
+	// Batched generates a round of test cases without checking them,
+	// checks the round in bulk (as After), and continues with another
+	// round (Rounds, Budget) while every run passes. When one fails, it
+	// replays the round with the same seed in Each mode: the cached bulk
+	// verdicts decide every case up to the failing one without quint, and
+	// Hegel shrinks the failure against the model. Bulk speed while the
+	// runs pass; Each's shrinking when one does not. The test body must be
+	// deterministic given Hegel's draws (as for any shrinking).
+	Batched
 	// Off records but does not check (e.g. for runs whose steps are
 	// inspected by hand, or checked elsewhere).
 	Off
@@ -132,6 +143,14 @@ type Config struct {
 	AllowEmpty bool
 	// Parallel bounds concurrent quint processes in After mode (0: GOMAXPROCS).
 	Parallel int
+	// Batched mode: the number of rounds (default 1), each of the test
+	// cases hegel.WithTestCases asks for, with its own seed; and an
+	// optional time budget that stops starting rounds once exceeded.
+	Rounds int
+	Budget time.Duration
+	// Seed of the first round (later rounds add 1 each); 0: random. The
+	// seed of a failing round is logged, to reproduce it.
+	Seed int64
 }
 
 // Test runs a Hegel test whose cases record model steps, and checks the
@@ -144,6 +163,10 @@ type Config struct {
 //	}, hegel.WithTestCases(30))
 func Test(t *testing.T, cfg Config, body func(ht *hegel.T, rec *Recorder), opts ...hegel.Option) {
 	t.Helper()
+	if cfg.Mode == Batched {
+		batched(t, cfg, body, opts)
+		return
+	}
 	keep := keepDir(t, cfg.Keep)
 	var checker *validate.Checker
 	var cc *CaseChecker
@@ -201,7 +224,7 @@ func Test(t *testing.T, cfg Config, body func(ht *hegel.T, rec *Recorder), opts 
 // run's steps and verdict.
 func CheckAll(t testing.TB, c *validate.Checker, runs [][]qtrace.Step, parallel int) []*validate.Report {
 	t.Helper()
-	reps, errs := c.CheckRuns(context.Background(), runs, parallel)
+	reps, errs := c.CheckBatch(context.Background(), runs, 0)
 	bad := 0
 	for i, rep := range reps {
 		switch {
@@ -274,4 +297,99 @@ func keepDir(t testing.TB, dir string) string {
 		return filepath.Join(k, strings.NewReplacer("/", "_", " ", "_").Replace(t.Name()))
 	}
 	return t.TempDir()
+}
+
+// batched is Test in Batched mode.
+func batched(t *testing.T, cfg Config, body func(ht *hegel.T, rec *Recorder), opts []hegel.Option) {
+	t.Helper()
+	keep := keepDir(t, cfg.Keep)
+	vo := cfg.Validate
+	vo.Dir = filepath.Join(keep, "quint")
+	c, err := Checker(cfg.Binding, vo)
+	if err != nil {
+		t.Fatalf("quinthegel: %v", err)
+	}
+	cc := NewCaseChecker(c)
+	rounds := cfg.Rounds
+	if rounds <= 0 {
+		rounds = 1
+	}
+	seed := cfg.Seed
+	if seed == 0 {
+		seed = time.Now().UnixNano() & 0x7fffffff
+	}
+	start := time.Now()
+	record := func(ht *hegel.T) []qtrace.Step {
+		rec := NewRecorder(ht, cfg.Recorder...)
+		if cfg.Global {
+			defer rec.Install()()
+		}
+		body(ht, rec)
+		steps := rec.Steps()
+		if len(steps) == 0 && !cfg.AllowEmpty {
+			ht.Fatalf("quinthegel: the test case recorded no model steps (set AllowEmpty if that is expected)")
+		}
+		return steps
+	}
+	total := 0
+	for r := 0; r < rounds; r++ {
+		if cfg.Budget > 0 && r > 0 && time.Since(start) > cfg.Budget {
+			t.Logf("quinthegel: time budget %v used after %d rounds", cfg.Budget, r)
+			break
+		}
+		s := seed + int64(r)
+		// 1. Generate a round, recording each case's run, checking nothing.
+		var mu sync.Mutex
+		var runs [][]qtrace.Step
+		seen := map[string]bool{}
+		hegel.Test(t, func(ht *hegel.T) {
+			steps := record(ht)
+			key := stepsKey(steps)
+			mu.Lock()
+			defer mu.Unlock()
+			if !seen[key] {
+				seen[key] = true
+				runs = append(runs, steps)
+			}
+		}, append(append([]hegel.Option(nil), opts...), hegel.WithSeed(s), hegel.WithPhases(hegel.PhaseGenerate))...)
+		if t.Failed() {
+			return // the body's own checks failed, and Hegel shrank that already
+		}
+		// 2. Check the round in bulk.
+		vs, err := cc.Prefetch(context.Background(), runs)
+		if err != nil {
+			t.Fatalf("quinthegel: checking round %d: %v", r, err)
+		}
+		total += len(runs)
+		var failed []int
+		for i, v := range vs {
+			if !v.OK {
+				failed = append(failed, i)
+			}
+		}
+		if len(failed) == 0 {
+			continue
+		}
+		// 3. A run failed: replay the round, now checking each case. The
+		// verdicts are cached, so only Hegel's shrink candidates run quint.
+		t.Logf("quinthegel: round %d (seed %d): %d of %d runs violate the model; shrinking", r, s, len(failed), len(runs))
+		ok := t.Run("shrink", func(st *testing.T) {
+			hegel.Test(st, func(ht *hegel.T) {
+				CheckCase(ht, cc, record(ht))
+			}, append(append([]hegel.Option(nil), opts...), hegel.WithSeed(s))...)
+		})
+		if ok {
+			// The replay did not meet the failing case again (generation was
+			// not reproducible): report the bulk failure, unshrunk.
+			i := failed[0]
+			t.Errorf("quinthegel: run %d of round %d (seed %d) does not satisfy the model (not shrunk):\n%s\nsteps:\n%s",
+				i, r, s, vs[i].Summary, Render(runs[i]))
+		}
+		q, hits := cc.Stats()
+		t.Logf("quinthegel: %d distinct runs in %d rounds; ~%d quint processes, %d verdicts from the cache", total, r+1, q, hits)
+		return
+	}
+	q, hits := cc.Stats()
+	t.Logf("quinthegel: %d distinct runs in bulk, all satisfy the model (~%d quint processes, %d verdicts from the cache, %v)",
+		total, q, hits, time.Since(start).Round(time.Millisecond))
 }

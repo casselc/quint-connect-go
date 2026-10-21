@@ -1,0 +1,13 @@
+# Recorded gcounter steps as calls of ../model/gcounter.qnt. Vectors are
+# recorded as JSON objects (toMap).
+spec: ../model/gcounter.qnt
+module: gcounter
+constants:
+  NODES: '{{ set "node" "src" "dst" }}'
+actions:
+  add:     { args: { node: '{{.node}}', delta: '{{.delta}}' } }
+  gossip:  { args: { id: '{{.id}}', src: '{{.src}}', dst: '{{.dst}}', vec: '{{ toMap .vec }}' } }
+  deliver: { args: { id: '{{.id}}' } }
+  read:    { args: { node: '{{.node}}', value: '{{.value}}' } }
+  settle: {}
+invariants: [noOvercount, countsEveryAdd]

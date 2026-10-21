@@ -1,9 +1,11 @@
 package binding
 
 import (
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"text/template"
 
@@ -109,18 +111,23 @@ func (b *Binding) Plan(m *Model, t *qtrace.Trace) (*Plan, error) {
 
 	// 2. Constants, from statistics over the interned trace.
 	funcs := template.FuncMap{
-		"set": func(arg string) string {
+		"set": func(names ...string) string {
 			seen := map[string]bool{}
 			var vs []string
 			for _, a := range args {
-				if v, ok := a[arg]; ok && !seen[quintLit(v)] {
-					seen[quintLit(v)] = true
-					vs = append(vs, quintLit(v))
+				for _, arg := range names {
+					if v, ok := a[arg]; ok && !seen[quintLit(v)] {
+						seen[quintLit(v)] = true
+						vs = append(vs, quintLit(v))
+					}
 				}
 			}
 			sort.Strings(vs)
 			return "Set(" + strings.Join(vs, ", ") + ")"
 		},
+		"toSet":  func(v any) (string, error) { return jsonQuint(v, "Set") },
+		"toList": func(v any) (string, error) { return jsonQuint(v, "List") },
+		"toMap":  func(v any) (string, error) { return jsonQuint(v, "Map") },
 		"max": func(arg string) int64 {
 			var mx int64
 			for _, a := range args {
@@ -234,11 +241,22 @@ const segmentSteps = 20
 // RenderModule writes the replay module for calls: a conformance run with
 // each call's expect, and one run per invariant.
 func RenderModule(ms ModuleSpec, calls []Call, qntPath string) (*Generated, error) {
+	gs, err := RenderBatch(ms, [][]Call{calls}, qntPath)
+	if err != nil {
+		return nil, err
+	}
+	return gs[0], nil
+}
+
+// RenderBatch writes one module replaying several runs of the same
+// instance (same ModuleSpec): the runs of run i are prefixed r<i>_, so one
+// `quint test` process checks them all. Each returned Generated describes
+// one run; all share Text. With a single run there is no prefix.
+func RenderBatch(ms ModuleSpec, runs [][]Call, qntPath string) ([]*Generated, error) {
 	rel, err := filepath.Rel(filepath.Dir(qntPath), strings.TrimSuffix(ms.Spec, ".qnt"))
 	if err != nil {
 		return nil, err
 	}
-	g := &Generated{Module: "observed", LineStep: map[int]int{}, Calls: calls}
 	var w strings.Builder
 	line := 1
 	pr := func(format string, a ...any) {
@@ -251,7 +269,10 @@ func RenderModule(ms ModuleSpec, calls []Call, qntPath string) (*Generated, erro
 	for _, h := range ms.Header {
 		pr("// %s", h)
 	}
-	pr("module %s {", g.Module)
+	if len(runs) > 1 {
+		pr("// %d runs, checked together: the tests of run i are r<i>_*.", len(runs))
+	}
+	pr("module observed {")
 	if ms.Instance != "" {
 		pr("  import %s.* from %q", ms.Instance, rel)
 	} else if len(ms.Constants) == 0 {
@@ -262,79 +283,108 @@ func RenderModule(ms ModuleSpec, calls []Call, qntPath string) (*Generated, erro
 	if strings.TrimSpace(ms.Defs) != "" {
 		pr("%s", indent(strings.TrimRight(ms.Defs, "\n"), "  "))
 	}
-	pr("")
-	// chain writes a run of init and then every call, rendered by step. Long
-	// chains are split into segments: Quint's Rust evaluator rejects a
-	// `.then` chain nested much past 50 steps.
-	chain := func(name, first string, step func(c Call) string, comment bool) {
-		// emit writes call i on its own line (quint's error positions map
-		// back to the observed step by line): `.then(...)`, or bare as the
-		// first step of a segment.
-		emit := func(i int, then bool) {
-			if comment {
-				pr("    // [%d] %s", i, describe(calls[i]))
-			}
-			g.LineStep[line] = i
-			if then {
-				pr("    .then(%s)", step(calls[i]))
-			} else {
-				pr("    %s", step(calls[i]))
-			}
+	out := make([]*Generated, len(runs))
+	for ri, calls := range runs {
+		g := &Generated{Module: "observed", LineStep: map[int]int{}, Calls: calls}
+		out[ri] = g
+		prefix := ""
+		if len(runs) > 1 {
+			prefix = fmt.Sprintf("r%d_", ri)
+			pr("")
+			pr("  // ---- run %d ----", ri)
 		}
-		if len(calls) <= segmentSteps {
+		pr("")
+		// chain writes a run of init and then every call, rendered by step.
+		// Long chains are split into named segments, and long chains of
+		// segments into segments of segments: Quint's Rust evaluator rejects
+		// a `.then` chain nested much past 50 steps, so no chain is longer
+		// than segmentSteps.
+		chain := func(name, first string, step func(c Call) string, comment bool) {
+			type item struct {
+				call int    // index of the call, or -1 for a segment
+				ref  string // the segment's name
+				last int    // the last call it covers
+			}
+			// emit writes an item on its own line (quint's error positions map
+			// back to the observed step by line): `.then(...)`, or bare as
+			// the first item of a segment. A segment that evaluates to false
+			// is reported at the line that uses it: its last call was the
+			// disabled one (an earlier one would be reported inside it).
+			emit := func(it item, then bool) {
+				text := it.ref
+				if it.call >= 0 {
+					if comment {
+						pr("    // [%d] %s", it.call, describe(calls[it.call]))
+					}
+					text = step(calls[it.call])
+				}
+				g.LineStep[line] = it.last
+				if then {
+					pr("    .then(%s)", text)
+				} else {
+					pr("    %s", text)
+				}
+			}
+			items := make([]item, len(calls))
+			for i := range calls {
+				items[i] = item{call: i, last: i}
+			}
+			for level := 0; len(items) > segmentSteps; level++ {
+				var next []item
+				for s := 0; s < len(items); s += segmentSteps {
+					seg := fmt.Sprintf("%s_seg%d", name, s/segmentSteps)
+					if level > 0 {
+						seg = fmt.Sprintf("%s_l%d_%d", name, level, s/segmentSteps)
+					}
+					group := items[s:min(s+segmentSteps, len(items))]
+					pr("  action %s =", seg)
+					for j, it := range group {
+						emit(it, j > 0)
+					}
+					next = append(next, item{call: -1, ref: seg, last: group[len(group)-1].last})
+				}
+				items = next
+			}
 			pr("  run %s =", name)
 			pr("    %s", first)
-			for i := range calls {
-				emit(i, true)
-			}
-			return
-		}
-		var segs []string
-		var lasts []int // the last call of each segment
-		for s := 0; s < len(calls); s += segmentSteps {
-			seg := fmt.Sprintf("%s_seg%d", name, s/segmentSteps)
-			segs = append(segs, seg)
-			lasts = append(lasts, min(s+segmentSteps, len(calls))-1)
-			pr("  action %s =", seg)
-			for i := s; i < len(calls) && i < s+segmentSteps; i++ {
-				emit(i, i > s)
+			for _, it := range items {
+				emit(it, true)
 			}
 		}
-		pr("  run %s =", name)
-		pr("    %s", first)
-		for k, seg := range segs {
-			// A segment that evaluates to false is reported at this line:
-			// its last call was the disabled one (an earlier one would have
-			// been reported inside the segment).
-			g.LineStep[line] = lasts[k]
-			pr("    .then(%s)", seg)
+		g.Tests.Conforms = prefix + "conformsTest"
+		pr("  // The observed steps, each checked against the observed state.")
+		first := "init"
+		if ms.InitExpect != "" {
+			first = fmt.Sprintf("init.expect(%s)", ms.InitExpect)
 		}
-	}
-	g.Tests.Conforms = "conformsTest"
-	pr("  // The observed steps, each checked against the observed state.")
-	first := "init"
-	if ms.InitExpect != "" {
-		first = fmt.Sprintf("init.expect(%s)", ms.InitExpect)
-	}
-	chain(g.Tests.Conforms, first, func(c Call) string {
-		if c.Expect != "" {
-			return fmt.Sprintf("%s.expect(%s)", c.Quint, c.Expect)
+		chain(g.Tests.Conforms, first, func(c Call) string {
+			if c.Expect != "" {
+				return fmt.Sprintf("%s.expect(%s)", c.Quint, c.Expect)
+			}
+			return c.Quint
+		}, true)
+		g.Tests.Invariants = map[string]string{}
+		for _, inv := range ms.Invariants {
+			name := prefix + inv + "InvTest"
+			g.Tests.Invariants[inv] = name
+			pr("")
+			pr("  // The same steps; %s must hold in every state.", inv)
+			chain(name, fmt.Sprintf("init.expect(%s)", inv), func(c Call) string {
+				return fmt.Sprintf("%s.expect(%s)", c.Quint, inv)
+			}, false)
 		}
-		return c.Quint
-	}, true)
-	g.Tests.Invariants = map[string]string{}
-	for _, inv := range ms.Invariants {
-		name := inv + "InvTest"
-		g.Tests.Invariants[inv] = name
-		pr("")
-		pr("  // The same steps; %s must hold in every state.", inv)
-		chain(name, fmt.Sprintf("init.expect(%s)", inv), func(c Call) string {
-			return fmt.Sprintf("%s.expect(%s)", c.Quint, inv)
-		}, false)
 	}
 	pr("}")
-	g.Text = w.String()
-	return g, nil
+	for _, g := range out {
+		g.Text = w.String()
+	}
+	return out, nil
+}
+
+// ModuleSpec returns what a replay of plan p imports and checks.
+func (b *Binding) ModuleSpec(p *Plan) ModuleSpec {
+	return ModuleSpec{Spec: b.SpecPath(), Module: b.Module, Constants: p.ConstantList(), Defs: b.Defs, Invariants: b.Invariants,
+		Header: []string{fmt.Sprintf("actor %q, %d observed steps, processes %v", p.Actor, p.ObservedSteps, p.Processes)}}
 }
 
 // Skips reports whether the binding drops the step: its outcome maps to
@@ -405,4 +455,64 @@ func toI(v any) int64 {
 		return int64(x)
 	}
 	return 0
+}
+
+// jsonQuint renders a collection recorded as JSON text (qobs records slices
+// as JSON) as a Quint Set(...) or List(...); nested arrays become tuples.
+func jsonQuint(v any, kind string) (string, error) {
+	text := fmt.Sprint(v)
+	if q, ok := v.(qlit); ok {
+		u, err := strconv.Unquote(string(q))
+		if err != nil {
+			return "", fmt.Errorf("to%s: %s is not a recorded JSON array", kind, q)
+		}
+		text = u
+	}
+	if kind == "Map" {
+		var m map[string]any
+		if err := json.Unmarshal([]byte(text), &m); err != nil {
+			return "", fmt.Errorf("toMap: %q is not a JSON object: %v", text, err)
+		}
+		keys := make([]string, 0, len(m))
+		for k := range m {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		parts := make([]string, len(keys))
+		for i, k := range keys {
+			parts[i] = strconv.Quote(k) + " -> " + jsonElem(m[k])
+		}
+		return "Map(" + strings.Join(parts, ", ") + ")", nil
+	}
+	var xs []any
+	if err := json.Unmarshal([]byte(text), &xs); err != nil {
+		return "", fmt.Errorf("to%s: %q is not a JSON array: %v", kind, text, err)
+	}
+	parts := make([]string, len(xs))
+	for i, x := range xs {
+		parts[i] = jsonElem(x)
+	}
+	if kind == "List" {
+		return "[" + strings.Join(parts, ", ") + "]", nil
+	}
+	return "Set(" + strings.Join(parts, ", ") + ")", nil
+}
+
+// jsonElem renders a decoded JSON value as Quint: arrays become tuples.
+func jsonElem(x any) string {
+	switch y := x.(type) {
+	case []any:
+		parts := make([]string, len(y))
+		for i, e := range y {
+			parts[i] = jsonElem(e)
+		}
+		return "(" + strings.Join(parts, ", ") + ")"
+	case float64:
+		return strconv.FormatInt(int64(y), 10)
+	case string:
+		return strconv.Quote(y)
+	case bool:
+		return strconv.FormatBool(y)
+	}
+	return strconv.Quote(fmt.Sprint(x))
 }

@@ -61,3 +61,24 @@ jobs:
         run: go run github.com/DataDog/orchestrion go test -count=1 ./mbt/ ./scenarios/
       - name: demo
         run: OUT=$RUNNER_TEMP/demo ./run-demo.sh
+
+  maelstrom:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Install quint and gnuplot
+        run: |
+          ci/install-quint.sh
+          sudo apt-get install -y gnuplot-nox
+      - name: Gossip Glomers under Maelstrom, step logs checked by quintgo
+        run: OUT=$RUNNER_TEMP/maelstrom examples/glomers/maelstrom.sh

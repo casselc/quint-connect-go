@@ -142,21 +142,35 @@ func (opt Options) resolve() (Options, error) {
 
 // run writes a generated module, runs quint test on it, and fills res.
 func run(ctx context.Context, g *binding.Generated, qnt, base string, invariants []string, opt Options, res *Result) error {
-	if err := os.WriteFile(qnt, []byte(g.Text), 0o644); err != nil {
+	out, err := quintTest(ctx, g.Text, qnt, g.Module, base, opt)
+	if err != nil {
 		return err
 	}
-	res.Steps, res.Module, res.Calls = len(g.Calls), qnt, g.Calls
+	return fill(g, out, qnt, filepath.Join(opt.Dir, base+"_{test}.itf.json"), invariants, res)
+}
+
+// quintTest writes a module and runs `quint test` on it, returning quint's
+// output. ITF goes to <Dir>/<base>_<test>.itf.json.
+func quintTest(ctx context.Context, text, qnt, module, base string, opt Options) (string, error) {
+	if err := os.WriteFile(qnt, []byte(text), 0o644); err != nil {
+		return "", err
+	}
 	itfPattern := filepath.Join(opt.Dir, base+"_{test}.itf.json")
-	cmd := exec.CommandContext(ctx, opt.Quint, "test", filepath.Base(qnt), "--main", g.Module,
+	cmd := exec.CommandContext(ctx, opt.Quint, "test", filepath.Base(qnt), "--main", module,
 		"--backend", opt.Backend, "--max-samples", "1", "--out-itf", itfPattern)
 	cmd.Dir = opt.Dir
 	out, err := cmd.CombinedOutput()
-	res.Output = string(out)
 	if err != nil {
 		if _, ok := err.(*exec.ExitError); !ok {
-			return fmt.Errorf("quint test: %w", err)
+			return string(out), fmt.Errorf("quint test: %w", err)
 		}
 	}
+	return string(out), nil
+}
+
+// fill turns quint's output into the verdict on one generated run.
+func fill(g *binding.Generated, output, qnt, itfPattern string, invariants []string, res *Result) error {
+	res.Steps, res.Module, res.Calls, res.Output = len(g.Calls), qnt, g.Calls, output
 	verdicts, failures := parseQuintTest(res.Output, qnt, g)
 	if _, ok := verdicts[g.Tests.Conforms]; !ok {
 		return fmt.Errorf("quint test did not report %s:\n%s", g.Tests.Conforms, res.Output)
@@ -165,13 +179,17 @@ func run(ctx context.Context, g *binding.Generated, qnt, base string, invariants
 	res.Failure = failures[g.Tests.Conforms]
 	// A failed run with no error position is quint failing, not the model
 	// rejecting the trace (e.g. the evaluator crashed): never a verdict.
-	for name, v := range verdicts {
-		if v == Fail && failures[name] == nil {
+	names := []string{g.Tests.Conforms}
+	for _, n := range g.Tests.Invariants {
+		names = append(names, n)
+	}
+	for _, name := range names {
+		if verdicts[name] == Fail && failures[name] == nil {
 			msg := "no error location in quint's output"
 			if m := reToolErr.FindString(res.Output); m != "" {
 				msg = strings.TrimSpace(m)
 			}
-			return fmt.Errorf("quint could not evaluate the replay %s (test %s): %s\n%s", qnt, name, msg, res.Output)
+			return &ToolError{Module: qnt, Test: name, Msg: msg, Output: res.Output}
 		}
 	}
 	for _, inv := range invariants {
@@ -189,6 +207,15 @@ func run(ctx context.Context, g *binding.Generated, qnt, base string, invariants
 		}
 	}
 	return nil
+}
+
+// ToolError is quint failing to evaluate a replay (not a verdict).
+type ToolError struct {
+	Module, Test, Msg, Output string
+}
+
+func (e *ToolError) Error() string {
+	return fmt.Sprintf("quint could not evaluate the replay %s (test %s): %s\n%s", e.Module, e.Test, e.Msg, e.Output)
 }
 
 var (

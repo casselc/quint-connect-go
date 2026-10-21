@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -41,6 +42,7 @@ type CaseChecker struct {
 	prefixes map[string]string  // constants + failing prefix -> summary
 	n        atomic.Int64       // quint runs
 	hits     atomic.Int64
+	batches  atomic.Int64
 }
 
 // NewCaseChecker wraps a validate.Checker (see Checker).
@@ -52,11 +54,15 @@ func NewCaseChecker(c *validate.Checker) *CaseChecker {
 // decided from the cache.
 func (cc *CaseChecker) Stats() (quintRuns, cacheHits int64) { return cc.n.Load(), cc.hits.Load() }
 
-// Check decides one run. A run with no steps is vacuously OK.
-func (cc *CaseChecker) Check(ctx context.Context, steps []qtrace.Step) (Verdict, error) {
-	if len(steps) == 0 {
-		return Verdict{OK: true, Summary: "no steps recorded"}, nil
-	}
+// keyed is a run with its cache keys.
+type keyed struct {
+	steps      []qtrace.Step
+	keys       []string // prefix keys over the effective steps; the last is the full key
+	effIdx     []int    // index in steps of each effective step
+	prefixable bool
+}
+
+func (cc *CaseChecker) key(steps []qtrace.Step) keyed {
 	consts, prefixable := cc.constants(steps)
 	// Steps the binding skips become no model call; with one process they
 	// cannot change the replay either, so they are left out of the keys:
@@ -65,50 +71,106 @@ func (cc *CaseChecker) Check(ctx context.Context, steps []qtrace.Step) (Verdict,
 	if prefixable {
 		eff, effIdx = cc.effective(steps)
 	}
-	keys := prefixKeys(consts, eff)
-	full := keys[len(keys)-1]
+	return keyed{steps: steps, keys: prefixKeys(consts, eff), effIdx: effIdx, prefixable: prefixable}
+}
+
+// lookup decides a run from earlier verdicts, if it can.
+func (cc *CaseChecker) lookup(k keyed) (Verdict, bool) {
 	cc.mu.Lock()
-	if v, ok := cc.full[full]; ok {
-		cc.mu.Unlock()
-		cc.hits.Add(1)
+	defer cc.mu.Unlock()
+	if v, ok := cc.full[k.keys[len(k.keys)-1]]; ok {
 		v.Cached = true
-		return v, nil
+		return v, true
 	}
-	if prefixable {
-		for i, k := range keys {
-			if sum, ok := cc.prefixes[k]; ok {
-				cc.mu.Unlock()
-				cc.hits.Add(1)
-				return Verdict{Summary: fmt.Sprintf("the first %d steps are a prefix the model already rejected:\n%s", i+1, sum), Cached: true}, nil
+	if k.prefixable {
+		for i, key := range k.keys {
+			if sum, ok := cc.prefixes[key]; ok {
+				return Verdict{Summary: fmt.Sprintf("the first %d steps are a prefix the model already rejected:\n%s", i+1, sum), Cached: true}, true
 			}
 		}
 	}
-	cc.mu.Unlock()
+	return Verdict{}, false
+}
 
-	c := *cc.Checker
-	c.Options.Dir = filepath.Join(cc.Checker.Options.Dir, fmt.Sprintf("check%d", cc.n.Add(1)))
-	rep, err := c.Check(ctx, steps)
-	if err != nil {
-		return Verdict{}, err
-	}
+// store remembers the verdict on a run, and its failing prefix.
+func (cc *CaseChecker) store(k keyed, rep *validate.Report) Verdict {
 	v := Verdict{OK: rep.OK(), Summary: rep.Summary()}
 	cc.mu.Lock()
 	defer cc.mu.Unlock()
-	cc.full[full] = v
-	if !v.OK && prefixable && len(rep.Actors) == 1 && len(rep.Issues) == 0 {
-		if at := failingStep(rep.Actors[0], steps); at >= 0 {
+	cc.full[k.keys[len(k.keys)-1]] = v
+	if !v.OK && k.prefixable && len(rep.Actors) == 1 && len(rep.Issues) == 0 {
+		if at := failingStep(rep.Actors[0], k.steps); at >= 0 {
 			// the prefix key up to the failing step, in effective steps
-			for j := len(effIdx) - 1; j >= 0; j-- {
-				if effIdx[j] <= at {
-					if effIdx[j] == at {
-						cc.prefixes[keys[j]] = v.Summary
+			for j := len(k.effIdx) - 1; j >= 0; j-- {
+				if k.effIdx[j] <= at {
+					if k.effIdx[j] == at {
+						cc.prefixes[k.keys[j]] = v.Summary
 					}
 					break
 				}
 			}
 		}
 	}
-	return v, nil
+	return v
+}
+
+// Check decides one run. A run with no steps is vacuously OK.
+func (cc *CaseChecker) Check(ctx context.Context, steps []qtrace.Step) (Verdict, error) {
+	if len(steps) == 0 {
+		return Verdict{OK: true, Summary: "no steps recorded"}, nil
+	}
+	k := cc.key(steps)
+	if v, ok := cc.lookup(k); ok {
+		cc.hits.Add(1)
+		return v, nil
+	}
+	c := *cc.Checker
+	c.Options.Dir = filepath.Join(cc.Checker.Options.Dir, fmt.Sprintf("check%d", cc.n.Add(1)))
+	rep, err := c.Check(ctx, steps)
+	if err != nil {
+		return Verdict{}, err
+	}
+	return cc.store(k, rep), nil
+}
+
+// Prefetch decides many runs at once (validate.Checker.CheckBatch: one
+// quint process per instance and chunk, not per run) and remembers the
+// verdicts, so later Checks of these runs, or of runs sharing a rejected
+// prefix, need no quint. It returns the verdicts, in order (OK for an
+// empty run), and counts one quint run per process.
+func (cc *CaseChecker) Prefetch(ctx context.Context, runs [][]qtrace.Step) ([]Verdict, error) {
+	out := make([]Verdict, len(runs))
+	ks := make([]keyed, len(runs))
+	var todo [][]qtrace.Step
+	var idx []int
+	for i, steps := range runs {
+		if len(steps) == 0 {
+			out[i] = Verdict{OK: true, Summary: "no steps recorded"}
+			continue
+		}
+		ks[i] = cc.key(steps)
+		if v, ok := cc.lookup(ks[i]); ok {
+			cc.hits.Add(1)
+			out[i] = v
+			continue
+		}
+		todo = append(todo, steps)
+		idx = append(idx, i)
+	}
+	if len(todo) == 0 {
+		return out, nil
+	}
+	c := *cc.Checker
+	c.Options.Dir = filepath.Join(cc.Checker.Options.Dir, fmt.Sprintf("batch%d", cc.batches.Add(1)))
+	reps, errs := c.CheckBatch(ctx, todo, 0)
+	cc.n.Add(int64(min(len(todo), runtime.GOMAXPROCS(0))))
+	for j, i := range idx {
+		if errs[j] != nil {
+			return out, fmt.Errorf("run %d: %w", i, errs[j])
+		}
+		out[i] = cc.store(ks[i], reps[j])
+	}
+	return out, nil
 }
 
 // constants renders the run's instance constants (they may depend on the

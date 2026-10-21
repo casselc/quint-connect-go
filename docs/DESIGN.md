@@ -626,3 +626,70 @@ by line, with two cases quint reports elsewhere:
 Both are mapped to the call. A failed test with no location at all is
 quint failing, not the model rejecting the run, and is an error. A
 400-step concurrent kvstore run validates in about 7 s.
+
+### 9.5 Bulk checking and the Batched mode
+
+Process start-up and model loading cost a quint process ~0.5 s, which
+dominates the replay of a short run. `validate.Checker.CheckBatch` works
+like this:
+1. It reconstructs and plans every run in Go.
+2. It groups the actors' traces by their rendered instance constants.
+   Traces of one instance can share a module. Constants may depend on
+   the run, so grouping, not a union of constants, keeps every verdict
+   the one a lone check would give.
+3. It writes one module per group and chunk (tests `r<i>_conformsTest`,
+   `r<i>_<inv>InvTest`), runs the chunks in parallel, and maps quint's
+   output back to each run.
+4. A chunk quint cannot evaluate is re-checked one trace at a time.
+
+24 runs: CheckBatch 1.6 s, CheckRuns (a process per run, in parallel)
+6.6 s, one at a time ~14 s.
+
+Hegel needs a verdict for each test case before it moves on, and its
+shrinker is sequential, so a failing case cannot wait for a batch.
+`quinthegel`'s `Batched` mode splits the work instead:
+1. **Generate.** `hegel.WithPhases(PhaseGenerate)` and a fixed seed;
+   cases are recorded, not checked.
+2. **Check in bulk** (`CaseChecker.Prefetch`, which fills the verdict
+   cache). If every run passes, start another round with the next seed
+   (`Rounds`, `Budget`).
+3. **Replay** the failing round with the same seed in `Each` mode. The
+   cache decides every case up to the failing one without quint, and
+   Hegel shrinks the failure against the model.
+
+If the replay does not meet the failing case (the body was not
+deterministic in Hegel's draws), the bulk failure is reported unshrunk.
+On a 40-case machine:
+- all runs passing: Each 22 s, After 3.3 s, Batched 3.4 s;
+- with a bug: Each 32 s (shrunk), After 3.4 s (not shrunk), Batched
+  23 s (shrunk, same counterexample).
+
+Batching amortizes start-up over runs that are all new (generation); the
+cache reuses verdicts across runs that share prefixes (shrinking).
+
+### 9.6 Distributed systems (`examples/glomers`)
+
+Three things were needed beyond the single-process examples:
+- **Cross-process order.** Each node records its steps with itself as
+  the thread and a Lamport clock as the domain clock (`order.lamport`);
+  the clock rides in message bodies.
+  - Reconstruction then orders a delivery after its send, even across
+    per-node step logs written by separate processes under real
+    Maelstrom.
+  - Getting this right needed a fix: steps with equal clock values are
+    concurrent, and every one of them must precede every step with a
+    larger value. Linking sorted neighbours only left `a(3)` unordered
+    with `c(4)` in `a(3) b(3) c(4)`.
+- **Linearization points at services.** A KV operation takes effect at
+  the service, and the node only hears of it later, after other
+  operations may have happened. The simulator's lin-kv records its
+  operations itself.
+- **Collections as observations.** Gossip carries sets and vectors, and
+  reads return them. qobs records slices and maps as JSON text, and the
+  binding's `toSet`, `toList` and `toMap` turn them back into Quint
+  values.
+
+Long, real runs also needed the replay segments (§9.4) to nest. At 2841
+steps, 142 segments chained at the top level were again too deep for
+the Rust evaluator, so segments are now grouped into segments
+recursively, and no chain is longer than 20.

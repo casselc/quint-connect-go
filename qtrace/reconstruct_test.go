@@ -102,3 +102,19 @@ func TestStepLogRoundTrip(t *testing.T) {
 		t.Fatalf("round trip: %+v\n%s", g, buf.String())
 	}
 }
+
+// A Lamport clock across nodes: steps with equal values are concurrent, but
+// each must precede every step with a larger value, not just its neighbour.
+func TestDomainClockGroups(t *testing.T) {
+	mk := func(a string, rec string, clock, at int64) Step {
+		return Step{Action: a, Seq: 1, Recorder: rec, Actor: "x", Process: "p", Time: time.Unix(0, at),
+			Order: map[string]int64{"lamport": clock}}
+	}
+	// a's wall clock is late: by time alone it would come last
+	steps := []Step{mk("a", "n1", 3, 10), mk("b", "n2", 3, 2), mk("c", "n3", 4, 3)}
+	traces, _ := Reconstruct(steps)
+	got := actions(traces[0])
+	if got != "b a c" && got != "a b c" {
+		t.Fatalf("order: %s", got)
+	}
+}

@@ -43,11 +43,19 @@ func TestBankAgainstModel(t *testing.T) {
 ```
 
 - **Modes:**
+  - `Batched` is the usual choice: rounds of unchecked generation, bulk
+    checks (many runs per quint process), and on a failure a replay of
+    the round in `Each` mode, so Hegel shrinks it.
+    - All passing, it costs about what `After` does (3.4 s against 22 s
+      for `Each` on 40 cases).
+    - Set `Rounds` or `Budget` to keep exploring, and `Seed` to
+      reproduce.
+    - The body must be deterministic in Hegel's draws.
   - `Each` checks every case, so a violation is a Hegel failure and Hegel
     shrinks it against the model. A `CaseChecker` caches verdicts, so
     shrinking runs quint far less than once per candidate.
-  - `After` checks the distinct runs in parallel after Hegel finishes. It
-    is cheaper, but shrinks nothing.
+  - `After` checks the distinct runs in bulk after Hegel finishes. It is
+    the cheapest, but shrinks nothing.
   - `Off` records only.
 - **`Global: true`** installs each case's recorder as the global qobs
   recorder, for implementation-side `qobs.Record` or woven code. Rules
@@ -102,3 +110,8 @@ report):
   `CaseChecker` treats it as OK.
 - `hegel-go` needs Go ≥ 1.26.1. Its engine is embedded (no Python, no
   server), and runs offline after the first download.
+- For distributed systems, embed `maelstrom.Network` (examples/glomers)
+  in the machine. Hegel then schedules deliveries, losses, partitions
+  and timers next to the client requests. Settle at the end of each case
+  (heal, quiesce, record `settle`), so properties conditioned on
+  quiescence are checked.

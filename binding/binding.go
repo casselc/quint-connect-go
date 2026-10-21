@@ -182,8 +182,17 @@ func (a Action) usesOutcome() bool {
 	return set["outcome"]
 }
 
+// templateFuncs names the functions templates may call (Plan defines them;
+// these stand-ins let a template parse for linting).
+var templateFuncs = template.FuncMap{
+	"set": func(...string) string { return "" }, "max": func(string) int64 { return 0 }, "count": func(string) int { return 0 },
+	"procs": func() int { return 0 }, "add": func(a, b any) int64 { return 0 }, "atLeast": func(lo, v any) int64 { return 0 },
+	"toSet": func(any) (string, error) { return "", nil }, "toList": func(any) (string, error) { return "", nil },
+	"toMap": func(any) (string, error) { return "", nil },
+}
+
 func parseTpl(s string) (*template.Template, error) {
-	return template.New("").Option("missingkey=error").Parse(s)
+	return template.New("").Option("missingkey=error").Funcs(templateFuncs).Parse(s)
 }
 
 func collectFields(s string, set map[string]bool) {

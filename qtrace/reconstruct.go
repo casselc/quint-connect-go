@@ -186,11 +186,18 @@ func order(actor string, steps []Step) *Trace {
 	for k, l := range domains {
 		d := k[indexNul(k)+1:]
 		sort.SliceStable(l, func(i, j int) bool { return l[i].s.Order[d] < l[j].s.Order[d] })
-		for i := 1; i < len(l); i++ {
-			if l[i-1].s.Order[d] == l[i].s.Order[d] {
-				continue // equal clock values: no constraint
+		// Steps with equal clock values are unordered with each other; every
+		// step of one value comes before every step of the next. (Linking
+		// neighbours only would leave a(3) unordered with c(4) in a(3) b(3) c(4).)
+		var prev, cur []*node
+		for i, n := range l {
+			if i > 0 && n.s.Order[d] != l[i-1].s.Order[d] {
+				prev, cur = cur, nil
 			}
-			edge(ns, l[i-1].idx, l[i].idx)
+			for _, p := range prev {
+				edge(ns, p.idx, n.idx)
+			}
+			cur = append(cur, n)
 		}
 	}
 	// Kahn's algorithm, preferring recording order.

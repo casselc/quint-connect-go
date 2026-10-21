@@ -109,6 +109,21 @@ func TestBankAgainstModel(t *testing.T) {
 }
 ```
 
+Modes, measured on the same 40-case state machine (`quinthegel/modes_test.go`):
+
+| Mode | How | All runs pass | A run fails |
+|---|---|---|---|
+| `Each` | check every case as it ends; Hegel shrinks failures against the model | 22 s | 32 s, shrunk |
+| `After` | check all distinct runs at the end, in bulk | 3.3 s | 3.4 s, **not shrunk** |
+| `Batched` | generate a round unchecked, check it in bulk, continue while it passes (`Rounds`, `Budget`); on a failure, replay the round in `Each` mode: cached verdicts decide every case up to the failing one, and Hegel shrinks it | 3.4 s | 23 s, shrunk |
+
+Bulk checking (`validate.Checker.CheckBatch`) replays many runs per quint
+process, grouped by instance. 24 runs take 1.6 s, against 6.6 s for one
+process per run in parallel and about 14 s one at a time. Process
+start-up dominates short replays. Bulk checking speeds up generation,
+where runs are new; the verdict cache speeds up shrinking, where
+candidates share prefixes. `Batched` uses both.
+
 This is the direction that finds code accepting what the model forbids.
 Model-driven tests cannot: the model never asks for a disabled step. In
 `examples/bank`, a mutant that allows self-transfers passes every model
@@ -204,12 +219,14 @@ which bug.
 
 | App | What it is | What it shows |
 |---|---|---|
+| [`examples/glomers`](examples/glomers) | Fly.io's Gossip Glomers: unique ids, broadcast, grow-only counter, kafka-style log, on a Maelstrom runtime and simulator | distributed systems: models of each challenge with their properties; Lamport clocks to merge per-node step logs; Hegel scheduling deliveries, losses and partitions, and shrinking a lost-update bug to three steps; the same nodes under real Maelstrom, their logs conforming to the models |
 | [`examples/kvstore`](examples/kvstore) | an HTTP key-value service with compare-and-swap (`kvserver`, `kvload`) | a concurrent service checked as a serial behaviour of its model, from its steps or its plain OTel spans (`kv.op` as a linearization key); a CAS race caught under load; errors that classify themselves; reads checked against the model; Hegel over HTTP |
 | [`examples/jobqueue`](examples/jobqueue) | an at-least-once job queue with leases, workers and restarts (`jobqueue`) | all three verdicts: an implementation bug, a design property the run violates (`exactlyOnce`, checked with `-invariants`), and conformance; restarts inferred from incarnations; when model-driven testing does not fit |
 | [`examples/bank`](examples/bank) | an in-memory bank (library) | every workflow on one small system: what model-driven testing cannot catch and Hegel + the model can |
 | [`examples/edgepublish`](examples/edgepublish) | the spike's real case: an OTel exporter's publish protocol with S3 faults and crashes (own module, Orchestrion) | `//quint:action` annotations; three trace paths with identical verdicts; MBT with gated effects; model → Go → telemetry → model |
 
 ```sh
+examples/glomers/maelstrom.sh                   # under real Maelstrom, then quintgo on the nodes' step logs
 examples/kvstore/run-demo.sh                    # MUTATION=stale-cas | revision-on-conflict
 examples/jobqueue/run-demo.sh                   # MUTATION=ack-any-lease | forget-done
 ```
