@@ -22,6 +22,8 @@ scenarios/         demo scenarios, and a test that every trace path gives the sa
 cmd/demo/          a scenario -> OTLP/JSON spans, native step log, model-level ITF
 mbt/               model traces drive the publisher (effects gated so the model schedules them);
                    round trip back through the validator
+sim/               the publisher, unchanged, in a qenv simulation (qenv/weave): exploration,
+                   mutants, Hegel shrinking, and the load tier
 run-demo.sh        everything above, from the CLI
 ```
 
@@ -40,7 +42,7 @@ Step by step, what `run-demo.sh` does:
 ```sh
 (cd ../.. && go build -o /tmp/q/quintgo ./cmd/quintgo)
 go run github.com/DataDog/orchestrion go build -o /tmp/q/demo ./cmd/demo   # weaves //quint:action
-/tmp/q/quintgo lint -binding binding.yaml -src .
+/tmp/q/quintgo lint -binding binding.yaml -src publisher
 /tmp/q/demo -scenario happy -out /tmp/q/spans.jsonl -steps /tmp/q/steps.jsonl -itf /tmp/q/itf -binding binding.yaml
 /tmp/q/quintgo steps /tmp/q/steps.jsonl                                    # the reconstructed order (any format)
 /tmp/q/quintgo validate -binding binding.yaml /tmp/q/spans.jsonl   # OTel path
@@ -88,6 +90,69 @@ Each scenario, each of the three paths (`run-demo.sh` output):
 
 (`rotation-race` passes on all three; `no-lock` fails at step [1] on all three.)
 
+## The publisher in a simulation (`sim/`, woven by `qenv/weave`)
+
+The publisher uses plain Go concurrency: a `sync.RWMutex` that pushes hold
+shared and rotation exclusively, a `sync.WaitGroup`, and a background seal
+started with `go`. Built with Orchestrion and `qenv/weave` in
+`orchestrion.tool.go`, those calls become qenv's:
+- a lock is a scheduling point, and waiting on it is a simulated wait;
+- the seal's goroutine (marked `//qenv:go`) is a simulation task.
+
+So the publisher runs as written, its interleavings chosen by a seed or by
+Hegel. Two changes were needed, both flagged by `quintgo lint -weave`:
+- the `//qenv:go` comment on the go statement;
+- `acquire` returns its unlock as a function literal calling `RUnlock`,
+  not the method value `st.mu.RUnlock`, because weaving rewrites calls.
+
+The environment:
+- S3 writes fail or fail ambiguously (`fault.s3.*`) and take a chosen
+  time, during which the clock moves and other pushes run;
+- the collector retries a failed export, also in the next incarnation;
+- the exporter crashes into new epochs.
+
+```sh
+go run github.com/DataDog/orchestrion go test ./sim/ -v     # ~10 min; -short ~4 min
+```
+
+| Test | Shows |
+|---|---|
+| `TestExploredRunsConform` | 40 seeds: every interleaving of pushes, rotations and background seals, with failures, ambiguous writes and crashes, is a behaviour of the model |
+| `TestInvariantsHoldWithoutAmbiguousWrites` | with plain failures only, the design's invariants hold too |
+| `TestExplorationFindsAmbiguousFindings` | with ambiguous writes, random runs find the model's known findings F1/F3 (9 of 60 seeds), which `ambiguous-seal` had reproduced by hand |
+| `TestMutants` | `ManifestBeforeTable` (every seed), `NoRotationLock` (34 of 40), `BackwardRotation` (7 of 150: a narrow window) |
+| `TestHegelShrinksNoRotationLock` | Hegel shrinks to a rotation while a push is between its writes |
+| `TestLoadRecovers` | 3 requests/s against an S3 that serves 10 writes/s, through a 3x slowdown: recovers with 4 exporters or 16 |
+| `TestTimeoutsMakeDuplicates` | with 16 exporters and a 2 s S3 timeout, S3's queueing delay turns writes ambiguous and the collector's retries commit requests twice, with no trigger at all (30 in a run); with a 10 s timeout, none |
+| `TestLoadRunAgainstModel` | a load run's 353 steps conform to the model, and its duplicate is the model's F3 |
+
+What the simulation found:
+- **The stand-in was out of date.** Exploring the faithful publisher, one
+  run in 40 rotated backwards: a `Tick` read the clock, waited for the
+  exclusive lock while pushes held it shared through slow S3 writes, and
+  meanwhile a push rotated past the minute. With the lock, `Tick` saw a
+  different id and rotated back, reopening a sealed generation. The real
+  `publish.go` had already been fixed ("Generations only move forward. The
+  clock is read under the lock…"), and the stand-in had been copied
+  before the fix. It now follows `publish.go`; the old code is the
+  `BackwardRotation` mutant.
+- **Load does not collapse the exporter. It produces duplicates.** Its
+  concurrency is bounded and the collector pauses before retrying, so
+  there is no storm. But an S3 write timeout shorter than S3's queueing
+  delay turns load into ambiguous writes, and retried ambiguous writes
+  into duplicate commits. The model's F3 then happens in normal operation.
+  Their number grows with concurrency, and a timeout above the worst
+  queueing delay removes them.
+- **Two qenv bugs, fixed in qenv.**
+  - The background seal ran with `context.Background()`, so its simulated
+    S3 latency slept in real time (5–30 s per run). qenv operations now
+    find the task through the goroutine when the context has none; a run
+    takes 3 ms.
+  - `//quint:action` records when its function returns, and a task killed
+    by a crash returns by unwinding. That recorded a write the crash had
+    interrupted, as successful. Steps recorded while a killed task
+    unwinds are now discarded.
+
 ## Known gaps
 
 - With `--backend rust`, `quint run --mbt` traces of `currentDesign`
@@ -100,3 +165,10 @@ Each scenario, each of the three paths (`run-demo.sh` output):
   reproduce the gap.
 - The stand-in, not the real exporter, is validated here. The real one
   is checked from trace files in casselc/observability (`otel-chdb/PBT.md`).
+  The simulation could run the real one too: it needs the same
+  `//qenv:go` mark on its background seal, and its unlock method value
+  wrapped. Its chDB sessions would also need a seam, as the stand-in's
+  `Store` is.
+- Hegel cannot find `BackwardRotation` within its budget here: the window
+  is a few runs in a hundred, and every case is a quint check. Seeded
+  exploration finds it.

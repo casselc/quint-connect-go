@@ -34,6 +34,9 @@ func TestExperiment(t *testing.T) {
 	if r := a.Rate("served", 0, 200*time.Second); r < 4.5 || r > 5.5 {
 		t.Errorf("open loop at 5/s: goodput %.2f/s", r)
 	}
+	if n, ok := a.Count("served", 0, 200*time.Second), a.Count("served/ok", 0, 200*time.Second); n != ok || n == 0 {
+		t.Errorf("served %d, served/ok %d", n, ok)
+	}
 	if b := x.Run(1, qload.Trigger{}, 200*time.Second); !reflect.DeepEqual(a, b) {
 		t.Error("two runs with the same seed differ")
 	}

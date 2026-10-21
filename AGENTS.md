@@ -33,6 +33,7 @@ itf/          ITF decode/encode, Go <-> Quint values (Decode/Encode), Quint lite
 qobs/ qtrace/ otelio/ convert/ load/   recording, schema/reconstruction, OTLP, span conversion, input sniffing
 binding/ validate/ qtest/              binding YAML, quint-test-based validator, test helpers (Expect, Explore)
 qenv/         deterministic simulation: scheduler, virtual time, processes, choosers; Store, Queue, Service doubles
+qenv/weave/   Orchestrion aspects: sync locks, wait groups and //qenv:go goroutines simulated inside qenv, real outside
 qload/ qmeta/ load simulation (open/closed-loop clients, servers, triggers); CTMC, recovery property, Hegel trigger search
 cmd/quintgo/  CLI
 skills/       agent skills, the source of truth (embedded by package skills;
@@ -46,7 +47,8 @@ examples/fleetrollout separate module: multicluster-runtime controller, simulate
 examples/crossdb      separate module: Crossplane provider (crossplane-runtime) for a dbaas, simulated and on kind with Crossplane (kind/)
 examples/retrystorm   library: retry policies (backoff, budget); budget checked by a model, policies by qmeta/qload/FindTrigger
 examples/bank         library example; every workflow on one small system
-examples/edgepublish  separate module (Orchestrion); the spike's real-world case, model vendored in model/
+examples/edgepublish  separate module (Orchestrion); the spike's real-world case, model vendored in model/;
+                      sim/: the publisher, unchanged, in qenv by weaving (orchestrion go test ./sim/)
 docs/         DESIGN.md, instrumentation.md
 ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API rate limits)
 ```
@@ -162,6 +164,20 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   (`qobs.Strict`), so a step from a goroutine started with `go` panics.
   `quintgo lint -sim .` (in CI) flags `go` statements and wall-clock
   calls in files that import qenv; `//qenv:ok` exempts a line.
+- qenv finds the task of a goroutine when a context carries none: Sleep,
+  Wait, Go and recording with `context.Background()` from a task stay in
+  its simulation (`taskOf`, `qenv/goroutine.go`). Without that, a woven
+  background goroutine's simulated latency slept in real time.
+- A task killed by a crash unwinds its defers. Steps recorded then
+  (`//quint:action` records on return) are discarded: the work did not
+  complete (`qobs.SetDiscard`).
+- Woven code (`qenv/weave`): weaving rewrites calls of `sync` methods in
+  the root module and `//qenv:go` go statements. A method value
+  (`return st.mu.RUnlock`) or an unmarked `go` escapes, so check with
+  `quintgo lint -weave DIR`. Inside a simulation, every user of a woven
+  object must be one of its tasks (call `Close` from a task, not from the
+  test goroutine). Woven calls look up the goroutine (about 1 µs), so
+  weave test builds only.
 - Run qenv's tests, and tests of new doubles, with `QENV_CHECK=1`: the
   scheduler checks its invariants at every step. CI does.
 - A recovery verdict needs a healthy baseline (`Experiment.Healthy`). A

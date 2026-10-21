@@ -57,8 +57,9 @@ func (tr Trigger) Factor() Shape {
 // or as a closed loop of Population users who think Think between
 // requests. Throughput is measured from the application's own model steps:
 // the steps it records (through the simulation's contexts) are counted per
-// tick, so goodput is the rate of a model action ("markPaid"), and the same
-// steps can go to Sink to be checked against the model.
+// tick, so goodput is the rate of a model action ("markPaid"), or of an
+// action with an outcome ("writeManifest/ok"), and the same steps can go to
+// Sink to be checked against the model.
 type Experiment struct {
 	// Deploy builds the system in env.Sim, with env.Trigger in effect where
 	// it applies (a dependency's slowdown: env.Trigger.Factor()), registers
@@ -115,7 +116,7 @@ func (e *Env) Probe(name string, f func() int) { e.probes[name] = f }
 // A Point is one tick of a Series.
 type Point struct {
 	T      time.Duration
-	Steps  map[string]int // model steps recorded in the tick, by action
+	Steps  map[string]int // model steps recorded in the tick, by action, and by "action/outcome" ("writeManifest/ok")
 	Probes map[string]int // gauges at the end of the tick
 }
 
@@ -160,6 +161,7 @@ type counter struct {
 func (c *counter) Record(ctx context.Context, s *qtrace.Step) {
 	c.mu.Lock()
 	c.n[s.Action]++
+	c.n[s.Action+"/"+s.Outcome]++
 	c.mu.Unlock()
 	if c.next != nil {
 		c.next.Record(ctx, s)

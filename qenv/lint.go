@@ -17,6 +17,22 @@ type Finding struct {
 	Pos  string // file:line:col
 	What string
 	Fix  string
+
+	file      string
+	line, col int
+}
+
+func sortFindings(fs []Finding) {
+	sort.Slice(fs, func(i, j int) bool {
+		a, b := fs[i], fs[j]
+		if a.file != b.file {
+			return a.file < b.file
+		}
+		if a.line != b.line {
+			return a.line < b.line
+		}
+		return a.col < b.col
+	})
 }
 
 func (f Finding) String() string { return f.Pos + ": " + f.What + ": " + f.Fix }
@@ -55,7 +71,7 @@ func Lint(dir string) ([]Finding, error) {
 		out = append(out, lintFile(fset, f)...)
 		return nil
 	})
-	sort.Slice(out, func(i, j int) bool { return out[i].Pos < out[j].Pos })
+	sortFindings(out)
 	return out, err
 }
 
@@ -92,7 +108,8 @@ func lintFile(fset *token.FileSet, f *ast.File) []Finding {
 	add := func(n ast.Node, what, fix string) {
 		pos := fset.Position(n.Pos())
 		if !exempt[pos.Line] {
-			out = append(out, Finding{Pos: fmt.Sprintf("%s:%d:%d", pos.Filename, pos.Line, pos.Column), What: what, Fix: fix})
+			out = append(out, Finding{Pos: fmt.Sprintf("%s:%d:%d", pos.Filename, pos.Line, pos.Column), What: what, Fix: fix,
+				file: pos.Filename, line: pos.Line, col: pos.Column})
 		}
 	}
 	sel := func(e ast.Expr, pkgPath string) (string, bool) {
@@ -120,6 +137,90 @@ func lintFile(fset *token.FileSet, f *ast.File) []Finding {
 						add(n, "step recorded with context."+bg+"()", "record through the task's context, or Sim.Context() outside tasks")
 					}
 				}
+			}
+		}
+		return true
+	})
+	return out
+}
+
+// syncMethods are the sync.Mutex, RWMutex and WaitGroup methods qenv/weave
+// rewrites, when called.
+var syncMethods = map[string]bool{"Lock": true, "Unlock": true, "TryLock": true, "RLock": true, "RUnlock": true,
+	"TryRLock": true, "Add": true, "Done": true, "Wait": true}
+
+// LintWoven scans the Go files under dir, tests excluded, for what
+// qenv/weave cannot bring into a simulation:
+//   - a go statement not marked //qenv:go: its goroutine runs outside the
+//     simulation;
+//   - a lock or wait group method used as a value (st.mu.RUnlock passed or
+//     returned, not called): weaving rewrites calls, so it would run the
+//     real method on an object whose simulated state it never sees. Wrap
+//     it in a function literal that calls it.
+//
+// Method values are found by name (no type information), so a method of
+// another type with one of those names is reported too: mark a deliberate
+// one //qenv:ok.
+func LintWoven(dir string) ([]Finding, error) {
+	var out []Finding
+	fset := token.NewFileSet()
+	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() && path != dir && (d.Name() == "vendor" || d.Name() == "testdata" || strings.HasPrefix(d.Name(), ".")) {
+			return filepath.SkipDir
+		}
+		if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		f, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
+		if err != nil {
+			return err
+		}
+		out = append(out, lintWovenFile(fset, f)...)
+		return nil
+	})
+	sortFindings(out)
+	return out, err
+}
+
+func lintWovenFile(fset *token.FileSet, f *ast.File) []Finding {
+	marked := map[int]string{} // line -> directive on it
+	for _, cg := range f.Comments {
+		for _, c := range cg.List {
+			for _, d := range []string{"//qenv:go", "//qenv:ok"} {
+				if c.Text == d || strings.HasPrefix(c.Text, d+" ") {
+					marked[fset.Position(c.Pos()).Line] = d
+				}
+			}
+		}
+	}
+	var out []Finding
+	add := func(n ast.Node, what, fix string) {
+		pos := fset.Position(n.Pos())
+		out = append(out, Finding{Pos: fmt.Sprintf("%s:%d:%d", pos.Filename, pos.Line, pos.Column), What: what, Fix: fix,
+			file: pos.Filename, line: pos.Line, col: pos.Column})
+	}
+	called := map[ast.Expr]bool{}
+	ast.Inspect(f, func(n ast.Node) bool {
+		if c, ok := n.(*ast.CallExpr); ok {
+			called[c.Fun] = true
+		}
+		return true
+	})
+	ast.Inspect(f, func(n ast.Node) bool {
+		switch n := n.(type) {
+		case *ast.GoStmt:
+			line := fset.Position(n.Pos()).Line
+			if marked[line-1] != "//qenv:go" && marked[line] != "//qenv:ok" {
+				add(n, "go statement not marked //qenv:go: its goroutine runs outside the simulation",
+					"mark it //qenv:go (the call must be a function literal), or //qenv:ok if it should stay outside")
+			}
+		case *ast.SelectorExpr:
+			if syncMethods[n.Sel.Name] && !called[n] && marked[fset.Position(n.Pos()).Line] != "//qenv:ok" {
+				add(n, "method value "+n.Sel.Name+" is not woven (weaving rewrites calls)",
+					"wrap it in a function literal that calls it: func() { x."+n.Sel.Name+"() }")
 			}
 		}
 		return true

@@ -2,9 +2,11 @@ package qenv
 
 import (
 	"bytes"
+	"context"
 	"runtime"
 	"strconv"
 	"sync"
+	"sync/atomic"
 
 	"github.com/casselc/quint-connect-go/qobs"
 )
@@ -18,19 +20,49 @@ import (
 // only when a task starts and on that fallback path.
 var owners struct {
 	sync.Mutex
-	m map[int64][]*Sim // a stack: a goroutine may create a simulation inside another's lifetime
+	m map[int64][]owner // a stack: a goroutine may create a simulation inside another's lifetime
 }
 
+// owner is a goroutine's simulation, and its task if it runs one (nil for
+// the goroutine that created the simulation).
+type owner struct {
+	s *Sim
+	t *task
+}
+
+// live counts the simulations not yet closed: with none, the per-step
+// discard check costs an atomic load.
+var live atomic.Int64
+
 func init() {
-	owners.m = map[int64][]*Sim{}
+	owners.m = map[int64][]owner{}
+	qobs.SetDiscard(func() bool {
+		if live.Load() == 0 {
+			return false
+		}
+		o, ok := ownerOf(goid())
+		return ok && o.t != nil && o.t.killed
+	})
 	qobs.SetFallback(func() (*qobs.Recorder, bool) {
-		s := ownerOf(goid())
-		if s == nil {
+		o, ok := ownerOf(goid())
+		if !ok {
 			return nil, false
 		}
-		r := qobs.InContext(s.base)
+		r := qobs.InContext(o.s.base)
 		return r, r != nil
 	})
+}
+
+// Current returns the context of the simulation task running on the
+// calling goroutine, whatever context the caller has (none: woven code).
+// It is how code rewritten at build time (qenv/weave) finds the
+// simulation it runs in; false outside any task.
+func Current() (context.Context, bool) {
+	o, ok := ownerOf(goid())
+	if !ok || o.t == nil {
+		return nil, false
+	}
+	return o.t.ctx, true
 }
 
 // goid is the calling goroutine's id ("goroutine 123 [running]:").
@@ -45,9 +77,9 @@ func goid() int64 {
 	return id
 }
 
-func own(id int64, s *Sim) {
+func own(id int64, s *Sim, t *task) {
 	owners.Lock()
-	owners.m[id] = append(owners.m[id], s)
+	owners.m[id] = append(owners.m[id], owner{s, t})
 	owners.Unlock()
 }
 
@@ -56,7 +88,7 @@ func disown(id int64, s *Sim) {
 	defer owners.Unlock()
 	st := owners.m[id]
 	for i := len(st) - 1; i >= 0; i-- {
-		if st[i] == s {
+		if st[i].s == s {
 			st = append(st[:i], st[i+1:]...)
 			break
 		}
@@ -68,11 +100,11 @@ func disown(id int64, s *Sim) {
 	}
 }
 
-func ownerOf(id int64) *Sim {
+func ownerOf(id int64) (owner, bool) {
 	owners.Lock()
 	defer owners.Unlock()
 	if st := owners.m[id]; len(st) > 0 {
-		return st[len(st)-1]
+		return st[len(st)-1], true
 	}
-	return nil
+	return owner{}, false
 }

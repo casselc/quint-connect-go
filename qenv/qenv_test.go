@@ -531,3 +531,52 @@ func TestStrictStepWithNowhereToGo(t *testing.T) {
 	}()
 	qobs.Record(context.Background(), "lost", nil)
 }
+
+// A task killed by a crash unwinds its deferred functions, and a step one
+// of them records (as //quint:action advice does on return) describes work
+// that never completed: it is discarded.
+func TestKilledTasksRecordNothing(t *testing.T) {
+	mem := &qobs.MemorySink{}
+	s := qenv.New(qenv.WithContext(qenv.Nominal{}, qobs.WithRecorder(context.Background(), qobs.NewRecorder(mem))))
+	p := s.Process("writer", true, func(ctx context.Context) {
+		func() {
+			defer qobs.Record(ctx, "write", nil) // recorded on return
+			qenv.Sleep(ctx, time.Hour)           // crashed before it returns
+		}()
+	})
+	s.Spawn("nemesis", func(ctx context.Context) {
+		qenv.Sleep(ctx, time.Second)
+		p.Crash()
+		qobs.Record(ctx, "crashed", nil)
+	})
+	if err := s.Run(time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	s.Close() // kills the restarted incarnation's sleeping task too
+	if steps := mem.Steps(); len(steps) != 1 || steps[0].Action != "crashed" {
+		t.Fatalf("steps %v, want only the nemesis's", steps)
+	}
+}
+
+// Sleep, Go and Wait called with a context that carries no task (as a
+// library or woven code might) from a task's goroutine still act in the
+// simulation: virtual time passes, not real time.
+func TestBackgroundContextInTask(t *testing.T) {
+	s := qenv.New(qenv.Nominal{})
+	defer s.Close()
+	var slept time.Duration
+	s.Spawn("task", func(context.Context) {
+		bg := context.Background()
+		start := s.Elapsed()
+		qenv.Sleep(bg, time.Hour)
+		qenv.Go(bg, "child", func(ctx context.Context) { qenv.Sleep(ctx, time.Minute) })
+		slept = s.Elapsed() - start
+	})
+	t0 := time.Now()
+	if err := s.Run(2 * time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	if slept != time.Hour || time.Since(t0) > 5*time.Second {
+		t.Fatalf("slept %v of virtual time in %v of real time", slept, time.Since(t0))
+	}
+}

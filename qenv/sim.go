@@ -58,6 +58,7 @@ type Sim struct {
 	procs     []*Process
 	nemeses   []*nemesis
 	onCrash   []func(*Process)
+	keyed     map[any]any // keyed locks and wait groups (keyed.go)
 	onSettle  []func()
 	faultsOff bool
 	settling  bool
@@ -74,12 +75,13 @@ type task struct {
 	proc     *Process
 	inc      int // the process incarnation it belongs to
 	wake     chan struct{}
-	waiting  bool        // parked until ready, a signal, or deadline
-	ready    func() bool // the predicate waited for, if any
-	deadline time.Time   // zero: none
-	gen      int         // bumped when a wait ends: stale timers are skipped
-	notified bool        // a Signal it waited on fired
-	queued   bool        // in runq
+	ctx      context.Context // its context (Current)
+	waiting  bool            // parked until ready, a signal, or deadline
+	ready    func() bool     // the predicate waited for, if any
+	deadline time.Time       // zero: none
+	gen      int             // bumped when a wait ends: stale timers are skipped
+	notified bool            // a Signal it waited on fired
+	queued   bool            // in runq
 	done     bool
 	killed   bool
 }
@@ -126,7 +128,8 @@ func New(c Chooser) *Sim {
 	}
 	s := &Sim{c: c, base: base, now: Epoch, start: Epoch, back: make(chan struct{}), MaxSteps: 100000,
 		Check: os.Getenv("QENV_CHECK") == "1", creator: goid()}
-	own(s.creator, s)
+	own(s.creator, s, nil)
+	live.Add(1)
 	return s
 }
 
@@ -175,9 +178,24 @@ func (s *Sim) Elapsed() time.Duration { return s.now.Sub(s.start) }
 
 type ctxKey struct{}
 
+// taskOf is the simulation task ctx belongs to; for a context that
+// carries none (context.Background() in a library, or in code woven by
+// qenv/weave), the task running on the calling goroutine. So Sleep, Wait
+// and Go called with any context from a task stay in its simulation:
+// virtual time, not real.
 func taskOf(ctx context.Context) *task {
-	t, _ := ctx.Value(ctxKey{}).(*task)
-	return t
+	if ctx != nil {
+		if t, ok := ctx.Value(ctxKey{}).(*task); ok {
+			return t
+		}
+	}
+	if live.Load() == 0 {
+		return nil
+	}
+	if o, ok := ownerOf(goid()); ok {
+		return o.t
+	}
+	return nil
 }
 
 // From returns the simulation ctx runs in, or nil outside one.
@@ -214,9 +232,10 @@ func (s *Sim) spawn(parent context.Context, name string, p *Process, fn func(ctx
 	s.tasks = append(s.tasks, t)
 	s.enqueue(t)
 	ctx := context.WithValue(parent, ctxKey{}, t)
+	t.ctx = ctx
 	go func() {
 		id := goid()
-		own(id, s)
+		own(id, s, t)
 		defer disown(id, s)
 		<-t.wake
 		defer func() {
@@ -756,6 +775,7 @@ func (s *Sim) Close() {
 	}
 	s.closed = true
 	defer disown(s.creator, s)
+	defer live.Add(-1)
 	for _, t := range s.tasks {
 		if !t.done {
 			t.killed = true

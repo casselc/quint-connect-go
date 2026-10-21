@@ -4,6 +4,7 @@
 //	quintgo scaffold -spec model.qnt -module M          print a binding skeleton for M
 //	quintgo lint     -binding b.yaml [-src DIR]         check a binding (and annotations) against the model
 //	quintgo lint     -sim DIR                           check simulation code for goroutines, wall-clock time and steps that escape it
+//	quintgo lint     -weave DIR                         check code woven by qenv/weave for go statements and method values it cannot rewrite
 //	quintgo steps    FILE...                            print the reconstructed per-actor traces
 //	quintgo validate [-binding b.yaml] [-dir OUT] FILE...
 //	                                                    reconstruct (or read), replay in Quint, report
@@ -74,7 +75,7 @@ func usage() {
 	fmt.Fprintln(os.Stderr, `usage:
   quintgo scaffold -spec model.qnt -module M
   quintgo lint     -binding b.yaml [-src DIR] [-sim DIR]
-  quintgo lint     -sim DIR
+  quintgo lint     -sim DIR | -weave DIR
   quintgo steps    FILE.jsonl...
   quintgo validate [-binding b.yaml] [-dir OUT] [-backend rust|typescript] [-format auto|otlp|steps|itf]
                    [-spec M.qnt -module M -instance I] [-novars]
@@ -132,9 +133,27 @@ func lint(args []string) (int, error) {
 	bpath := fset.String("binding", "", "binding file")
 	src := fset.String("src", "", "Go source tree to scan for //quint:action")
 	sim := fset.String("sim", "", "Go source tree of simulation code (files importing qenv) to check for what escapes the simulation")
+	weave := fset.String("weave", "", "Go source tree woven by qenv/weave to check for what weaving cannot rewrite")
 	quint := fset.String("quint", "quint", "quint binary")
 	fset.Parse(args)
 	simFindings := 0
+	if *weave != "" {
+		fs, err := qenv.LintWoven(*weave)
+		if err != nil {
+			return 2, err
+		}
+		for _, f := range fs {
+			fmt.Printf("%s: %s (%s)\n", f.Pos, f.What, f.Fix)
+		}
+		fmt.Printf("%d places under %s that weaving cannot rewrite\n", len(fs), *weave)
+		simFindings += len(fs)
+		if *bpath == "" && *sim == "" {
+			if simFindings > 0 {
+				return 1, nil
+			}
+			return 0, nil
+		}
+	}
 	if *sim != "" {
 		fs, err := qenv.Lint(*sim)
 		if err != nil {
@@ -144,7 +163,7 @@ func lint(args []string) (int, error) {
 			fmt.Printf("%s: %s (%s)\n", f.Pos, f.What, f.Fix)
 		}
 		fmt.Printf("%d places under %s escape the simulation\n", len(fs), *sim)
-		simFindings = len(fs)
+		simFindings += len(fs)
 		if *bpath == "" {
 			if simFindings > 0 {
 				return 1, nil

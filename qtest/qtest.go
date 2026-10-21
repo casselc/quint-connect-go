@@ -37,6 +37,9 @@ type Config struct {
 	SkipIfEmpty bool             // skip (not fail) when nothing was recorded, e.g. an unwoven build
 	// Constants override the binding's (validate.Checker.WithConstants).
 	Constants map[string]string
+	// Invariants, if set, replace the binding's list
+	// (validate.Checker.WithInvariants); empty and non-nil checks none.
+	Invariants []string
 }
 
 // Option changes a Config.
@@ -62,18 +65,30 @@ func Constants(m map[string]string) Option {
 	}
 }
 
-// checkerFor is the cached checker for a binding, with c's constants.
+// Invariants checks these of the model's invariants instead of the
+// binding's list: none with Invariants(), for conformance alone, or a
+// design-level property the binding leaves out.
+func Invariants(names ...string) Option {
+	return func(c *Config) { c.Invariants = append([]string{}, names...) }
+}
+
+// checkerFor is the cached checker for a binding, with c's constants and
+// invariants.
 func checkerFor(t testing.TB, bindingPath string, o validate.Options, c Config) *validate.Checker {
 	t.Helper()
 	ch := checker(t, bindingPath, o)
-	if len(c.Constants) == 0 {
-		return ch
+	var err error
+	if len(c.Constants) > 0 {
+		if ch, err = ch.WithConstants(c.Constants); err != nil {
+			t.Fatalf("quintgo: %v", err)
+		}
 	}
-	cc, err := ch.WithConstants(c.Constants)
-	if err != nil {
-		t.Fatalf("quintgo: %v", err)
+	if c.Invariants != nil {
+		if ch, err = ch.WithInvariants(c.Invariants...); err != nil {
+			t.Fatalf("quintgo: %v", err)
+		}
 	}
-	return cc
+	return ch
 }
 
 // Run is the outcome of a recorded run.

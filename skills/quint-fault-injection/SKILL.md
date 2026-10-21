@@ -120,6 +120,25 @@ qtest.Explore(t, "app.binding.yaml", qtest.ExploreConfig{Seeds: 100, Rates: rate
   on. For each mutant, a row per isolation level (or store, or broker
   mode) says where the bug is real (see examples/checkout's table).
 
+## 4b. Code you cannot rewrite against seams: weave it
+
+If the code uses `sync.Mutex`, `sync.RWMutex`, `sync.WaitGroup` or `go`
+statements and you want it unchanged (a stand-in that must track the
+real code, or the real code), weave it:
+- add `_ "github.com/casselc/quint-connect-go/qenv/weave"` to the
+  project's `orchestrion.tool.go`, and test with `go run
+  github.com/DataDog/orchestrion go test ./...`;
+- mark each go statement `//qenv:go` (its call must be a function
+  literal), and turn lock method values into calls
+  (`func() { mu.RUnlock() }`). `quintgo lint -weave DIR` lists both;
+- pass the code its clock if it takes one (`Now: s.Now`);
+- skip simulation tests in unwoven builds. A `//quint:action` probe that
+  records only when woven tells you which build you are in
+  (examples/edgepublish/sim `Woven`).
+
+Inside a simulation the woven locks are scheduling points, so seeds and
+Hegel explore their interleavings. Outside one, the real methods run.
+
 ## 5. Take the same model to the real environment
 
 Run the real binary against real dependencies, and inject the faults you

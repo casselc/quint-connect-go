@@ -16,8 +16,8 @@ export QUINTGO_BACKEND=${QUINTGO_BACKEND:-rust}
 echo "# output in $OUT"
 (cd ../.. && go build -o "$OUT/quintgo" ./cmd/quintgo) || exit 2
 go run github.com/DataDog/orchestrion go build -o "$OUT/demo" ./cmd/demo || exit 2
-echo; echo "\$ quintgo lint -binding binding.yaml -src ."
-"$OUT/quintgo" lint -binding binding.yaml -src . || exit 2
+echo; echo "\$ quintgo lint -binding binding.yaml -src publisher"
+"$OUT/quintgo" lint -binding binding.yaml -src publisher || exit 2
 
 verdict() { # file -> one line: conformance, failing step, invariants, exit status
   local name=$1; shift

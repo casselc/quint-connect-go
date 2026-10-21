@@ -249,6 +249,15 @@ happens only for a goroutine started with `go`, which `quintgo lint -sim
 DIR` flags, along with wall-clock time. A Hegel test records the same way,
 with `qenv.WithContext(qenv.Hegel(tc), rec.Context(ctx))`.
 
+Code you cannot rewrite against seams (plain `sync.Mutex`,
+`sync.RWMutex`, `sync.WaitGroup`, `go` statements) can be woven in at
+build time. Import `qenv/weave` in the project's `orchestrion.tool.go`
+and build with `orchestrion go test`. The root module's lock and wait group
+calls then become simulated ones inside a simulation and the real ones
+outside it, and a `go` statement marked `//qenv:go` starts a simulation
+task. `quintgo lint -weave DIR` finds what weaving cannot rewrite.
+[examples/edgepublish](examples/edgepublish) runs its publisher this way.
+
 Each seeded run is checked in one quint batch, and the failing seed's
 faults and step log are reported. `quinthegel.FindViolation` with
 `qenv.Hegel` shrinks a failure to the interleaving and faults it needs.
@@ -325,11 +334,12 @@ r := qmeta.Assess(x, "markPaid", qmeta.Trigger{Slowdown: 3, Duration: time.Minut
 | `validate` | replay with `quint test`: `Checker.Check`, `CheckRuns`, `ValidateITF`, structured verdicts |
 | `qtest` | record-then-check inside a Go test; `Expect` with `Conforms`/`Rejects`/`Mismatch`/`Violates`/`AnyOf`; `Explore` (seeded simulated runs, in parallel, checked in bulk); `Check`/`Validate` for steps recorded elsewhere; `Constants` (another instance of the binding's model); `RequireQuint` |
 | `qenv` | deterministic simulated environments: scheduler, virtual time, crashable processes, choosers (Hegel, seeded, replay, swarm), `Store` (isolation levels), `Queue`, `Service` (RPC, with optional `Capacity`: workers, queue, service times, shedding); `WithContext` (what every task's context carries, e.g. the run's recorder); crashes per virtual second (`NemesisEvery`); scheduler self-checks (`Check`, `QENV_CHECK=1`); `Lint` (what escapes a simulation: `go` statements, the wall clock) |
+| `qenv/weave` | Orchestrion aspects and the functions they call: `sync` locks and wait groups, and `//qenv:go` goroutines, simulated inside a qenv simulation and real outside |
 | `qload` | load on qenv: `Experiment` (an application under open- or closed-loop load, goodput from its model steps, probes, seeded streams, `Trigger`s); `Simulate` (an abstract server and clients with timeouts, retries, backoff, budgets or a `Retrier` under test) |
 | `qmeta` | metastability: a CTMC (`Field`/`SVG`, `HittingTimes`, `Expect`, `Calibrate`), the recovery property (`Recovers`, `Assess`, `Mostly`; judged against the healthy goodput within the counts' noise), Hegel trigger search (`FindTrigger`, and `Search` over any `System`) |
 | `load` | read OTLP/JSON, a step log or ITF, detected by content |
 | `skills` | the agent skills below, embedded; install targets |
-| `cmd/quintgo` | CLI: `scaffold`, `lint` (`-sim DIR`: simulation code), `steps`, `validate`, `itf`, `convert`, `skills` |
+| `cmd/quintgo` | CLI: `scaffold`, `lint` (`-sim DIR`: simulation code; `-weave DIR`: woven code), `steps`, `validate`, `itf`, `convert`, `skills` |
 
 ## Example apps
 
@@ -347,7 +357,7 @@ which bug.
 | [`examples/kvstore`](examples/kvstore) | an HTTP key-value service with compare-and-swap (`kvserver`, `kvload`) | a concurrent service checked as a serial behaviour of its model, from its steps or its plain OTel spans (`kv.op` as a linearization key); a CAS race caught under load; errors that classify themselves; reads checked against the model; Hegel over HTTP |
 | [`examples/jobqueue`](examples/jobqueue) | an at-least-once job queue with leases, workers and restarts (`jobqueue`) | all three verdicts: an implementation bug, a design property the run violates (`exactlyOnce`, checked with `-invariants`), and conformance; restarts inferred from incarnations; when model-driven testing does not fit |
 | [`examples/bank`](examples/bank) | an in-memory bank (library) | every workflow on one small system: what model-driven testing cannot catch and Hegel + the model can |
-| [`examples/edgepublish`](examples/edgepublish) | the spike's real case: an OTel exporter's publish protocol with S3 faults and crashes (own module, Orchestrion) | `//quint:action` annotations; three trace paths with identical verdicts; MBT with gated effects; model → Go → telemetry → model |
+| [`examples/edgepublish`](examples/edgepublish) | the spike's real case: an OTel exporter's publish protocol with S3 faults and crashes (own module, Orchestrion) | `//quint:action` annotations; three trace paths with identical verdicts; MBT with gated effects; model → Go → telemetry → model; the publisher, unchanged, in a qenv simulation by weaving its locks and goroutines (`qenv/weave`), where exploration found a race the real exporter had already fixed |
 
 ```sh
 examples/glomers/maelstrom.sh                   # under real Maelstrom, then quintgo on the nodes' step logs

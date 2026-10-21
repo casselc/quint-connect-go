@@ -17,7 +17,16 @@
 //   - one signal per publisher; no table DDL, retention or detach;
 //   - Tick, which publish.go does not have (see Tick);
 //   - Mutation switches on deliberate protocol bugs for the demo. The zero
-//     value is the faithful behaviour.
+//     value is the faithful behaviour;
+//   - for qenv/weave, which runs this code in a simulation without other
+//     changes: the background seal's go statement is marked //qenv:go, and
+//     acquire returns its unlock as a closure calling RUnlock rather than
+//     the method value (weaving rewrites calls).
+//
+// acquire follows publish.go as fixed: generations only move forward. The
+// stand-in had been copied before that fix, and the woven simulation
+// (../sim) found the race on its own; the old code is the BackwardRotation
+// mutant.
 //
 // The //quint:action and //quint:thread comments do nothing in a plain
 // `go build`. Under `orchestrion go build` they record model steps.
@@ -45,6 +54,7 @@ const (
 	Faithful            Mutation = iota
 	ManifestBeforeTable          // commit first, then write the data
 	NoRotationLock               // drop the shared lock before the writes, so rotation does not wait for pushes
+	BackwardRotation             // the generation id read before the exclusive lock, compared for inequality (publish.go before its fix)
 )
 
 type Config struct {
@@ -109,13 +119,54 @@ func genID(t time.Time, d time.Duration) (string, time.Time) {
 }
 
 // acquire returns the current generation with its lock held shared,
-// rotating first if the clock has moved into a new generation.
+// rotating first if the clock has moved into a later generation.
+//
+// Generations only move forward (as in publish.go since it was fixed). The
+// clock is read again under the exclusive lock, and a reading that falls
+// in an earlier generation than the current one (this push read the clock
+// before a boundary another push has already rotated past) keeps the
+// current generation: going back would reopen a sealed one.
 func (p *Publisher) acquire(ctx context.Context) (*generation, func(), error) {
+	if p.cfg.Mutation == BackwardRotation {
+		return p.acquireBackward(ctx)
+	}
+	st := &p.st
+	st.mu.RLock()
+	if g := st.cur; g != nil {
+		if _, start := genID(p.cfg.Now(), p.cfg.Generation); !start.After(g.start) {
+			// a call, not the method value st.mu.RUnlock: qenv/weave
+			// rewrites calls, and a woven RLock must be released by a woven
+			// RUnlock
+			return g, func() { st.mu.RUnlock() }, nil
+		}
+	}
+	st.mu.RUnlock()
+
+	st.mu.Lock()
+	id, start := genID(p.cfg.Now(), p.cfg.Generation)
+	if st.cur == nil || start.After(st.cur.start) {
+		g := &generation{id: id, start: start}
+		if old := st.cur; old != nil {
+			p.rotate(ctx, old, g)
+			p.sealInBackground(old)
+		} else {
+			st.cur = g
+		}
+	}
+	st.mu.Unlock()
+	return p.acquire(ctx)
+}
+
+// acquireBackward is acquire before the fix (BackwardRotation): the
+// generation id is read before the exclusive lock and compared for
+// inequality, so a push that waited for the lock past a boundary another
+// push rotated across rotates back, into a generation already sealed.
+func (p *Publisher) acquireBackward(ctx context.Context) (*generation, func(), error) {
 	st := &p.st
 	id, start := genID(p.cfg.Now(), p.cfg.Generation)
 	st.mu.RLock()
 	if st.cur != nil && st.cur.id == id {
-		return st.cur, st.mu.RUnlock, nil
+		return st.cur, func() { st.mu.RUnlock() }, nil
 	}
 	st.mu.RUnlock()
 
@@ -130,7 +181,7 @@ func (p *Publisher) acquire(ctx context.Context) (*generation, func(), error) {
 		}
 	}
 	st.mu.Unlock()
-	return p.acquire(ctx)
+	return p.acquireBackward(ctx)
 }
 
 // rotate makes next current; old takes no more batches. Called with the
@@ -143,6 +194,7 @@ func (p *Publisher) rotate(ctx context.Context, old, next *generation) {
 
 func (p *Publisher) sealInBackground(g *generation) {
 	p.wg.Add(1)
+	//qenv:go
 	go func() {
 		defer p.wg.Done()
 		_ = p.seal(context.Background(), g)

@@ -73,3 +73,43 @@ var t0 = time.Now()
 		t.Fatalf("got\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
 }
+
+// LintWoven finds go statements and lock method values that weaving
+// cannot rewrite.
+func TestLintWoven(t *testing.T) {
+	dir := t.TempDir()
+	src := `package app
+
+import "sync"
+
+type st struct{ mu sync.RWMutex }
+
+func (s *st) acquire() func() {
+	s.mu.RLock()
+	go func() {}()
+	//qenv:go
+	go func() {}()
+	go func() {}() //qenv:ok
+	defer func() { s.mu.RUnlock() }()
+	return s.mu.RUnlock
+}
+`
+	if err := os.WriteFile(filepath.Join(dir, "app.go"), []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fs, err := qenv.LintWoven(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, f := range fs {
+		got = append(got, f.Pos[strings.LastIndex(f.Pos, "/")+1:]+" "+f.What)
+	}
+	want := []string{
+		"app.go:9:2 go statement not marked //qenv:go: its goroutine runs outside the simulation",
+		"app.go:14:9 method value RUnlock is not woven (weaving rewrites calls)",
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("got\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+}

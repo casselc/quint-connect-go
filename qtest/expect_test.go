@@ -88,6 +88,7 @@ func TestConstants(t *testing.T) {
 	}).Steps
 	Validate(t, b, steps).Expect(t, Violates("underLimit"))
 	Validate(t, b, steps, Constants(map[string]string{"LIMIT": "200"})).Expect(t, Conforms())
+	Validate(t, b, steps, Invariants("nonNegative")).Expect(t, Conforms()) // underLimit not checked
 	if _, err := checker(t, b, validate.Options{}).WithConstants(map[string]string{"LIMT": "1"}); err == nil || !strings.Contains(err.Error(), "LIMIT") {
 		t.Errorf("a misspelt constant: %v, want an error naming the model's constants", err)
 	}

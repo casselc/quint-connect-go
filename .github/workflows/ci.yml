@@ -65,6 +65,10 @@ jobs:
         run: go test -count=1 ./...
       - name: test (woven with Orchestrion)
         run: go run github.com/DataDog/orchestrion go test -count=1 ./mbt/ ./scenarios/
+      - name: the publisher in a simulation (woven by qenv/weave)
+        run: go run github.com/DataDog/orchestrion go test -short -timeout 20m -count=1 ./sim/
+      - name: what weaving cannot rewrite
+        run: (cd ../.. && go run ./cmd/quintgo lint -weave examples/edgepublish/publisher)
       - name: demo
         run: OUT=$RUNNER_TEMP/demo ./run-demo.sh
 

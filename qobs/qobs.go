@@ -106,8 +106,16 @@ func InContext(ctx context.Context) *Recorder {
 
 var (
 	fallback atomic.Pointer[func() (*Recorder, bool)]
+	discard  atomic.Pointer[func() bool]
 	strict   atomic.Int64
 )
+
+// SetDiscard installs a check, made for every step, of whether the calling
+// goroutine is unwinding work that never completed: a qenv task killed by
+// a crash or at the end of a run runs its deferred functions, and a step
+// recorded in one (a //quint:action function's, which records on return)
+// describes an effect that did not happen. qenv installs it.
+func SetDiscard(f func() bool) { discard.Store(&f) }
 
 // SetFallback installs where a step whose context carries no recorder goes
 // before the global recorder: f returns the recorder of the run the calling
@@ -147,6 +155,9 @@ func From(ctx context.Context) *Recorder {
 // there is none, unless a run is Strict. This is the function
 // //quint:action advice calls.
 func Record(ctx context.Context, action string, err error, kv ...any) {
+	if f := discard.Load(); f != nil && (*f)() {
+		return
+	}
 	if r := From(ctx); r != nil {
 		r.Record(ctx, action, err, kv...)
 		return

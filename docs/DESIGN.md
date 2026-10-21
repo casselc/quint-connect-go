@@ -1059,3 +1059,66 @@ Not done, and why:
 - **A closed-loop chain in qmeta, splitting long runs per key, and one
   vocabulary for performance expectations.** These are useful, but no
   example is blocked on them.
+
+## 13. Code that uses plain Go concurrency (`qenv/weave`)
+
+qenv controls only code that blocks and spawns through it (`qenv.Go`,
+`qenv.Sleep`, the doubles). Real code takes `sync` locks and starts
+goroutines with `go`. The choices for bringing such code in:
+1. **Seams in the source.** The approach so far (checkout, crossdb). It
+   is small for code we write, but it changes code that should stay as
+   it is.
+2. **Rewriting at build time.** This is weaving, and it is what
+   `qenv/weave` does.
+3. **A patched runtime.** It would cover everything, including the
+   standard library, but it ties the toolkit to one Go release.
+
+For a stand-in that must track real code, or for the real code itself,
+weaving is the right trade.
+
+**What is woven.** Orchestrion's method-call join point matches calls of
+`sync.Mutex`, `sync.RWMutex` and `sync.WaitGroup` methods in the root
+module's packages (`package-filter: {root: true}`; never the standard
+library or dependencies). Each call becomes a function in `qenv/weave`.
+That function asks qenv whether the calling goroutine is a simulation task
+(`qenv.Current`, from the goroutine registry of §12):
+- inside a task, it operates on a lock or counter kept by the simulation
+  and keyed by the real object's address (`qenv.LockKey` and the others).
+  Taking the lock is a scheduling point, and waiting for it is a simulated
+  wait, with `sync`'s semantics (a waiting writer blocks new readers);
+- outside, the real method runs.
+
+**Goroutines.** Orchestrion has no join point for `go` statements. A
+directive does reach the statement's function value, so `//qenv:go`
+before `go func(){…}()` wraps the literal as `weave.Go(func(){…})`.
+`weave.Go` runs in the goroutine executing the go statement, before the
+new one starts. That ordering is the trick: in a task it starts a
+simulation task running the function, and returns a no-op for the real
+goroutine. Outside a simulation it returns the function unchanged.
+
+**What escapes.** A method value (`return st.mu.RUnlock`) is not a call,
+and an unmarked `go` is not rewritten. `quintgo lint -weave` reports both,
+by name, without type information. The edgepublish stand-in needed one of
+each; the lint flags both on the original code.
+
+**What the publisher in a simulation found.**
+- The stand-in rotated backwards: a `Tick` waited for the exclusive lock
+  past a boundary another push had rotated across. The real exporter had
+  fixed this, and the stand-in predated the fix. Hand-written scenarios
+  never found it: it needs a read of the clock, a wait for the lock
+  through slow writes, and a rotation by someone else in between.
+- With the publisher unchanged and in the simulation, the timing
+  questions became testable: load turned S3 queueing delay into ambiguous
+  writes and duplicate commits.
+- qenv had two gaps, found by this example:
+  - a background goroutine's `context.Background()` slept in real time;
+    qenv now finds the task through the goroutine;
+  - a killed task's deferred `//quint:action` recorded a write that never
+    completed; such steps are now discarded.
+
+**Not done.**
+- `sync.Cond`, `sync.Once` (harmless: it never blocks across simulated
+  time unless its function does), channels and `select`. Channels are
+  operators, not calls, so Orchestrion cannot match them; they would need
+  a rewriter of our own.
+- The real exporter, which also needs its chDB sessions behind a seam.
