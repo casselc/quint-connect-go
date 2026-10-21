@@ -97,6 +97,17 @@ func (s *Sim) Fault(kind string, n int) int { return s.Choose("fault."+kind, n) 
 // Now is the virtual time.
 func (s *Sim) Now() time.Time { return s.now }
 
+// ToVirtual translates a time read from the real clock into virtual time,
+// as if the real clock had advanced with the simulation since. Libraries
+// that read the real clock (time.Now in code qenv cannot reach) write their
+// timestamps through a seam that translates them with ToVirtual, and read
+// them back with ToReal: their time.Since then measures virtual time.
+func (s *Sim) ToVirtual(real time.Time) time.Time { return s.now.Add(real.Sub(time.Now())) }
+
+// ToReal translates a virtual time into the real clock's frame (the inverse
+// of ToVirtual, as of now).
+func (s *Sim) ToReal(virtual time.Time) time.Time { return time.Now().Add(virtual.Sub(s.now)) }
+
 // Elapsed is the virtual time since the start.
 func (s *Sim) Elapsed() time.Duration { return s.now.Sub(s.start) }
 

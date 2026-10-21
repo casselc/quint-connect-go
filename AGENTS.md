@@ -37,6 +37,7 @@ examples/kvstore      app: HTTP KV service with CAS (kvserver, kvload); concurre
 examples/jobqueue     app: at-least-once queue with leases and restarts; design-level verdicts
 examples/checkout     app: checkout saga on qenv (isolation levels, outbox, idempotency, crashes); cmd/checkout-sim
 examples/fleetrollout separate module: multicluster-runtime controller, simulated (kubesim) and on kwok (kwok-demo.sh)
+examples/crossdb      separate module: Crossplane provider (crossplane-runtime) for a dbaas, simulated and on kind with Crossplane (kind/)
 examples/bank         library example; every workflow on one small system
 examples/edgepublish  separate module (Orchestrion); the spike's real-world case, model vendored in model/
 docs/         DESIGN.md, instrumentation.md
@@ -61,6 +62,10 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
 - fleetrollout (its own module): `cd examples/fleetrollout && go test ./...`;
   `./kwok-demo.sh` needs kwokctl and kwok on PATH (`go install
   sigs.k8s.io/kwok/cmd/{kwokctl,kwok}@v0.7.0`), no Docker (binary runtime).
+- crossdb (its own module): `cd examples/crossdb && go test ./...`; `kind/demo.sh`
+  needs Docker, kind, kubectl and helm (`kind/setup.sh` installs Crossplane;
+  `CA_BUNDLE=` for a TLS-intercepting proxy). CRD and deepcopy are generated:
+  `go run sigs.k8s.io/controller-tools/cmd/controller-gen@v0.19.0 object crd paths=./apis/... output:crd:dir=./package/crds`.
 - Backend: `QUINT_BACKEND=rust|typescript` (`QUINTGO_BACKEND` also works).
   `QUINTGO_KEEP=/dir` keeps generated modules and traces from qtest and
   quinthegel.
@@ -139,6 +144,14 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   aborts a test case by panicking from whichever goroutine draws.
 - A nemesis (crash) is considered at every scheduling step: its rate is
   per step (`DefaultRates` 1 in 200), not per operation.
+- Libraries that read the real clock (crossplane-runtime's create
+  annotations and grace period) see no virtual time passing. Translate
+  their timestamps at the seam (`Sim.ToVirtual` on write, `Sim.ToReal` on
+  read: crossdb's kube interceptor), or their time-based logic is not
+  exercised (a grace period that never expires blocked every deletion).
+- One thread per goroutine when recording with a domain clock: a thread
+  asserts program order, and goroutines sharing one contradict it
+  (`issue: error cycle`).
 - `FileSink` buffers: a killed process loses its last steps, undetectably.
   Use `DurableFileSink` where crashes are part of the test.
 - `quinthegel.CaseChecker` prefix reuse is only sound for one actor with

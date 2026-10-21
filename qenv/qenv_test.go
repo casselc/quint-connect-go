@@ -210,3 +210,19 @@ func TestHegelFindsLostUpdate(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// A timestamp taken from the real clock, translated to virtual time, ages
+// with the simulation: time.Since of its translation back measures virtual
+// time.
+func TestClockTranslation(t *testing.T) {
+	s := qenv.New(qenv.Nominal{})
+	defer s.Close()
+	stored := s.ToVirtual(time.Now())
+	s.Spawn("sleeper", func(ctx context.Context) { qenv.Sleep(ctx, 45*time.Second) })
+	if err := s.Run(time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	if age := time.Since(s.ToReal(stored)); age < 44*time.Second || age > 46*time.Second {
+		t.Fatalf("aged %v in real time, want the 45s of virtual time", age)
+	}
+}

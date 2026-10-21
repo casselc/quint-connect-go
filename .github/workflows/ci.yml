@@ -113,3 +113,33 @@ jobs:
           KEEP=1 KILL=1 ./kwok-demo.sh
           if KEEP=1 MUTATION=ignore-observed-generation ./kwok-demo.sh; then echo "mutant passed"; exit 1; fi
           if KILL=1 MUTATION=in-memory-progress ./kwok-demo.sh; then echo "mutant passed"; exit 1; fi
+
+  crossdb:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: examples/crossdb
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: examples/crossdb/go.mod
+          cache-dependency-path: examples/crossdb/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: azure/setup-helm@v4
+      - name: Install quint and kind
+        run: |
+          ../../ci/install-quint.sh
+          go install sigs.k8s.io/kind@v0.30.0
+      - name: vet
+        run: go vet ./...
+      - name: test (simulated provider, cloud and cluster)
+        run: go test -count=1 ./...
+      - name: the provider on kind with Crossplane
+        run: |
+          # each run's exit status is its verdict: 0 conforms, 1 violation
+          DROP=0.1 kind/demo.sh
+          KILL=1 kind/demo.sh
+          if MUTATION=no-client-token DROP=0.3 N=6 kind/demo.sh; then echo "mutant passed"; exit 1; fi

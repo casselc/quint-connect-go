@@ -1,0 +1,17 @@
+# Recorded crossdb steps as calls of model/crossdb.qnt: the client's
+# create and delete, the cloud's dbCreated / dbPassword / dbDeleted
+# (recorded where they are applied), and the final audit's audit / secret.
+# Every parameter is the step field of its name.
+spec: model/crossdb.qnt
+module: crossdb
+restart: restart
+actions:
+  create: {}
+  delete: {}
+  dbCreated: {}
+  dbPassword: {}
+  dbDeleted: {}
+  audit: {}
+  secret: {}
+  settle: {}
+invariants: [oneDatabasePerResource, settledCorrectly]

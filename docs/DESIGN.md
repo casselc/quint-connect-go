@@ -833,7 +833,29 @@ loss at the end of a log is undetectable), and recording at the response
 rather than at the server. The API server's audit log would be the
 faithful recording point.
 
-### 10.6 Not yet
+### 10.6 Running someone else's controller logic (`examples/crossdb`)
+
+crossdb simulates crossplane-runtime's managed reconciler itself, not a
+re-implementation of it. Two things made that work:
+- **A manager stub.** The reconciler only needs a manager's client and
+  scheme, and the client is the intercepted fake.
+- **Clock translation at the seam.** The reconciler stamps annotations
+  with `time.Now()` and checks them with `time.Since`. Those calls are
+  out of qenv's reach. The kube interceptor stores the timestamps in
+  virtual time and returns them in real time (`Sim.ToVirtual`,
+  `Sim.ToReal`), so a 30 s grace period lasts 30 s of virtual time.
+
+Without the translation the simulation was wrong in a way that looked
+like a finding: deletions never finished. With it, the exploration found
+real ones:
+- a leak with no crash (an ambiguous create, then a delete);
+- a leak when the grace period is disabled (deletion during the cloud's
+  read-after-create lag).
+
+The same provider, model and audit then ran on kind with full Crossplane,
+with steps from two processes merged by a wall-clock domain clock.
+
+### 10.7 Not yet
 
 - **Contract conformance of the doubles.** Each double should be checked
   against a Quint model of its contract, in both directions: everything it

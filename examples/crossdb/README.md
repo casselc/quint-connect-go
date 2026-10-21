@@ -1,0 +1,116 @@
+# examples/crossdb: a Crossplane provider, simulated and on kind
+
+A Crossplane provider for a database-as-a-service, built on
+crossplane-runtime's managed reconciler:
+- a `Database` managed resource (namespaced, Crossplane v2) becomes a
+  database in the dbaas cloud;
+- its connection details (endpoint, username, password) are written back
+  into the cluster as a Secret.
+
+On kind, full Crossplane composes an `AppDatabase` platform API into
+`Database`s.
+
+The reconciler under test is **Crossplane's own**. This example supplies
+the external client, configures the reconciler, and runs it in two
+environments, checked by one model:
+
+| | Simulated (`crossdb.Run`, on [`qenv`](../../qenv)) | Real (`kind/demo.sh`) |
+|---|---|---|
+| Kubernetes API | controller-runtime fake client behind interceptors: requests fail, or are applied with their response lost | kind, with Crossplane 2.4 and function-patch-and-transform |
+| The cloud | `dbaas.Cloud` behind `qenv.Service`: lost or duplicated requests, lost responses, throttling, reads that lag creates | the same `Cloud` behind `cmd/dbaas-server`: dropped responses (`DROP`), throttling, reads that lag creates |
+| The provider | the managed reconciler in a crashable process | `cmd/provider` out of cluster; `KILL=1` sends `kill -9` every 2–6 s |
+| Users | clients create `Database`s, delete some | `cmd/driver` creates `AppDatabase`s (composed into `Database`s), deletes some |
+| Steps | the cloud records its own operations; the clients record theirs; an audit after quiescence records each resource's phase and Secret | the same, from two durable step logs merged by wall clock |
+
+The model (`model/crossdb.qnt`) has two properties:
+- **`oneDatabasePerResource`:** a ghost flag, set when a resource gets a
+  second live database.
+- **`settledCorrectly`:** once quiet,
+  - deletions have finished and leaked nothing;
+  - every live resource has its one database and a Secret that opens it
+    (the endpoint matches, and the password's fingerprint matches the
+    cloud's).
+
+```sh
+go test ./...                                        # explorations and Hegel (~4 min)
+kind/demo.sh                                         # kind + Crossplane; exit status is the verdict
+KILL=1 kind/demo.sh                                  # kill -9 the provider every few seconds
+MUTATION=no-client-token DROP=0.3 N=6 kind/demo.sh
+```
+
+`kind/setup.sh` creates the cluster and installs everything. It needs
+Docker, kind, kubectl and helm. In sandboxed VMs:
+- set `CA_BUNDLE=` for a TLS-intercepting proxy;
+- the script already handles two host quirks, documented in it.
+
+## The design, and what each mistake does
+
+A Crossplane provider for a resource whose ID the cloud generates must
+answer one question: what if the provider doesn't learn the outcome of a
+create? A response can be lost, or the provider can crash before saving
+the ID. The faithful provider's answer:
+- **A deterministic external name.** The external name is a client token
+  derived from the resource's UID, set before anything is created.
+- **An idempotent create.** `Create` sends that token, so retrying a
+  create is safe (`WithDeterministicExternalName(true)`), and `Observe`
+  finds the database by it.
+- **The password first.** The admin password goes into a Secret before the
+  create. Every `Observe` publishes it with the endpoint, and `Update`
+  resets a cloud password that differs.
+
+| Provider | Simulated | On kind |
+|---|---|---|
+| faithful | conforms (60 seeds: every fault, crashes) | conforms, with 10% of responses dropped and seven `kill -9`s of the provider |
+| `GeneratedExternalName`: the cloud's ID as the external name, with a client token | conforms with no faults; **violates** `settledCorrectly` with lost responses alone, and with crashes alone | (being run) |
+| `NoClientToken`: the same, without the token | **violates** `oneDatabasePerResource`: a lost response, retried as a failure, makes a second database | (being run) |
+| `PasswordFromCreate`: the password generated in `Create`, published only with its result | **violates** `settledCorrectly`: after a lost response, the retry's new password is ignored by the idempotent cloud, and the Secret doesn't open the database | (being run) |
+
+## Findings along the way
+
+- **A leak with no crash.** With the cloud's ID as the external name, a
+  create whose response is lost is marked failed. That's Crossplane's
+  contract: an error from `Create` means failure. If the user deletes the
+  resource before the retry, there is no name to look up, so the finalizer
+  comes off and the database leaks. Crossplane's create-pending
+  annotations only protect against crashes, and a crash is worse: the
+  reconciler refuses to continue. A deterministic external name closes
+  both holes.
+- **The creation grace period is not optional.** I first set it to 0,
+  reasoning that idempotent creates don't need it. The exploration then
+  found a leak:
+  1. a resource is deleted right after its database is created;
+  2. the cloud's reads still lag the create, so `Observe` sees nothing;
+  3. the finalizer comes off, and the database leaks.
+
+  The grace period is what protects deletion from an eventually consistent
+  cloud. The cost is that deleting a just-created resource takes the full
+  30 s.
+- **A library that reads the real clock.** crossplane-runtime stamps its
+  create annotations with `time.Now()` and compares them with
+  `time.Since`. A simulation advances only virtual time, so the grace
+  period never expired and no deletion ever finished. The kube interceptor
+  now translates those annotations at the seam: they're stored in virtual
+  time (`Sim.ToVirtual`) and handed back in real time (`Sim.ToReal`). The
+  first version translated Update but not Patch, which double-translated
+  the timestamps. The tests caught it as dates in 2025.
+- **One thread per goroutine.** The driver first recorded every
+  goroutine's steps as one thread, so wall-clock order contradicted
+  program order, and validation reported a cycle.
+- **Running kind in a sandboxed VM** needed two fixes, now in
+  `kind/setup.sh`. The host forbids lowering `oom_score_adj`, which made
+  runc fail every control-plane pod with "can't get final child's PID from
+  pipe"; containerd's `restrict_oom_score_adj` fixes that. kind also
+  copied a localhost proxy into the node, so the cluster is created
+  without the proxy variables.
+
+## Layout
+
+| | |
+|---|---|
+| `apis/v1alpha1` | the `Database` managed resource; `package/crds` (controller-gen) |
+| `dbaas/` | the cloud: `Cloud` (contract, step recording), HTTP server and client, simulated client |
+| `provider/` | the external client and reconciler options; mutants |
+| `crossdb.go` | the simulated deployment: fake kube API with faults and clock translation, provider process, clients, audit |
+| `model/crossdb.qnt`, `crossdb.binding.yaml` | the model and its binding |
+| `cmd/provider`, `cmd/dbaas-server`, `cmd/driver` | the real environment's processes |
+| `kind/` | `setup.sh` (kind + Crossplane), `platform.yaml` (XRD, Composition, RBAC), `demo.sh` |

@@ -109,6 +109,19 @@ them:
 - A final fresh read of every component, then `settle`, makes eventual
   properties meaningful there too.
 
+## Third-party controller logic (Crossplane, controller-runtime)
+
+Run the library's real reconciler in the simulation. Don't copy its
+logic.
+- Give it a manager stub (`GetClient`, `GetScheme`) whose client is a
+  fake behind `interceptor.Funcs`.
+- Libraries that read the real clock need their timestamps translated at
+  that seam: `Sim.ToVirtual` on writes, `Sim.ToReal` on reads and
+  responses, for Get, List, Create, Update and Patch. Otherwise their
+  timeouts and grace periods never expire.
+- Record cluster state with an audit after quiescence (phase, Secrets).
+  The same audit works against a real cluster (examples/crossdb).
+
 ## What the examples found
 
 - **Locking.** A lock on a parent row doesn't stop write skew under
@@ -118,5 +131,10 @@ them:
   form is "commit, respond, publish in the background".
 - **In-memory tracking.** It breaks under lost responses, not just
   restarts: an update applied with its response lost is never tracked.
+- **External names.** A Crossplane provider whose external name is the
+  cloud's generated ID leaks a database after one lost response and a
+  delete, with no crash. Make the name deterministic (a client token) and
+  the create idempotent; keep the creation grace period for eventually
+  consistent clouds.
 - **Status.** Trusting a status without `observedGeneration >=
   generation` overruns a rollout budget, both simulated and on real kwok.

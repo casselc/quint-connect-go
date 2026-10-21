@@ -1,0 +1,71 @@
+# The platform API on top of the provider: an AppDatabase (a namespaced
+# Crossplane v2 composite resource) composes one dbaas Database, whose
+# connection details land in the Secret <name>-conn.
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: appdatabases.platform.example.org
+spec:
+  group: platform.example.org
+  names: { kind: AppDatabase, plural: appdatabases }
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    served: true
+    referenceable: true
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            properties:
+              engine: { type: string, default: postgres }
+---
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: appdatabase
+spec:
+  compositeTypeRef: { apiVersion: platform.example.org/v1alpha1, kind: AppDatabase }
+  mode: Pipeline
+  pipeline:
+  - step: patch-and-transform
+    functionRef: { name: function-patch-and-transform }
+    input:
+      apiVersion: pt.fn.crossplane.io/v1beta1
+      kind: Resources
+      resources:
+      - name: database
+        base:
+          apiVersion: dbaas.example.org/v1alpha1
+          kind: Database
+          spec:
+            forProvider:
+              engine: postgres
+              passwordSecretRef: { name: unset, key: password }
+            writeConnectionSecretToRef: { name: unset }
+        patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.engine
+          toFieldPath: spec.forProvider.engine
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.passwordSecretRef.name
+          transforms: [{ type: string, string: { type: Format, fmt: "%s-admin" } }]
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.writeConnectionSecretToRef.name
+          transforms: [{ type: string, string: { type: Format, fmt: "%s-conn" } }]
+---
+# What installing a provider package would grant: Crossplane may manage
+# the provider's resources.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: crossplane:dbaas
+  labels: { rbac.crossplane.io/aggregate-to-crossplane: "true" }
+rules:
+- apiGroups: [dbaas.example.org]
+  resources: ["*"]
+  verbs: ["*"]
