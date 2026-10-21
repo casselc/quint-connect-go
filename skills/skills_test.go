@@ -11,7 +11,7 @@ func TestSkillsHaveFrontMatter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(list) < 6 {
+	if len(list) < 7 {
 		t.Fatalf("%d skills", len(list))
 	}
 	for _, s := range list {

@@ -35,6 +35,20 @@ func FileSink(path string) (*JSONLSink, error) {
 	return &JSONLSink{w: b, buf: b, c: f}, nil
 }
 
+// DurableFileSink creates (truncating) a step log file written one step
+// at a time, with no buffer in the process: a step is in the file (the
+// OS's, at least) when Record returns, so a process that is killed loses
+// none. Use it where crashes are part of what is tested; FileSink is
+// faster. Steps lost at the end of a log cannot be detected (no later
+// sequence number reveals the gap), which is why this matters.
+func DurableFileSink(path string) (*JSONLSink, error) {
+	f, err := os.Create(path)
+	if err != nil {
+		return nil, err
+	}
+	return &JSONLSink{w: f, c: f}, nil
+}
+
 // Flush writes buffered steps to the file.
 func (j *JSONLSink) Flush() error {
 	j.mu.Lock()

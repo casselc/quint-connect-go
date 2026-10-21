@@ -6,15 +6,18 @@ for you (`quintgo skills install`).
 
 ## What this is
 
-A Go toolkit for checking Go code against Quint models in three ways:
+A Go toolkit for checking Go code against Quint models in four ways:
 - **MBT** (`connect`): Quint traces drive the code.
 - **Hegel integration** (`quinthegel`): Hegel drives and the model
   judges, or the model drives and Hegel varies.
 - **Trace validation** (`qobs`, `qtrace`, `otelio`, `convert`, `binding`,
   `validate`, `qtest`): recorded runs are checked by the model.
+- **Simulated environments** (`qenv`, `qtest.Explore`): the system runs
+  deterministically against fault-injecting doubles, every choice made by
+  Hegel or a seed, every run checked by the model.
 
 The design record is `docs/DESIGN.md`. Read §9 before changing `connect`
-or `quinthegel`.
+or `quinthegel`, and §10 before changing `qenv`.
 
 ## Layout
 
@@ -23,7 +26,8 @@ connect/      MBT runtime (quint-connect parity); testdata/bank.qnt
 quinthegel/   Hegel integration; testdata/bank.yaml
 itf/          ITF decode/encode, Go <-> Quint values (Decode/Encode), Quint literal parser
 qobs/ qtrace/ otelio/ convert/ load/   recording, schema/reconstruction, OTLP, span conversion, input sniffing
-binding/ validate/ qtest/              binding YAML, quint-test-based validator, test helpers
+binding/ validate/ qtest/              binding YAML, quint-test-based validator, test helpers (Expect, Explore)
+qenv/         deterministic simulation: scheduler, virtual time, processes, choosers; Store, Queue, Service doubles
 cmd/quintgo/  CLI
 skills/       agent skills, the source of truth (embedded by package skills;
               symlinked into .agents/skills and .claude/skills, checked by skills_test.go)
@@ -31,6 +35,8 @@ examples/glomers      Gossip Glomers on a Maelstrom runtime + simulator (maelstr
                       cmd/* run under real Maelstrom (maelstrom.sh)
 examples/kvstore      app: HTTP KV service with CAS (kvserver, kvload); concurrency, span conversion
 examples/jobqueue     app: at-least-once queue with leases and restarts; design-level verdicts
+examples/checkout     app: checkout saga on qenv (isolation levels, outbox, idempotency, crashes); cmd/checkout-sim
+examples/fleetrollout separate module: multicluster-runtime controller, simulated (kubesim) and on kwok (kwok-demo.sh)
 examples/bank         library example; every workflow on one small system
 examples/edgepublish  separate module (Orchestrion); the spike's real-world case, model vendored in model/
 docs/         DESIGN.md, instrumentation.md
@@ -52,6 +58,9 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   go test ./...
   go run github.com/DataDog/orchestrion go test ./mbt/ ./scenarios/   # woven
   ```
+- fleetrollout (its own module): `cd examples/fleetrollout && go test ./...`;
+  `./kwok-demo.sh` needs kwokctl and kwok on PATH (`go install
+  sigs.k8s.io/kwok/cmd/{kwokctl,kwok}@v0.7.0`), no Docker (binary runtime).
 - Backend: `QUINT_BACKEND=rust|typescript` (`QUINTGO_BACKEND` also works).
   `QUINTGO_KEEP=/dir` keeps generated modules and traces from qtest and
   quinthegel.
@@ -117,6 +126,21 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   and every one of them precedes every step with a larger value
   (`qtrace` links whole groups, not neighbours). A service's operations
   are recorded at the service, where they take effect.
+- qenv runs are deterministic only if all nondeterminism goes through the
+  Chooser: code under test must use `qenv.Go`, `qenv.Now`, `qenv.Sleep` and
+  the doubles, and iterate maps in sorted order where the order matters.
+  `qenv.Replay` panics on the first divergence.
+- Option 0 of every qenv choice is nominal (no fault, canonical order).
+  Keep that convention in new doubles: it is what makes Hegel's shrinking
+  remove faults.
+- `qenv.Hegel` draws 512-byte chunks (`hegel.Binary(n, n)`), not one draw
+  per choice: per-choice draws made a shrinking test 20x slower. A task's
+  panic is re-raised by `Sim.Run` with its original value, because Hegel
+  aborts a test case by panicking from whichever goroutine draws.
+- A nemesis (crash) is considered at every scheduling step: its rate is
+  per step (`DefaultRates` 1 in 200), not per operation.
+- `FileSink` buffers: a killed process loses its last steps, undetectably.
+  Use `DurableFileSink` where crashes are part of the test.
 - `quinthegel.CaseChecker` prefix reuse is only sound for one actor with
   no `order.*` keys, where the recording order is the reconstructed order,
   and with equal instance constants. Keep those guards.

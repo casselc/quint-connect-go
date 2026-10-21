@@ -77,7 +77,9 @@ document the gap (as glomers does for the scheme model).
   dozens of times.
 - **Faults.** For distributed code, embed `maelstrom.Network`, or your
   own fault rules, so Hegel schedules losses, partitions, timers and
-  restarts.
+  restarts. For services with stores, queues and remote calls, deploy
+  them into a `qenv` simulation (the quint-fault-injection skill). Then
+  explore seeds with `qtest.Explore`, and shrink with `qenv.Hegel`.
 
 Hegel finds what scripted scenarios don't (glomers kafka: a commit past
 the end of the log). When it does, add the shrunk run as a scripted

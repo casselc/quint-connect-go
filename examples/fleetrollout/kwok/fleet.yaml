@@ -1,0 +1,29 @@
+# One fake node and the web Deployment, applied to every member cluster.
+# kwok runs the pods on the fake node; the cluster's real kube-controller-
+# manager runs the Deployment. minReadySeconds and one pod at a time make a
+# rollout take a few seconds, and leave its status visibly behind its spec.
+apiVersion: v1
+kind: Node
+metadata:
+  name: kwok-node-0
+  annotations: { kwok.x-k8s.io/node: fake }
+  labels: { type: kwok }
+spec:
+  taints: [{ key: kwok.x-k8s.io/node, value: fake, effect: NoSchedule }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: web, namespace: default }
+spec:
+  replicas: 3
+  minReadySeconds: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 1, maxSurge: 0 }
+  selector: { matchLabels: { app: web } }
+  template:
+    metadata: { labels: { app: web } }
+    spec:
+      tolerations: [{ key: kwok.x-k8s.io/node, operator: Exists, effect: NoSchedule }]
+      nodeSelector: { type: kwok }
+      containers: [{ name: web, image: "web:v1" }]

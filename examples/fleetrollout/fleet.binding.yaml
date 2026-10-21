@@ -1,0 +1,15 @@
+# Recorded rollout steps as calls of model/fleet.qnt: observe (a
+# Deployment the controller read) and patch (an update the API server
+# applied). A new controller process is a restart.
+spec: model/fleet.qnt
+module: fleet
+constants:
+  CLUSTERS: '{{ set "cluster" }}'
+  TARGET: '"web:v2"'
+  MAX_UNAVAILABLE: '1'
+restart: restart
+actions:
+  observe: {}
+  patch: {}
+  settle: {}
+invariants: [withinBudget, rolledOutWhenSettled]

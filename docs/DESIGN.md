@@ -731,3 +731,118 @@ The model matters as much:
 
 After both: 64 s (19 s without ITF) for the original model, 21 s (11 s)
 for the ghost-flag model, 7 s for the scheme model.
+
+## 10. Simulated environments and fault injection (`qenv`)
+
+Maelstrom found the bugs no in-process check found in examples/glomers.
+Each time, the in-process environment had been more forgiving than its
+contract: a "sequentially consistent" store that was in fact
+linearizable. `qenv` makes the environment's contract explicit, and
+adversarial within it.
+
+**A fault is a choice the contract allows.** A lost response, a
+redelivered message, a read from an older snapshot and a crash between
+two statements are all behaviours that the network's, the broker's or the
+store's contract permits. A double makes exactly those choices and no
+others, so a failure is never "the harness did something impossible". The
+remaining question, whether a contract is the one production has, is
+answered by running against more than one profile (§10.2).
+
+### 10.1 One decision source
+
+Every choice goes through a `Chooser`: which runnable task goes next, whether
+a fault happens here, which pending message is delivered, how long a
+status lags. The conventions:
+- **Option 0 is nominal**: no fault, the oldest message, the first task.
+  A shrinker that lowers values toward 0 removes faults and canonicalises
+  the schedule.
+- **Kinds.** Kinds starting with `fault.` are faults, with per-kind rates
+  (`Rates`, matched by prefix). Any other kind is a schedule choice,
+  uniform under a seed.
+- **Backends.**
+  - `qenv.Hegel(tc)` draws entropy in fixed-size byte chunks: a run makes
+    hundreds of choices, and a draw per choice made a shrinking test 20x
+    slower.
+  - `NewSeeded(seed)` gives random runs, Maelstrom- or Jepsen-style.
+  - `Replay(choices)` repeats a recorded run, and panics at the first
+    divergence.
+  - `Nominal` makes no faults.
+  - `Swarm` turns whole fault kinds off per run.
+
+### 10.2 Doubles with contract profiles
+
+| Double | Contract | Faults (choices) |
+|---|---|---|
+| `Store` | transactions at `Serializable` (optimistic validation of reads, scans and writes), `SnapshotIsolation` (first committer wins, write skew allowed) or `ReadCommitted` (latest committed reads, last writer wins); `GetForUpdate` row locks; a crashed process's transactions abort | the interleaving of statements; a commit applied but reported unknown (`fault.store.commit`) |
+| `Queue` | at least once; FIFO only if `Ordered` | lost acknowledgements, redelivery of a crashed consumer's messages, delivery order |
+| `Service` (RPC) | at most one response, maybe never | lost or duplicated requests, lost responses (the ambiguous failure) |
+| `Process` | tasks die together; no deferred code runs; a restart rebuilds from durable doubles only | crashes at any step (`fault.nemesis`, per step) |
+| kubesim (fleetrollout) | generation bumps on spec change; status lags; resourceVersion conflicts | failed requests, applied updates with lost responses, status lag |
+
+Profiles turn "harness quirk or real bug?" into a table. In
+examples/checkout, missing row locks are a bug only under read committed,
+and a lock without a write only under snapshot isolation. Which row
+applies depends on what production runs.
+
+### 10.3 Scheduling
+
+Tasks are goroutines, but only one runs at a time. A task runs until it
+reaches a seam (`Yield`, `Wait`, `Sleep`, an operation of a double), where
+the scheduler picks the next one. Code between seams is atomic, so a run
+is a function of its choices. Virtual time jumps to the next deadline when
+nothing can run. `Settle` turns faults off, heals what persists, and runs
+the canonical schedule until quiet. Properties conditioned on quiescence
+apply after it.
+
+Code under test reaches the environment only through seams: `qenv.DB` and
+`Txn`, its own interfaces for brokers and services, `qenv.Go`, `qenv.Now`
+and `qenv.Sleep`. Outside a simulation these fall through to real
+goroutines and time. Production puts real clients behind the interfaces.
+
+### 10.4 Recording and checking
+
+Steps are recorded where effects happen:
+- `Txn.OnCommit` runs at the commit itself, even when the caller is told
+  the outcome is unknown. In production, the step goes in a table in the
+  same transaction.
+- A remote service records its own operations (the payment provider).
+- A simulated API server records patches as it applies them.
+
+`qtest.Explore` runs a scenario over many seeds and checks every run in
+one `CheckBatch`. `Exploration.Expect` states either that all conform, or
+that some failing run shows the expected verdict.
+`quinthegel.FindViolation` with `qenv.Hegel` shrinks a failure to the
+interleaving and faults it needs. In examples/checkout that took 11 quint
+checks; the verdict cache answered the other 599 candidates.
+
+### 10.5 The same model in the real environment
+
+examples/fleetrollout runs one controller two ways:
+- in kubesim, under `qenv`;
+- on three kwok clusters, with real etcd, kube-apiserver and
+  kube-controller-manager, and `kill -9` as the fault.
+
+Both write the same steps, judged by one model. The model works on
+evidence (reads ordered by resourceVersion), so it is sound wherever the
+controller reads fresh from each API server. Both mutants fail in both
+environments.
+
+What the real run needs that the simulation does not: a durable step log
+(`DurableFileSink`, because a killed process loses buffered steps and the
+loss at the end of a log is undetectable), and recording at the response
+rather than at the server. The API server's audit log would be the
+faithful recording point.
+
+### 10.6 Not yet
+
+- **Contract conformance of the doubles.** Each double should be checked
+  against a Quint model of its contract, in both directions: everything it
+  does is allowed, and everything allowed it can do. Today the store's
+  profiles are tested by their anomalies (`TestIsolationAnomalies`).
+- **More doubles.** Clocks with skew, disks (lost fsync, torn writes),
+  partitions between named processes.
+- **Coverage.** Which contract choices and fault combinations a set of
+  runs actually exercised, to steer exploration.
+- **Go's own scheduler.** Goroutines that bypass `qenv.Go` run
+  uncontrolled, and a run that depends on them is not reproducible.
+  Replay detects this but cannot prevent it.

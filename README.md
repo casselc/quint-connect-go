@@ -10,7 +10,12 @@ testing, where Quint traces drive the implementation). It adds:
   the model;
 - **trace validation**: Go programs report the model steps they take,
   from tests or production, through OpenTelemetry, a step log or their
-  existing spans, and the model checks the recorded run.
+  existing spans, and the model checks the recorded run;
+- **simulated environments with fault injection** (`qenv`): the system
+  runs deterministically against a store, queues and networks that do what
+  their contracts allow (lost responses, redeliveries, crashes, an
+  isolation level's anomalies), every choice made by Hegel or a seed, and
+  every run checked by the model.
 
 ```
                      ┌──────────── one Quint model ────────────┐
@@ -19,6 +24,8 @@ testing, where Quint traces drive the implementation). It adds:
   quinthegel.Test    │  Hegel rules ──► Go ──► steps ──► model  │  Hegel drives Go, the model judges and shrinks
   qobs/convert/      │  running Go ──► steps / OTel / spans     │  the code reports, the model checks
   validate           │        ──► binding ──► quint test        │  (tests, CI, staging, production)
+  qenv + qtest.      │  Go in a simulated environment, faults   │  Hegel or seeds choose schedules and faults,
+  Explore            │  chosen ──► steps ──► model              │  the model judges every run
                      └──────────────────────────────────────────┘
 ```
 
@@ -194,6 +201,46 @@ clocks, and process incarnations, which become the model's restart
 action. See [docs/instrumentation.md](docs/instrumentation.md) and
 [skills/quint-trace-validation](skills/quint-trace-validation/SKILL.md).
 
+## 4. Simulated environments and fault injection (`qenv`)
+
+A fault is a choice the environment's contract allows. A response can be
+lost after the request took effect, a message redelivered, a read served
+from a snapshot. `qenv` runs the system's tasks one at a time and switches
+between them only at seams. One `Chooser` makes every choice:
+- `qenv.Hegel(tc)`: Hegel explores and shrinks;
+- `qenv.NewSeeded(seed)`: random runs at per-kind fault rates;
+- `qenv.Replay`: repeats a recorded run;
+- `qenv.Nominal`: no faults.
+
+Option 0 of every choice is nominal, so shrinking removes faults.
+
+```go
+s := qenv.New(chooser)
+db := qenv.NewStore(s, "shop", qenv.SnapshotIsolation)   // or Serializable, ReadCommitted
+q := qenv.NewQueue(s, "payments")                        // at least once: lost acks, redelivery, reordering
+pay := qenv.NewService(s, "provider", nil, handler)      // lost or duplicated requests, lost responses
+s.Process("payments", true, func(ctx context.Context) { shop.RunPayments(ctx, q) }) // crashes and restarts
+s.Run(20 * time.Second); s.Settle(60 * time.Second)      // faults, then quiet
+```
+
+The app is written against seams: `qenv.DB` and `qenv.Txn`, its own
+broker interfaces, `qenv.Go`, `qenv.Now` and `qenv.Sleep`. Production
+puts real clients behind them. Steps are recorded where effects happen:
+`Txn.OnCommit`, a fake API server's interceptor, the provider. Then:
+
+```go
+qtest.Explore(t, "checkout.binding.yaml", qtest.ExploreConfig{Seeds: 100}, func(c qenv.Chooser) {
+	checkout.Run(c, checkout.Config{Isolation: qenv.SnapshotIsolation, Mutation: shop.LockWithoutWrite})
+}).Expect(t, qtest.AnyOf(qtest.Rejects("ship"), qtest.Rejects("cancel")))   // write skew
+```
+
+Each seeded run is checked in one quint batch, and the failing seed's
+faults and step log are reported. `quinthegel.FindViolation` with
+`qenv.Hegel` shrinks a failure to the interleaving and faults it needs.
+See [examples/checkout](examples/checkout) (a saga at three isolation
+levels) and [examples/fleetrollout](examples/fleetrollout) (a
+multicluster-runtime controller, simulated and on real kwok clusters).
+
 ## Packages
 
 | Package | |
@@ -201,13 +248,14 @@ action. See [docs/instrumentation.md](docs/instrumentation.md) and
 | `connect` | MBT driver runtime: `Run`, `Test`, `Replay`, `Switch`, `Pick[T]`, `StateDriver`, `GenerateRun`/`GenerateTest` |
 | `quinthegel` | Hegel integration: `Test` (modes `Batched`/`Each`/`After`/`Off`), `FindViolation` (expected failures, shrunk), `Recorder`, `CaseChecker`/`CheckCase`, `Replay`, `Traces` |
 | `itf` | ITF traces: `Parse`, `Value`, `Decode`/`Encode` (Go ⇄ Quint values), `ParseQuint` (Quint literals) |
-| `qobs` | runtime recorder: `Record`, `Thread`; sinks `MemorySink`, `FileSink`/`JSONLSink`, `OTelSink`, `Tee`; `orchestrion.yml` |
+| `qobs` | runtime recorder: `Record`, `Thread`; sinks `MemorySink`, `FileSink`/`DurableFileSink`/`JSONLSink`, `OTelSink`, `Tee`; `orchestrion.yml` |
 | `qtrace` | the step schema, `Reconstruct` (ordering, gaps, restarts), step log I/O |
 | `otelio` | OTLP/JSON file exporter and reader; SDK spans to steps |
 | `convert` | an application's own spans to steps, by YAML rules |
 | `binding` | the YAML binding: lint against `quint typecheck`, annotation scan, plan, Quint module and ITF generation |
 | `validate` | replay with `quint test`: `Checker.Check`, `CheckRuns`, `ValidateITF`, structured verdicts |
-| `qtest` | record-then-check inside a Go test; `Expect` with `Conforms`/`Rejects`/`Mismatch`/`Violates`; `RequireQuint` |
+| `qtest` | record-then-check inside a Go test; `Expect` with `Conforms`/`Rejects`/`Mismatch`/`Violates`/`AnyOf`; `Explore` (seeded simulated runs checked in bulk); `RequireQuint` |
+| `qenv` | deterministic simulated environments: scheduler, virtual time, crashable processes, choosers (Hegel, seeded, replay, swarm), `Store` (isolation levels), `Queue`, `Service` (RPC) |
 | `load` | read OTLP/JSON, a step log or ITF, detected by content |
 | `skills` | the agent skills below, embedded; install targets |
 | `cmd/quintgo` | CLI: `scaffold`, `lint`, `steps`, `validate`, `itf`, `convert`, `skills` |
@@ -220,6 +268,8 @@ which bug.
 
 | App | What it is | What it shows |
 |---|---|---|
+| [`examples/checkout`](examples/checkout) | a checkout saga: orders, payments with idempotency keys and voids, shipping, cancellation, a transactional outbox | fault injection with `qenv`: crashable services, a database at three isolation levels, an at-least-once broker, a lossy network; which bug is a bug at which isolation level (lost update, write skew); a double charge; a lost event; Hegel shrinking a write skew |
+| [`examples/fleetrollout`](examples/fleetrollout) | a multicluster-runtime controller rolling a Deployment across member clusters within a budget (own module) | the same controller simulated (fake clients behind interceptors: status lag, lost responses, crashes) and on three real kwok clusters (`kill -9` included), checked by one evidence-based model; `observedGeneration` and in-memory-state bugs caught in both |
 | [`examples/glomers`](examples/glomers) | Fly.io's Gossip Glomers: unique ids, broadcast, grow-only counter, kafka-style log, on a Maelstrom runtime and simulator | distributed systems: models of each challenge with their properties; Lamport clocks to merge per-node step logs; Hegel scheduling deliveries, losses and partitions, and shrinking a lost-update bug to three steps; the same nodes under real Maelstrom, their logs conforming to the models |
 | [`examples/kvstore`](examples/kvstore) | an HTTP key-value service with compare-and-swap (`kvserver`, `kvload`) | a concurrent service checked as a serial behaviour of its model, from its steps or its plain OTel spans (`kv.op` as a linearization key); a CAS race caught under load; errors that classify themselves; reads checked against the model; Hegel over HTTP |
 | [`examples/jobqueue`](examples/jobqueue) | an at-least-once job queue with leases, workers and restarts (`jobqueue`) | all three verdicts: an implementation bug, a design property the run violates (`exactlyOnce`, checked with `-invariants`), and conformance; restarts inferred from incarnations; when model-driven testing does not fit |
@@ -230,6 +280,8 @@ which bug.
 examples/glomers/maelstrom.sh                   # under real Maelstrom, then quintgo on the nodes' step logs
 examples/kvstore/run-demo.sh                    # MUTATION=stale-cas | revision-on-conflict
 examples/jobqueue/run-demo.sh                   # MUTATION=ack-any-lease | forget-done
+examples/checkout/run-demo.sh                   # MUTATION=no-locks | lock-without-write | no-idempotency-key | dual-write
+examples/fleetrollout/kwok-demo.sh              # MUTATION=ignore-observed-generation | in-memory-progress, KILL=1
 ```
 
 ## Agent skills and guidance
@@ -244,7 +296,9 @@ The skills in [`skills/`](skills) teach a coding agent this toolkit:
   linearization points, ghost variables, settle-conditioned properties,
   mechanism models with a lemma;
 - `quint-verification-workflow`: the order of work (model, simulate,
-  record, bind, mutants, Hegel, real environment) and triage of verdicts.
+  record, bind, mutants, Hegel, real environment) and triage of verdicts;
+- `quint-fault-injection`: seams, `qenv` deployments, contract profiles,
+  `qtest.Explore`, shrinking with `qenv.Hegel`, and the real environment.
 
 They are in the [Agent Skills](https://agentskills.io) format, one
 `SKILL.md` per directory. In this repository they are exposed where agents

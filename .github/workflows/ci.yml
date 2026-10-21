@@ -36,6 +36,7 @@ jobs:
         run: |
           examples/kvstore/run-demo.sh
           examples/jobqueue/run-demo.sh
+          SEEDS=15 examples/checkout/run-demo.sh
 
   edgepublish:
     runs-on: ubuntu-latest
@@ -82,3 +83,33 @@ jobs:
           sudo apt-get install -y gnuplot-nox
       - name: Gossip Glomers under Maelstrom, step logs checked by quintgo
         run: OUT=$RUNNER_TEMP/maelstrom examples/glomers/maelstrom.sh
+
+  fleetrollout:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: examples/fleetrollout
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: examples/fleetrollout/go.mod
+          cache-dependency-path: examples/fleetrollout/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install quint and kwok
+        run: |
+          ../../ci/install-quint.sh
+          go install sigs.k8s.io/kwok/cmd/kwokctl@v0.7.0 sigs.k8s.io/kwok/cmd/kwok@v0.7.0
+      - name: vet
+        run: go vet ./...
+      - name: test (simulated fleet)
+        run: go test -count=1 ./...
+      - name: the real controller on three kwok clusters
+        run: |
+          # each run's exit status is its verdict: 0 conforms, 1 violation
+          KEEP=1 ./kwok-demo.sh
+          KEEP=1 KILL=1 ./kwok-demo.sh
+          if KEEP=1 MUTATION=ignore-observed-generation ./kwok-demo.sh; then echo "mutant passed"; exit 1; fi
+          if KILL=1 MUTATION=in-memory-progress ./kwok-demo.sh; then echo "mutant passed"; exit 1; fi

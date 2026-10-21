@@ -43,6 +43,7 @@ type Sim struct {
 	settling  bool
 	steps     int
 	panicked  any
+	stack     []byte
 	closed    bool
 }
 
@@ -145,7 +146,12 @@ func (s *Sim) spawn(parent context.Context, name string, p *Process, fn func(ctx
 		defer func() {
 			if r := recover(); r != nil {
 				if _, ok := r.(killed); !ok {
-					t.sim.panicked = fmt.Sprintf("task %s: %v\n%s", t.name, r, debug.Stack())
+					// re-raised by Run with its own value: a test
+					// framework's abort (Hegel's) must reach it intact
+					t.sim.panicked, t.sim.stack = r, debug.Stack()
+					if t.sim.Log != nil {
+						t.sim.Log(fmt.Sprintf("task %s panicked: %v\n%s", t.name, r, t.sim.stack))
+					}
 				}
 			}
 			t.done = true
@@ -315,7 +321,8 @@ var ErrMaxSteps = errors.New("qenv: too many scheduling steps (livelock?)")
 // Run schedules tasks until none can run and no deadline is within d of
 // virtual time (the system is quiet), or the virtual time has advanced by
 // d. Tasks still waiting then (workers waiting for messages) stay parked.
-// A panic in a task is re-raised here, with the task's stack.
+// A panic in a task is re-raised here, with its own value (PanicStack has
+// the task's stack).
 func (s *Sim) Run(d time.Duration) error {
 	horizon := s.now.Add(d)
 	for {
@@ -418,6 +425,9 @@ func (s *Sim) maybeNemesis() {
 		on[k-1].do()
 	}
 }
+
+// PanicStack is the stack of the last task that panicked.
+func (s *Sim) PanicStack() string { return string(s.stack) }
 
 // Close unwinds the tasks still parked (their goroutines exit). Call it
 // when the run is over; the simulation cannot run afterwards.

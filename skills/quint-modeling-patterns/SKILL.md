@@ -37,7 +37,11 @@ linearizable store, and failed under Maelstrom. Its seq-kv store is only
 sequentially consistent, and "update operations may interact with past
 states". Either model the weaker guarantee or design so you don't depend
 on it (the G-counter CRDT). In both cases, also run against the real
-environment.
+environment. In-process, `qenv`'s doubles enforce the documented
+contract: a store at the isolation level production runs, an
+at-least-once queue, a network that loses responses. Run each property
+under every contract you might deploy on (the quint-fault-injection
+skill).
 
 ## 3. Record where effects happen: linearization points
 
