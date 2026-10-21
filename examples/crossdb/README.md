@@ -61,9 +61,9 @@ the ID. The faithful provider's answer:
 | Provider | Simulated | On kind |
 |---|---|---|
 | faithful | conforms (60 seeds: every fault, crashes) | conforms, with 10% of responses dropped and seven `kill -9`s of the provider |
-| `GeneratedExternalName`: the cloud's ID as the external name, with a client token | conforms with no faults; **violates** `settledCorrectly` with lost responses alone, and with crashes alone | (being run) |
-| `NoClientToken`: the same, without the token | **violates** `oneDatabasePerResource`: a lost response, retried as a failure, makes a second database | (being run) |
-| `PasswordFromCreate`: the password generated in `Create`, published only with its result | **violates** `settledCorrectly`: after a lost response, the retry's new password is ignored by the idempotent cloud, and the Secret doesn't open the database | (being run) |
+| `GeneratedExternalName`: the cloud's ID as the external name, with a client token | conforms with no faults; **violates** `settledCorrectly` with lost responses alone, and with crashes alone | conforms, in a 6-resource run with 30% of responses dropped and in one with 14 `kill -9`s: the windows are narrow (see below) |
+| `NoClientToken`: the same, without the token | **violates** `oneDatabasePerResource`: a lost response, retried as a failure, makes a second database | **violates** `oneDatabasePerResource` (30% dropped): `app1` got a second database |
+| `PasswordFromCreate`: the password generated in `Create`, published only with its result | **violates** `settledCorrectly`: after a lost response, the retry's new password is ignored by the idempotent cloud, and the Secret doesn't open the database | **violates** `settledCorrectly` (30% dropped) |
 
 ## Findings along the way
 
@@ -85,6 +85,14 @@ the ID. The faithful provider's answer:
   The grace period is what protects deletion from an eventually consistent
   cloud. The cost is that deleting a just-created resource takes the full
   30 s.
+- **What only the simulation found.** On kind, the generated-external-name
+  mutant passed both runs. Its leak needs a create whose response is lost
+  *and* a delete before the retry. Its stuck state needs a `kill -9` in
+  the few milliseconds between the create and saving the name. A handful
+  of real runs didn't produce either coincidence. Sixty seeded simulations
+  did, and Hegel can shrink one. This is the case for the simulated tier:
+  real runs confirm what the simulation finds, but they rarely reach
+  windows this narrow.
 - **A library that reads the real clock.** crossplane-runtime stamps its
   create annotations with `time.Now()` and compares them with
   `time.Since`. A simulation advances only virtual time, so the grace
