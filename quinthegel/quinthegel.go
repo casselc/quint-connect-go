@@ -185,6 +185,11 @@ func Test(t *testing.T, cfg Config, body func(ht *hegel.T, rec *Recorder), opts 
 		runs [][]qtrace.Step
 		seen = map[string]bool{}
 	)
+	if cfg.Mode == Each {
+		// every case runs quint: Hegel's "too slow" health check would
+		// abort the search (a later SuppressHealthCheck in opts wins)
+		opts = append([]hegel.Option{hegel.SuppressHealthCheck(hegel.TooSlow)}, opts...)
+	}
 	hegel.Test(t, func(ht *hegel.T) {
 		rec := NewRecorder(ht, cfg.Recorder...)
 		if cfg.Global {
@@ -376,7 +381,7 @@ func batched(t *testing.T, cfg Config, body func(ht *hegel.T, rec *Recorder), op
 		ok := t.Run("shrink", func(st *testing.T) {
 			hegel.Test(st, func(ht *hegel.T) {
 				CheckCase(ht, cc, record(ht))
-			}, append(append([]hegel.Option(nil), opts...), hegel.WithSeed(s))...)
+			}, append(append([]hegel.Option{hegel.SuppressHealthCheck(hegel.TooSlow)}, opts...), hegel.WithSeed(s))...)
 		})
 		if ok {
 			// The replay did not meet the failing case again (generation was

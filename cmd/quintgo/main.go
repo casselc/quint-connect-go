@@ -75,7 +75,7 @@ func usage() {
   quintgo steps    FILE.jsonl...
   quintgo validate [-binding b.yaml] [-dir OUT] [-backend rust|typescript] [-format auto|otlp|steps|itf]
                    [-spec M.qnt -module M -instance I] [-novars]
-                   [-convert rules.yaml] [-invariants a,b] FILE...
+                   [-convert rules.yaml] [-invariants a,b] [-noitf] FILE...
   quintgo itf      -binding b.yaml -out DIR FILE...      recorded steps -> model-level ITF per actor
   quintgo convert  -rules r.yaml [-out steps.jsonl] FILE...   an app's OTLP/JSON spans -> step log (see package convert)
 
@@ -231,6 +231,7 @@ func runValidate(args []string) (int, error) {
 	verbose := fset.Bool("v", false, "print quint's output")
 	conv := fset.String("convert", "", "convert OTLP/JSON spans with this rule file (see quintgo convert)")
 	invs := fset.String("invariants", "", "comma-separated model invariants to check instead of the binding's")
+	noITF := fset.Bool("noitf", false, "do not write the ITF of conforming runs (faster for models with a large state)")
 	fset.Parse(args)
 	rules, err := loadRules(*conv)
 	if err != nil {
@@ -239,7 +240,7 @@ func runValidate(args []string) (int, error) {
 	if fset.NArg() == 0 {
 		usage()
 	}
-	opts := validate.Options{Quint: *quint, Backend: *backend, Dir: *dir}
+	opts := validate.Options{Quint: *quint, Backend: *backend, Dir: *dir, NoITF: *noITF}
 	var b *binding.Binding
 	if *bpath != "" {
 		if b, err = binding.Load(*bpath); err != nil {

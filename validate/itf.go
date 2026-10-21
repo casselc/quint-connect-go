@@ -158,13 +158,8 @@ func ValidateITF(ctx context.Context, tr *itf.Trace, opt ITFOptions) (*Result, e
 		actor = "itf"
 	}
 	base := "replay_" + sanitize(actor)
-	qnt := filepath.Join(o.Dir, base+".qnt")
-	g, err := binding.RenderModule(ms, calls, qnt)
-	if err != nil {
-		return nil, err
-	}
 	res := &Result{Actor: actor}
-	return res, run(ctx, g, qnt, base, invs, o, res)
+	return res, evaluate(ctx, ms, [][]binding.Call{calls}, base, o, []*Result{res})[0]
 }
 
 func sortedKeys(m map[string]string) []string {

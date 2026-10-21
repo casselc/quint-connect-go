@@ -124,7 +124,7 @@ func TestStateMachineBugShrinks(t *testing.T) {
 		hegel.RunStateful(tc, m, hegel.WithStatefulStepCount(8))
 		last = rec.Steps()
 		quinthegel.CheckCase(tc, cc, last)
-	}, hegel.WithTestCases(40), hegel.WithDatabase(""), hegel.WithSeed(7))
+	}, hegel.SuppressHealthCheck(hegel.TooSlow), hegel.WithTestCases(40), hegel.WithDatabase(""), hegel.WithSeed(7))
 	q, hits := cc.Stats()
 	t.Logf("%d quint runs, %d cache hits; shrunk run:\n%s", q, hits, quinthegel.Render(last))
 	if err == nil {

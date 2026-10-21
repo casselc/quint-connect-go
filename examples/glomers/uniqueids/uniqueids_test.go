@@ -47,30 +47,79 @@ func workload(s *maelstrom.Sim, seed uint64) {
 	s.Run(pick, 1000)
 }
 
-func check(t *testing.T, m Mutation) *qtest.Run {
-	return qtest.Record(t, "uniqueids.binding.yaml", func(*qobs.Recorder) { workload(sim(m, 1), 1) })
+func check(t *testing.T, binding string, m Mutation) *qtest.Run {
+	return qtest.Record(t, binding, func(*qobs.Recorder) { workload(sim(m, 1), 1) })
 }
+
+const (
+	spec   = "uniqueids.binding.yaml"        // the ids themselves
+	scheme = "uniqueids.scheme.binding.yaml" // what they are built from
+)
 
 func TestUniqueUnderPartitionAndRestart(t *testing.T) {
 	needQuint(t)
-	if run := check(t, Faithful); !run.OK() {
-		t.Fatalf("faithful ids are not unique:\n%s", run.Report.Summary())
+	for _, b := range []string{spec, scheme} {
+		if run := check(t, b, Faithful); !run.OK() {
+			t.Fatalf("%s: faithful ids rejected:\n%s", b, run.Report.Summary())
+		}
 	}
 }
 
-// Both mutants are behaviours the model allows (a node may answer any id)
-// that violate its property: the verdict is "conforms, idsUnique FAIL",
-// at the step that repeated an id.
-func TestMutantsRepeatIDs(t *testing.T) {
+// What each check catches. The spec model sees every repeat, by
+// remembering every id. The scheme model only sees a broken scheme (a
+// restarted node reusing its incarnation); a broken *encoding*, which
+// drops part of (node, incarnation, counter), is invisible to it. That
+// part is TestIDEncodingInjective's.
+func TestMutants(t *testing.T) {
 	needQuint(t)
-	for _, m := range []Mutation{CounterOnly, NoIncarnation} {
-		run := check(t, m)
-		a := run.Report.Actors[0]
-		if a.Conforms != validate.Pass || a.Invariants[0].Verdict != validate.Fail {
-			t.Errorf("mutant %d:\n%s", m, run.Report.Summary())
-			continue
+	for _, c := range []struct {
+		m            Mutation
+		spec, scheme bool // caught by
+	}{
+		{CounterOnly, true, false},
+		{NoIncarnation, true, false},
+		{FixedIncarnation, true, true},
+	} {
+		for _, b := range []struct {
+			file   string
+			caught bool
+		}{{spec, c.spec}, {scheme, c.scheme}} {
+			run := check(t, b.file, c.m)
+			a := run.Report.Actors[0]
+			caught := a.Conforms == validate.Pass && a.Invariants[0].Verdict == validate.Fail
+			if caught != b.caught || a.Conforms != validate.Pass {
+				t.Errorf("mutant %d, %s: caught=%v, want %v\n%s", c.m, b.file, caught, b.caught, run.Report.Summary())
+			} else if caught {
+				t.Logf("mutant %d, %s: caught at %s", c.m, b.file, a.Invariants[0].Failure.Call)
+			}
 		}
-		t.Logf("mutant %d: duplicate at %s", m, a.Invariants[0].Failure.Call)
+	}
+}
+
+// The lemma the scheme model needs: the encoding is injective. A pure
+// function, so a property test is the right tool, not the model.
+func TestIDEncodingInjective(t *testing.T) {
+	gen := func(tc hegel.TestCase) (string, uint64, int) {
+		return hegel.Draw(tc, hegel.Text().MaxSize(4)), hegel.Draw(tc, hegel.Integers[uint64](0, 1<<63)), hegel.Draw(tc, hegel.Integers(1, 1<<30))
+	}
+	hegel.Test(t, func(ht *hegel.T) {
+		n, i, c := gen(ht)
+		gn, gi, gc, err := ParseID(ID(Faithful, n, i, c))
+		if err != nil || gn != n || gi != i || gc != c {
+			ht.Fatalf("ParseID(ID(%q, %x, %d)) = %q, %x, %d, %v", n, i, c, gn, gi, gc, err)
+		}
+	})
+	for _, m := range []Mutation{CounterOnly, NoIncarnation} {
+		err := hegel.Run(func(tc hegel.TestCase) {
+			n1, i1, c1 := hegel.Draw(tc, hegel.SampledFrom(nodes)), hegel.Draw(tc, hegel.Integers[uint64](0, 3)), hegel.Draw(tc, hegel.Integers(1, 3))
+			n2, i2, c2 := hegel.Draw(tc, hegel.SampledFrom(nodes)), hegel.Draw(tc, hegel.Integers[uint64](0, 3)), hegel.Draw(tc, hegel.Integers(1, 3))
+			if (n1 != n2 || i1 != i2 || c1 != c2) && ID(m, n1, i1, c1) == ID(m, n2, i2, c2) {
+				tc.Errorf("(%s, %d, %d) and (%s, %d, %d) both encode as %q", n1, i1, c1, n2, i2, c2, ID(m, n1, i1, c1))
+			}
+		}, hegel.WithTestCases(200), hegel.WithDatabase(""))
+		if err == nil {
+			t.Errorf("mutant %d: no collision found", m)
+		}
 	}
 }
 
@@ -90,7 +139,7 @@ func (m *machine) RuleRestart(tc hegel.TestCase) {
 
 func TestHegelSchedules(t *testing.T) {
 	needQuint(t)
-	quinthegel.Test(t, quinthegel.Config{Binding: "uniqueids.binding.yaml", Mode: quinthegel.Batched, Global: true, AllowEmpty: true, Rounds: 2},
+	quinthegel.Test(t, quinthegel.Config{Binding: spec, Mode: quinthegel.Batched, Global: true, AllowEmpty: true, Rounds: 2},
 		func(ht *hegel.T, _ *quinthegel.Recorder) {
 			s := sim(Faithful, uint64(hegel.Draw(ht, hegel.Integers(0, 1<<30))))
 			hegel.RunStateful(ht, &machine{Network: maelstrom.Network{Sim: s, Faults: true, NoTimers: true}}, hegel.WithStatefulStepCount(25))

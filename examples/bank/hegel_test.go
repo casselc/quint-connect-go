@@ -83,7 +83,7 @@ func TestHegelCatchesSelfTransfer(t *testing.T) {
 		hegel.RunStateful(tc, &machine{bank: New(accounts, WithMutation(SelfTransfer))}, hegel.WithStatefulStepCount(12))
 		last = rec.Steps()
 		quinthegel.CheckCase(tc, cc, last)
-	}, hegel.WithTestCases(50), hegel.WithDatabase(""), hegel.WithSeed(3))
+	}, hegel.SuppressHealthCheck(hegel.TooSlow), hegel.WithTestCases(50), hegel.WithDatabase(""), hegel.WithSeed(3))
 	q, hits := cc.Stats()
 	t.Logf("%d quint checks, %d decided from earlier verdicts; shrunk run:\n%s", q, hits, quinthegel.Render(last))
 	if err == nil {

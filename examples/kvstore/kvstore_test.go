@@ -241,7 +241,7 @@ func TestHegelShrinksRevisionOnConflict(t *testing.T) {
 		hegel.RunStateful(tc, &machine{cl: cl, versions: hegel.NewPool[int64](tc)}, hegel.WithStatefulStepCount(10))
 		last = rec.Steps()
 		quinthegel.CheckCase(tc, cc, last)
-	}, hegel.WithTestCases(30), hegel.WithDatabase(""), hegel.WithSeed(11))
+	}, hegel.SuppressHealthCheck(hegel.TooSlow), hegel.WithTestCases(30), hegel.WithDatabase(""), hegel.WithSeed(11))
 	q, hits := cc.Stats()
 	t.Logf("%d quint checks, %d from the cache; shrunk run:\n%s", q, hits, quinthegel.Render(last))
 	if err == nil {

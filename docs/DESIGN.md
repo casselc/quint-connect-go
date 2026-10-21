@@ -693,3 +693,41 @@ Long, real runs also needed the replay segments (§9.4) to nest. At 2841
 steps, 142 segments chained at the top level were again too deep for
 the Rust evaluator, so segments are now grouped into segments
 recursively, and no chain is longer than 20.
+
+### 9.7 What a check costs
+
+Measuring a 2841-step Maelstrom log of unique ids (152 s at first) showed
+where a replay's time goes:
+- **quint's start-up and parse**: ~8 s for a 660 KB generated module;
+- **the evaluation itself**: ~5 s;
+- **writing the ITF**, the model's full state at every step: 105 MB when
+  the state holds every id issued, and as long again to annotate in Go;
+- **one more full replay per invariant**: each invariant had its own run
+  (for precise attribution), and each wrote its own ITF, which nothing
+  read.
+
+Changes:
+- **The fused run.** A replay module first holds one run that checks
+  each step's expect and every invariant together (`allTest`,
+  `binding.FastTests`). It decides a passing run in one replay. Only the
+  runs that fail it are replayed again, from a second module
+  (`<base>_detail.qnt`, `binding.DetailTests`), whose conformance run and
+  per-invariant runs say which check failed and where. Failing runs pay
+  a second quint process; passing ones, the common case, save k replays.
+- **Optional ITF.** `Options.NoITF` (CLI `-noitf`) skips it, and Hegel's
+  checks always skip it, since they only need verdicts.
+- **Segment names** no longer contain "Test", so `quint test --match`
+  does not take them for tests.
+
+The model matters as much:
+- **A history property should not be an invariant that re-scans the
+  history.** `issued.keys().forall(i => issued.get(i) == 1)` is
+  quadratic over a run. A ghost flag set when a new element repeats an
+  old one is constant per step.
+- **A model of the mechanism can avoid the history.** Per-incarnation
+  counters are state bounded by restarts, not by ids. They are a proof
+  of the specification only with a lemma about the encoding, which a
+  property test checks (examples/glomers README).
+
+After both: 64 s (19 s without ITF) for the original model, 21 s (11 s)
+for the ghost-flag model, 7 s for the scheme model.

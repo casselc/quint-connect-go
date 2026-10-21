@@ -55,6 +55,27 @@ code (`connect`), Hegel-driven Go runs are judged by the model
    `nondet` inside it (not a parameter) makes replay ambiguous: replay is a
    deterministic `run`. Lift the choice into a parameter.
 
+## Keep replays cheap
+
+Recorded runs can be thousands of steps long. Cost per step depends on
+the state and on how invariants are written:
+
+- **History properties.** For "every id is unique" or "no message is
+  delivered twice", check each new element when it arrives and record a
+  repeat in a ghost variable, with `val ok = not(repeated)`. Don't write
+  an invariant that re-scans the whole history in every state: that is
+  quadratic over a run.
+- **State that grows with the run.** For opaque values (ids, messages)
+  some memory of the past is unavoidable. If the values have structure
+  (node, incarnation, counter), a second model can check the mechanism
+  instead: each incarnation's counter only increases. Its state stays
+  bounded. Pair it with a property test of the encoding's injectivity
+  (a pure function), and keep the spec-level model for short runs
+  (examples/glomers/uniqueids).
+- **Big states.** Pass `quintgo validate -noitf` (or
+  `validate.Options{NoITF: true}`) when you don't need the ITF of a
+  conforming run: it holds the full state at every step.
+
 ## Workflow
 
 ```sh

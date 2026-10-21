@@ -155,7 +155,7 @@ func TestHegelShrinksNoRetry(t *testing.T) {
 		scenario(tc, NoRetry, 20)
 		last = rec.Steps()
 		quinthegel.CheckCase(tc, cc, last)
-	}, hegel.WithTestCases(40), hegel.WithDatabase(""), hegel.WithSeed(2))
+	}, hegel.SuppressHealthCheck(hegel.TooSlow), hegel.WithTestCases(40), hegel.WithDatabase(""), hegel.WithSeed(2))
 	q, hits := cc.Stats()
 	t.Logf("%d quint checks, %d from the cache; shrunk run:\n%s", q, hits, quinthegel.Render(last))
 	if err == nil {

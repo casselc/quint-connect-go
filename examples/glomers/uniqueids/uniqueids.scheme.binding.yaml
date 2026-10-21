@@ -1,0 +1,11 @@
+# Recorded uniqueids steps as calls of ../model/uniqueidsScheme.qnt: the
+# parts an id is built from, not the id. Sound only together with the
+# encoding's injectivity (TestIDEncodingInjective).
+spec: ../model/uniqueidsScheme.qnt
+module: uniqueidsScheme
+constants:
+  NODES: '{{ set "node" }}'
+actions:
+  generate:
+    args: { node: '{{.node}}', incarnation: '{{.incarnation}}', counter: '{{.counter}}' }
+invariants: [incarnationsOwnedAndCounting]

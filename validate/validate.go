@@ -26,6 +26,10 @@ type Options struct {
 	Quint   string // quint binary; default "quint"
 	Backend string // quint test --backend; default $QUINTGO_BACKEND, else "rust"
 	Dir     string // where generated modules and ITF go; default a temp dir
+	// NoITF skips writing the ITF of conforming runs (Result.ITF stays
+	// empty). The ITF holds the model's full state at every step, which for
+	// a model with a large state is much of the cost of a check.
+	NoITF bool
 }
 
 // Verdict of one check.
@@ -105,13 +109,12 @@ func Validate(ctx context.Context, b *binding.Binding, m *binding.Model, t *qtra
 		return nil, err
 	}
 	base := "observed_" + sanitize(t.Actor)
-	qnt := filepath.Join(opt.Dir, base+".qnt")
-	g, err := b.Generate(m, t, qnt)
+	p, err := b.Plan(m, t)
 	if err != nil {
 		return nil, err
 	}
 	res := &Result{Actor: t.Actor, Issues: t.Issues}
-	return res, run(ctx, g, qnt, base, b.Invariants, opt, res)
+	return res, evaluate(ctx, b.ModuleSpec(p), [][]binding.Call{p.Calls}, base, opt, []*Result{res})[0]
 }
 
 func (opt Options) resolve() (Options, error) {
@@ -140,24 +143,112 @@ func (opt Options) resolve() (Options, error) {
 	return opt, nil
 }
 
-// run writes a generated module, runs quint test on it, and fills res.
-func run(ctx context.Context, g *binding.Generated, qnt, base string, invariants []string, opt Options, res *Result) error {
-	out, err := quintTest(ctx, g.Text, qnt, g.Module, base, opt)
-	if err != nil {
-		return err
+// evaluate replays runs of one instance (one run, or a batch) and fills
+// their results, in at most two quint processes. The first replays each
+// run once with every check fused (binding.FastTests): it decides every
+// run that passes. Only the runs that fail it are replayed again, with a
+// conformance run and a run per invariant (binding.DetailTests), which say
+// which check failed and where. Modules go to <Dir>/<base>.qnt and
+// <base>_detail.qnt.
+func evaluate(ctx context.Context, ms binding.ModuleSpec, runs [][]binding.Call, base string, opt Options, res []*Result) []error {
+	errs := make([]error, len(runs))
+	fail := func(idx []int, err error) {
+		for _, i := range idx {
+			errs[i] = err
+		}
 	}
-	return fill(g, out, qnt, filepath.Join(opt.Dir, base+"_{test}.itf.json"), invariants, res)
+	all := make([]int, len(runs))
+	for i := range all {
+		all[i] = i
+	}
+	// phase writes the module of the given runs and test set, and runs it.
+	phase := func(set binding.TestSet, file string, idx []int) ([]*binding.Generated, string, string, error) {
+		m := ms
+		m.Tests = set
+		qnt := filepath.Join(opt.Dir, file+".qnt")
+		sub := make([][]binding.Call, len(idx))
+		for j, i := range idx {
+			sub[j] = runs[i]
+		}
+		gs, err := binding.RenderBatch(m, sub, qnt)
+		if err != nil {
+			return nil, "", "", err
+		}
+		if err := os.WriteFile(qnt, []byte(gs[0].Text), 0o644); err != nil {
+			return nil, "", "", err
+		}
+		var names []string
+		for _, g := range gs {
+			if g.Tests.All != "" {
+				names = append(names, g.Tests.All)
+			}
+			if g.Tests.Conforms != "" {
+				names = append(names, g.Tests.Conforms)
+			}
+			for _, n := range g.Tests.Invariants {
+				names = append(names, n)
+			}
+		}
+		out, err := quintTest(ctx, qnt, gs[0].Module, file, opt, names)
+		return gs, qnt, out, err
+	}
+	detailed := all
+	if len(ms.Invariants) > 0 {
+		gs, qnt, out, err := phase(binding.FastTests, base, all)
+		if err != nil {
+			fail(all, err)
+			return errs
+		}
+		verdicts, _ := parseQuintTest(out, qnt, gs[0])
+		detailed = nil
+		for i, g := range gs {
+			if verdicts[g.Tests.All] != Pass {
+				detailed = append(detailed, i)
+				continue
+			}
+			r := res[i]
+			r.Steps, r.Module, r.Calls, r.Output, r.Conforms = len(g.Calls), qnt, g.Calls, out, Pass
+			r.Invariants = nil
+			for _, inv := range ms.Invariants {
+				r.Invariants = append(r.Invariants, InvariantResult{Name: inv, Verdict: Pass})
+			}
+			if !opt.NoITF {
+				itf := filepath.Join(opt.Dir, base+"_"+g.Tests.All+".itf.json")
+				if err := annotateITF(itf, g); err == nil {
+					r.ITF = itf
+				}
+			}
+		}
+		if len(detailed) == 0 {
+			return errs
+		}
+	}
+	file := base
+	if len(ms.Invariants) > 0 {
+		file = base + "_detail"
+	}
+	gs, qnt, out, err := phase(binding.DetailTests, file, detailed)
+	if err != nil {
+		fail(detailed, err)
+		return errs
+	}
+	pattern := filepath.Join(opt.Dir, file+"_{test}.itf.json")
+	for j, i := range detailed {
+		errs[i] = fill(gs[j], out, qnt, pattern, ms.Invariants, res[i])
+	}
+	return errs
 }
 
-// quintTest writes a module and runs `quint test` on it, returning quint's
-// output. ITF goes to <Dir>/<base>_<test>.itf.json.
-func quintTest(ctx context.Context, text, qnt, module, base string, opt Options) (string, error) {
-	if err := os.WriteFile(qnt, []byte(text), 0o644); err != nil {
-		return "", err
+// quintTest runs the named tests of a written module with `quint test`,
+// returning quint's output. ITF goes to <Dir>/<base>_<test>.itf.json,
+// unless opt.NoITF.
+func quintTest(ctx context.Context, qnt, module, base string, opt Options, tests []string) (string, error) {
+	args := []string{"test", filepath.Base(qnt), "--main", module, "--backend", opt.Backend, "--max-samples", "1",
+		"--match", "^(" + strings.Join(tests, "|") + ")$"}
+	if !opt.NoITF {
+		args = append(args, "--out-itf", filepath.Join(opt.Dir, base+"_{test}.itf.json"))
 	}
-	itfPattern := filepath.Join(opt.Dir, base+"_{test}.itf.json")
-	cmd := exec.CommandContext(ctx, opt.Quint, "test", filepath.Base(qnt), "--main", module,
-		"--backend", opt.Backend, "--max-samples", "1", "--out-itf", itfPattern)
+	cmd := exec.CommandContext(ctx, opt.Quint, args...)
 	cmd.Dir = opt.Dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

@@ -147,41 +147,29 @@ func (c *Checker) CheckBatch(ctx context.Context, runs [][]qtrace.Step, perProce
 			sem <- struct{}{}
 			defer func() { <-sem }()
 			name := fmt.Sprintf("batch%d", ch.n)
-			qnt := filepath.Join(opt.Dir, name+".qnt")
 			ms := c.Binding.ModuleSpec(ch.items[0].plan)
 			ms.Header = []string{fmt.Sprintf("%d traces of instance %s", len(ch.items), strings.Join(ms.Constants, ", "))}
 			calls := make([][]binding.Call, len(ch.items))
+			results := make([]*Result, len(ch.items))
 			for i, it := range ch.items {
 				calls[i] = it.plan.Calls
+				results[i] = it.res
 			}
-			gs, err := binding.RenderBatch(ms, calls, qnt)
-			if err != nil {
-				for _, it := range ch.items {
+			for i, err := range evaluate(ctx, ms, calls, name, opt, results) {
+				if err == nil {
+					continue
+				}
+				// quint could not evaluate this trace's tests (a ToolError),
+				// or did not report them: re-check it alone, so a problem
+				// in one trace, or in the chunk's size, costs no verdicts.
+				it := ch.items[i]
+				r, err := Validate(ctx, c.Binding, c.Model, it.trace, Options{Quint: opt.Quint, Backend: opt.Backend, NoITF: opt.NoITF,
+					Dir: filepath.Join(opt.Dir, fmt.Sprintf("%s_retry%d", name, i))})
+				if err != nil {
 					setErr(it.run, err)
+					continue
 				}
-				return
-			}
-			out, err := quintTest(ctx, gs[0].Text, qnt, gs[0].Module, name, opt)
-			if err != nil {
-				for _, it := range ch.items {
-					setErr(it.run, err)
-				}
-				return
-			}
-			pattern := filepath.Join(opt.Dir, name+"_{test}.itf.json")
-			for i, it := range ch.items {
-				if err := fill(gs[i], out, qnt, pattern, c.Binding.Invariants, it.res); err != nil {
-					// quint could not evaluate this trace's tests (a ToolError),
-					// or did not report them: re-check it alone, so a problem
-					// in one trace, or in the chunk's size, costs no verdicts.
-					r, err := Validate(ctx, c.Binding, c.Model, it.trace, Options{Quint: opt.Quint, Backend: opt.Backend,
-						Dir: filepath.Join(opt.Dir, fmt.Sprintf("%s_retry%d", name, i))})
-					if err != nil {
-						setErr(it.run, err)
-						continue
-					}
-					*it.res = *r
-				}
+				*it.res = *r
 			}
 		}(ch)
 	}

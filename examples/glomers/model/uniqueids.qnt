@@ -7,16 +7,25 @@
 // a node answer with any id; uniqueness is the property, so a scheme that
 // can repeat an id is a behaviour the model allows and its invariant
 // rejects (rather than a step the model forbids).
+//
+// Uniqueness is a property of the whole history, and ids are opaque here,
+// so the model has to remember every id it has seen. It checks each new id
+// against them as it arrives (a ghost flag records a repeat), instead of
+// re-checking every id in every state: constant work per step, not
+// linear. uniqueidsScheme.qnt avoids remembering ids altogether, by
+// modelling how the ids are built.
 module uniqueids {
   const NODES: Set[str]
 
-  var issued: str -> int  // how many times each id was given out
+  var issued: Set[str]   // ids given out so far
+  var repeated: bool     // ghost: some id was given out twice
 
-  action init = issued' = Map()
+  action init = all { issued' = Set(), repeated' = false }
 
   action generate(node: str, id: str): bool = all {
     NODES.contains(node),
-    issued' = if (issued.keys().contains(id)) issued.setBy(id, n => n + 1) else issued.put(id, 1),
+    repeated' = (repeated or issued.contains(id)),
+    issued' = issued.union(Set(id)),
   }
 
   // For simulation: ids from a small pool, to show the property can fail.
@@ -26,5 +35,5 @@ module uniqueids {
     generate(node, id)
   }
 
-  val idsUnique = issued.keys().forall(i => issued.get(i) == 1)
+  val idsUnique = not(repeated)
 }

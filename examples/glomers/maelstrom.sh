@@ -37,10 +37,13 @@ for c in ${@:-echo uniqueids broadcast gcounter kafka}; do
   echo "=== $c: maelstrom test ${args[*]}"
   (cd "$OUT" && QUINT_STEPS_DIR="$steps" "$MAELSTROM" test --bin "$OUT/bin/$c" "${args[@]}" 2>&1 | tail -1) | tee "$OUT/$c.result"
   grep -q "Everything looks good" "$OUT/$c.result" || status=1
-  if [ -f "$c/$c.binding.yaml" ] && [ "$c" != kafka ] && ls "$steps"/*.jsonl >/dev/null 2>&1; then
-    echo "--- quintgo validate -binding $c/$c.binding.yaml ($(cat "$steps"/*.jsonl | wc -l) steps)"
-    "$OUT/bin/quintgo" validate -binding "$c/$c.binding.yaml" -dir "$OUT/v-$c" "$steps"/*.jsonl > "$OUT/$c.validate" || status=1
-    grep -E 'issue|conformance|invariant|step \[|quint:|RESULT' "$OUT/$c.validate"
-  fi
+  [ "$c" = kafka ] && continue
+  for b in "$c"/*.binding.yaml; do
+    [ -f "$b" ] && ls "$steps"/*.jsonl >/dev/null 2>&1 || continue
+    echo "--- quintgo validate -noitf -binding $b ($(cat "$steps"/*.jsonl | wc -l) steps)"
+    v=$(basename "$b" .yaml)
+    "$OUT/bin/quintgo" validate -noitf -binding "$b" -dir "$OUT/v-$v" "$steps"/*.jsonl > "$OUT/$v.validate" || status=1
+    grep -E 'issue|conformance|invariant|step \[|quint:|RESULT' "$OUT/$v.validate"
+  done
 done
 exit $status

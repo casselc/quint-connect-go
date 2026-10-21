@@ -25,6 +25,11 @@ type Generated struct {
 type GeneratedTests struct {
 	Conforms   string            // replays every step; checks each step's expect
 	Invariants map[string]string // invariant -> run that checks it in every state
+	// All, when there are invariants, replays the steps once checking each
+	// step's expect and every invariant: the fast path. If it passes, so
+	// do Conforms and every invariant run; if not, those runs say which
+	// check failed, and where.
+	All string
 }
 
 // Call is one step of the replay.
@@ -233,7 +238,22 @@ type ModuleSpec struct {
 	Invariants []string
 	InitExpect string   // checked in the initial state, if set
 	Header     []string // comment lines
+	Tests      TestSet  // which runs to write (default: all)
 }
+
+// TestSet selects the runs of a replay module.
+type TestSet int
+
+const (
+	// AllTests writes the fused run and the separate ones.
+	AllTests TestSet = iota
+	// FastTests writes only the fused run (allTest), or only conformsTest
+	// when there are no invariants: one replay that decides a passing run.
+	FastTests
+	// DetailTests writes conformsTest and one run per invariant: they say
+	// which check failed, and where.
+	DetailTests
+)
 
 // segmentSteps is the longest `.then` chain written as one expression.
 const segmentSteps = 20
@@ -332,9 +352,11 @@ func RenderBatch(ms ModuleSpec, runs [][]Call, qntPath string) ([]*Generated, er
 			for level := 0; len(items) > segmentSteps; level++ {
 				var next []item
 				for s := 0; s < len(items); s += segmentSteps {
-					seg := fmt.Sprintf("%s_seg%d", name, s/segmentSteps)
+					// no "Test" in the name: quint test --match would take it for a test
+					base := strings.TrimSuffix(name, "Test")
+					seg := fmt.Sprintf("%s_seg%d", base, s/segmentSteps)
 					if level > 0 {
-						seg = fmt.Sprintf("%s_l%d_%d", name, level, s/segmentSteps)
+						seg = fmt.Sprintf("%s_l%d_%d", base, level, s/segmentSteps)
 					}
 					group := items[s:min(s+segmentSteps, len(items))]
 					pr("  action %s =", seg)
@@ -351,27 +373,49 @@ func RenderBatch(ms ModuleSpec, runs [][]Call, qntPath string) ([]*Generated, er
 				emit(it, true)
 			}
 		}
-		g.Tests.Conforms = prefix + "conformsTest"
-		pr("  // The observed steps, each checked against the observed state.")
-		first := "init"
-		if ms.InitExpect != "" {
-			first = fmt.Sprintf("init.expect(%s)", ms.InitExpect)
-		}
-		chain(g.Tests.Conforms, first, func(c Call) string {
-			if c.Expect != "" {
-				return fmt.Sprintf("%s.expect(%s)", c.Quint, c.Expect)
+		fused := len(ms.Invariants) > 0 && ms.Tests != DetailTests
+		separate := ms.Tests != FastTests || len(ms.Invariants) == 0
+		if separate {
+			g.Tests.Conforms = prefix + "conformsTest"
+			pr("  // The observed steps, each checked against the observed state.")
+			first := "init"
+			if ms.InitExpect != "" {
+				first = fmt.Sprintf("init.expect(%s)", ms.InitExpect)
 			}
-			return c.Quint
-		}, true)
-		g.Tests.Invariants = map[string]string{}
-		for _, inv := range ms.Invariants {
-			name := prefix + inv + "InvTest"
-			g.Tests.Invariants[inv] = name
+			chain(g.Tests.Conforms, first, func(c Call) string {
+				if c.Expect != "" {
+					return fmt.Sprintf("%s.expect(%s)", c.Quint, c.Expect)
+				}
+				return c.Quint
+			}, true)
+		}
+		if fused {
+			g.Tests.All = prefix + "allTest"
+			all := strings.Join(ms.Invariants, " and ")
 			pr("")
-			pr("  // The same steps; %s must hold in every state.", inv)
-			chain(name, fmt.Sprintf("init.expect(%s)", inv), func(c Call) string {
-				return fmt.Sprintf("%s.expect(%s)", c.Quint, inv)
+			pr("  // The steps once, with every check: each step's expect and every invariant.")
+			allFirst := fmt.Sprintf("init.expect(%s)", all)
+			if ms.InitExpect != "" {
+				allFirst = fmt.Sprintf("init.expect(%s and %s)", ms.InitExpect, all)
+			}
+			chain(g.Tests.All, allFirst, func(c Call) string {
+				if c.Expect != "" {
+					return fmt.Sprintf("%s.expect((%s) and %s)", c.Quint, c.Expect, all)
+				}
+				return fmt.Sprintf("%s.expect(%s)", c.Quint, all)
 			}, false)
+		}
+		g.Tests.Invariants = map[string]string{}
+		if separate {
+			for _, inv := range ms.Invariants {
+				name := prefix + inv + "InvTest"
+				g.Tests.Invariants[inv] = name
+				pr("")
+				pr("  // The same steps; %s must hold in every state.", inv)
+				chain(name, fmt.Sprintf("init.expect(%s)", inv), func(c Call) string {
+					return fmt.Sprintf("%s.expect(%s)", c.Quint, inv)
+				}, false)
+			}
 		}
 	}
 	pr("}")

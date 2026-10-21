@@ -126,6 +126,7 @@ func (cc *CaseChecker) Check(ctx context.Context, steps []qtrace.Step) (Verdict,
 	}
 	c := *cc.Checker
 	c.Options.Dir = filepath.Join(cc.Checker.Options.Dir, fmt.Sprintf("check%d", cc.n.Add(1)))
+	c.Options.NoITF = true // verdicts only
 	rep, err := c.Check(ctx, steps)
 	if err != nil {
 		return Verdict{}, err
@@ -162,6 +163,7 @@ func (cc *CaseChecker) Prefetch(ctx context.Context, runs [][]qtrace.Step) ([]Ve
 	}
 	c := *cc.Checker
 	c.Options.Dir = filepath.Join(cc.Checker.Options.Dir, fmt.Sprintf("batch%d", cc.batches.Add(1)))
+	c.Options.NoITF = true
 	reps, errs := c.CheckBatch(ctx, todo, 0)
 	cc.n.Add(int64(min(len(todo), runtime.GOMAXPROCS(0))))
 	for j, i := range idx {

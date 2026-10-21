@@ -208,7 +208,7 @@ func TestHegelShrinksAckAnyLease(t *testing.T) {
 		runMachine(tc, queue.AckAnyLease)
 		last = rec.Steps()
 		quinthegel.CheckCase(tc, cc, last)
-	}, hegel.WithTestCases(60), hegel.WithDatabase(""), hegel.WithSeed(5))
+	}, hegel.SuppressHealthCheck(hegel.TooSlow), hegel.WithTestCases(60), hegel.WithDatabase(""), hegel.WithSeed(5))
 	q, hits := cc.Stats()
 	t.Logf("%d quint checks, %d from the cache; shrunk run:\n%s", q, hits, quinthegel.Render(last))
 	if err == nil {

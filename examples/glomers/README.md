@@ -14,7 +14,7 @@ and the step logs they write there are checked against the same models.
 | Challenge | Model (`model/`) | Properties | Bugs (mutants) and how they show up |
 |---|---|---|---|
 | 1 echo | (runtime test) | | |
-| 2 unique ids | `uniqueids.qnt`: any node may answer with any id | `idsUnique` | `CounterOnly`, `NoIncarnation` (a restart repeats ids): conforms, **idsUnique FAIL** at the repeat |
+| 2 unique ids | `uniqueids.qnt`: any node may answer with any id; `uniqueidsScheme.qnt`: ids built from (node, incarnation, counter) | `idsUnique`; `incarnationsOwnedAndCounting` | `CounterOnly`, `NoIncarnation`, `FixedIncarnation` (a restart repeats ids): conforms, **idsUnique FAIL** at the repeat. The scheme model catches only `FixedIncarnation`; the broken encodings fall to a Hegel property: the encoding is injective |
 | 3 broadcast (3a–3e) | `broadcast.qnt`: any gossip strategy, lost messages, reads return what the node knows | `noInvention`; `convergedWhenSettled` | `ReadOwnOnly`: **state mismatch** at a read; `NoRetry` (fire and forget): conforms, **convergedWhenSettled FAIL** at settle. Hegel shrinks NoRetry to *broadcast, its one gossip lost, settle* |
 | 4 grow-only counter | `gcounter.qnt`: a G-counter CRDT, vectors gossiped and merged by max | `noOvercount`; `countsEveryAdd` | `Overwrite` (merge by overwriting): a read the model **cannot take**; `GossipOnChange`: conforms, **countsEveryAdd FAIL** |
 | 5 kafka-style log (5b, 5c) | `kafka.qnt`: logs in lin-kv appended by CAS; polls, commits, listings | `sentAtItsOffset`, `offsetsUnique`, `commitsInLog` | `BlindAppend`: conforms, **sentAtItsOffset FAIL** (an acknowledged message overwritten); `PollSkips`: **state mismatch** at a poll |
@@ -100,12 +100,54 @@ challenge, not of one solution:
   The broadcast `ReadOwnOnly` mutant is rejected by both Maelstrom and
   the model, at the first read that misses a gossiped value.
 
+## Does the model have to remember every id?
+
+For opaque ids, it does. Uniqueness is a property of the whole history:
+to tell that a new id repeats an old one, something must remember the old
+ones. What it costs is a different question. Here are four models,
+measured on the same 2841-step Maelstrom log:
+
+| Model | Check | Original tool | Now | `-noitf` |
+|---|---|---|---|---|
+| a count per id, invariant "every count is 1" | scans every id in every state: quadratic | 152 s | 64 s | 19 s |
+| a set of ids, a repeat is a step the model cannot take | constant per step | 49 s | 20 s | 11 s |
+| a set of ids, a ghost flag set on a repeat (**`uniqueids.qnt`**) | constant per step | 37 s | 21 s | 11 s |
+| the last counter per incarnation (**`uniqueidsScheme.qnt`**) | state per incarnation, not per id | 13 s | 7 s | 8 s |
+
+Two things changed the numbers:
+- **The model.** A history property doesn't need to be re-checked in
+  every state. Check each new element as it arrives and remember the
+  verdict (a ghost variable).
+- **The tool**, for every model. A replay now runs once, with every
+  check fused; the per-invariant replays only run when that fails, to
+  locate the failure. The ITF of a conforming run, which holds the full
+  state at every step, is optional (`-noitf`, `validate.Options.NoITF`;
+  Hegel's checks never write it).
+
+Avoiding the growing state takes knowledge of how the ids are made. The
+scheme model checks *why* ids are unique: each incarnation belongs to one
+node, and its counter only increases. Its state grows with the number of
+incarnations. That argument needs one more fact: encoding (node,
+incarnation, counter) as a string is injective. That is a property of a
+pure function, so a Hegel property test (`TestIDEncodingInjective`)
+checks it, and finds collisions in both broken encodings at once. The
+work divides like this:
+
+| | Spec model | Scheme model | Encoding property |
+|---|---|---|---|
+| `FixedIncarnation` (a restart repeats an incarnation) | caught | caught | — |
+| `CounterOnly`, `NoIncarnation` (the encoding drops parts) | caught | **missed** | caught |
+
+The spec model is the specification; the scheme model, together with
+the lemma, is a cheaper proof of it. Use the spec model when the state is
+affordable, the scheme model when runs are long, and never the scheme
+model without the lemma.
+
 ## Limits
 
-- **Cost.** A model whose state grows with the run is slow to replay.
-  The 2841-step unique-ids run took 2.5 minutes, because `issued` holds
-  every id. Bulk checking (Hegel's `Batched` mode) helps many short runs,
-  not one long one.
+- **Large state still costs.** A model whose state grows with the run
+  replays more slowly as it goes. See the section above for doing less
+  work per step, or keeping less state.
 - **Settling under Maelstrom.** Under real Maelstrom nobody records
   `settle`, so `convergedWhenSettled` and `countsEveryAdd` hold
   vacuously there. Maelstrom's own final reads check eventual delivery.
