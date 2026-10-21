@@ -500,9 +500,12 @@ func ProcessOf(ctx context.Context) *Process {
 }
 
 // Crash kills every task of the process: none runs again, and no deferred
-// code of theirs runs (as in a real crash). Components holding state for
-// the process (open transactions, unacknowledged deliveries) release it
-// through their OnCrash hooks.
+// code of theirs runs while the simulation runs (as in a real crash; they
+// unwind at Close, and steps they record then are only Interrupted). A
+// task of the process calling Crash stops in it. Components holding state
+// for the process (open transactions, unacknowledged deliveries) release
+// it through their OnCrash hooks; a supervisor restarts it from one, or
+// from another process's task.
 func (p *Process) Crash() {
 	if p.down {
 		return
@@ -519,6 +522,14 @@ func (p *Process) Crash() {
 	}
 	for _, h := range p.sim.onCrash {
 		h(p)
+	}
+	// A task of the process crashing it dies here too: hand control back
+	// and stay frozen until Close, like the others, rather than run on to
+	// its next scheduling point.
+	if t := taskOf(nil); t != nil && t.proc == p && t.sim == p.sim {
+		t.sim.back <- struct{}{}
+		<-t.wake
+		panic(killed{})
 	}
 }
 

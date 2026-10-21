@@ -1096,10 +1096,28 @@ new one starts. That ordering is the trick: in a task it starts a
 simulation task running the function, and returns a no-op for the real
 goroutine. Outside a simulation it returns the function unchanged.
 
-**What escapes.** A method value (`return st.mu.RUnlock`) is not a call,
-and an unmarked `go` is not rewritten. `quintgo lint -weave` reports both,
-by name, without type information. The edgepublish stand-in needed one of
-each; the lint flags both on the original code.
+**What escapes.**
+- A method value (`return st.mu.RUnlock`) is not a call.
+- An unmarked `go` is not rewritten.
+- A call promoted through an embedded lock (`t.Lock()` on
+  `struct{ sync.Mutex }`) is not matched, because Orchestrion's
+  method-call join point compares the receiver expression's type, not
+  the method's. A probe confirmed this, through a nested struct too.
+
+`quintgo lint -weave` reports all three by name, without type information
+(it flags the embedding, not each call). The edgepublish stand-in needed
+the first two fixes; the lint flags both on the original code.
+
+**Interrupted work.** A crashed task stays frozen while the run goes on
+and unwinds at `Close`. A step its deferred code records then
+(`//quint:action` records on return) would claim a completion that did
+not happen. It goes to `Recorder.Interrupted` instead of the run:
+reported with a failing exploration, never checked. Recording on return
+describes what the caller saw. An effect the model must see whether or
+not its caller survives belongs at the effect's site, recorded by the
+double or service, as checkout's store commits and crossdb's cloud
+already are. A task that crashes its own process stops in `Crash`; it
+used to run on to its next scheduling point.
 
 **What the publisher in a simulation found.**
 - The stand-in rotated backwards: a `Tick` waited for the exclusive lock

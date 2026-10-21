@@ -21,7 +21,11 @@ type Explored struct {
 	Seed    uint64
 	Steps   []qtrace.Step
 	Choices []qenv.Choice // every choice of the run: qenv.Replay(Choices) repeats it
-	Report  *validate.Report
+	// Interrupted are steps of work a crash or the end of the run cut off
+	// (qobs.Recorder.Interrupted): not in Steps, not checked; reported with
+	// a failing run.
+	Interrupted []qtrace.Step
+	Report      *validate.Report
 }
 
 // Faults are the run's fault choices that were not nominal.
@@ -102,8 +106,9 @@ func Explore(t testing.TB, bindingPath string, cfg ExploreConfig, scenario func(
 			ch := qenv.NewSeeded(seed)
 			ch.Rates = cfg.Rates
 			rec := &qenv.Recorder{C: ch}
-			scenario(qenv.WithContext(rec, qobs.WithRecorder(context.Background(), qobs.NewRecorder(mem, c.Recorder...))))
-			x.Runs[i] = &Explored{Seed: seed, Steps: mem.Steps(), Choices: rec.Choices}
+			r := qobs.NewRecorder(mem, c.Recorder...)
+			scenario(qenv.WithContext(rec, qobs.WithRecorder(context.Background(), r)))
+			x.Runs[i] = &Explored{Seed: seed, Steps: mem.Steps(), Choices: rec.Choices, Interrupted: r.Interrupted()}
 			runs[i] = mem.Steps()
 		}()
 	}
@@ -170,6 +175,12 @@ func describeAll(es []Expectation) string {
 func (x *Exploration) describe(t testing.TB, r *Explored) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "seed %d, faults %v\n%s", r.Seed, r.Faults(), r.Report.Summary())
+	if len(r.Interrupted) > 0 {
+		fmt.Fprintf(&b, "  interrupted, not checked (cut off by a crash or the end of the run):\n")
+		for _, s := range r.Interrupted {
+			fmt.Fprintf(&b, "    %s %v (process %s)\n", s.Action, s.Args, s.Process)
+		}
+	}
 	dir := t.TempDir()
 	p := filepath.Join(dir, fmt.Sprintf("seed%d.steps.jsonl", r.Seed))
 	if f, err := os.Create(p); err == nil {

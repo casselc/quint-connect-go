@@ -45,6 +45,12 @@ shrinking removes faults.
   clusters the controller records them when the update succeeds.
 - **Evidence:** record every read the code decides on, with its version
   (`resourceVersion`), and let the model order evidence by it.
+- **On return, from the caller** (`//quint:action`): the step is what
+  the caller saw, and a crash before the return means no step. A crashed
+  task's deferred recording at `Close` goes to `Recorder.Interrupted`,
+  reported with a failing run but not checked. If the model must see an
+  effect whether or not its caller survives (a write that landed, then a
+  crash), record it at the effect's site instead.
 - **Crash tests in a real environment** need `qobs.DurableFileSink`.
   `FileSink` buffers, and the steps it loses at the end of a log are
   undetectable.
@@ -129,8 +135,10 @@ real code, or the real code), weave it:
   project's `orchestrion.tool.go`, and test with `go run
   github.com/DataDog/orchestrion go test ./...`;
 - mark each go statement `//qenv:go` (its call must be a function
-  literal), and turn lock method values into calls
-  (`func() { mu.RUnlock() }`). `quintgo lint -weave DIR` lists both;
+  literal), turn lock method values into calls
+  (`func() { mu.RUnlock() }`), and name embedded locks
+  (`mu sync.Mutex`, not `sync.Mutex`): promoted calls are not woven.
+  `quintgo lint -weave DIR` lists all three;
 - pass the code its clock if it takes one (`Now: s.Now`);
 - skip simulation tests in unwoven builds. A `//quint:action` probe that
   records only when woven tells you which build you are in

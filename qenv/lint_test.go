@@ -84,6 +84,11 @@ import "sync"
 
 type st struct{ mu sync.RWMutex }
 
+type guarded struct {
+	sync.Mutex
+	inner struct{ *sync.WaitGroup }
+}
+
 func (s *st) acquire() func() {
 	s.mu.RLock()
 	go func() {}()
@@ -106,8 +111,10 @@ func (s *st) acquire() func() {
 		got = append(got, f.Pos[strings.LastIndex(f.Pos, "/")+1:]+" "+f.What)
 	}
 	want := []string{
-		"app.go:9:2 go statement not marked //qenv:go: its goroutine runs outside the simulation",
-		"app.go:14:9 method value RUnlock is not woven (weaving rewrites calls)",
+		"app.go:8:2 embedded sync.Mutex: calls promoted through the struct are not woven (weaving matches the receiver's type)",
+		"app.go:9:16 embedded sync.WaitGroup: calls promoted through the struct are not woven (weaving matches the receiver's type)",
+		"app.go:14:2 go statement not marked //qenv:go: its goroutine runs outside the simulation",
+		"app.go:19:9 method value RUnlock is not woven (weaving rewrites calls)",
 	}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("got\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))

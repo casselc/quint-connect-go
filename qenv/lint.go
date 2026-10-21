@@ -156,7 +156,11 @@ var syncMethods = map[string]bool{"Lock": true, "Unlock": true, "TryLock": true,
 //   - a lock or wait group method used as a value (st.mu.RUnlock passed or
 //     returned, not called): weaving rewrites calls, so it would run the
 //     real method on an object whose simulated state it never sees. Wrap
-//     it in a function literal that calls it.
+//     it in a function literal that calls it;
+//   - a sync.Mutex, RWMutex or WaitGroup embedded in a struct: Orchestrion
+//     matches a call by its receiver expression's type, so a promoted call
+//     (t.Lock() on a struct embedding sync.Mutex) is not woven, and takes
+//     the real lock. Name the field (mu sync.Mutex) and call t.mu.Lock().
 //
 // Method values are found by name (no type information), so a method of
 // another type with one of those names is reported too: mark a deliberate
@@ -209,8 +213,40 @@ func lintWovenFile(fset *token.FileSet, f *ast.File) []Finding {
 		}
 		return true
 	})
+	syncName := ""
+	for _, im := range f.Imports {
+		if im.Path.Value == `"sync"` {
+			syncName = "sync"
+			if im.Name != nil {
+				syncName = im.Name.Name
+			}
+		}
+	}
+	embedsSync := func(e ast.Expr) (string, bool) {
+		if st, ok := e.(*ast.StarExpr); ok {
+			e = st.X
+		}
+		sel, ok := e.(*ast.SelectorExpr)
+		if !ok || syncName == "" {
+			return "", false
+		}
+		id, ok := sel.X.(*ast.Ident)
+		if !ok || id.Name != syncName {
+			return "", false
+		}
+		switch sel.Sel.Name {
+		case "Mutex", "RWMutex", "WaitGroup":
+			return sel.Sel.Name, true
+		}
+		return "", false
+	}
 	ast.Inspect(f, func(n ast.Node) bool {
 		switch n := n.(type) {
+		case *ast.Field:
+			if t, ok := embedsSync(n.Type); ok && len(n.Names) == 0 && marked[fset.Position(n.Pos()).Line] != "//qenv:ok" {
+				add(n, "embedded sync."+t+": calls promoted through the struct are not woven (weaving matches the receiver's type)",
+					"name the field (mu sync."+t+") and call it through the name")
+			}
 		case *ast.GoStmt:
 			line := fset.Position(n.Pos()).Line
 			if marked[line-1] != "//qenv:go" && marked[line] != "//qenv:ok" {

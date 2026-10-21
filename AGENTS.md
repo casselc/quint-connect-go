@@ -168,13 +168,23 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   Wait, Go and recording with `context.Background()` from a task stay in
   its simulation (`taskOf`, `qenv/goroutine.go`). Without that, a woven
   background goroutine's simulated latency slept in real time.
-- A task killed by a crash unwinds its defers. Steps recorded then
-  (`//quint:action` records on return) are discarded: the work did not
-  complete (`qobs.SetDiscard`).
+- A task killed by a crash stays frozen while the simulation runs (no
+  deferred code runs), and unwinds at `Close`. Steps recorded while it
+  unwinds (`//quint:action` records on return) are not in the run: they
+  go to `Recorder.Interrupted`, and `qtest.Explore` reports them with a
+  failing run (`qobs.SetDiscard`). A task that crashes its own process
+  stops in `Crash`; restart from an `OnCrash` hook.
+- A step recorded by the caller on return describes what the caller saw.
+  An effect the model must see whether or not its caller survives (a
+  write that landed before the crash) belongs at the effect's site: the
+  double or service records it.
 - Woven code (`qenv/weave`): weaving rewrites calls of `sync` methods in
   the root module and `//qenv:go` go statements. A method value
   (`return st.mu.RUnlock`) or an unmarked `go` escapes, so check with
-  `quintgo lint -weave DIR`. Inside a simulation, every user of a woven
+  `quintgo lint -weave DIR`. So does a promoted call through an embedded
+  `sync.Mutex` (`t.Lock()` on `struct{ sync.Mutex }`): Orchestrion
+  matches the receiver's type, so name the field. The lint flags the
+  embedding. Inside a simulation, every user of a woven
   object must be one of its tasks (call `Close` from a task, not from the
   test goroutine). Woven calls look up the goroutine (about 1 µs), so
   weave test builds only.

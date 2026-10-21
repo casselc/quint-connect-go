@@ -40,6 +40,20 @@ type Recorder struct {
 	sink    Sink
 	actor   string
 	process string
+
+	mu          sync.Mutex
+	interrupted []qtrace.Step // SetDiscard
+}
+
+// Interrupted returns the steps this recorder was asked to record by work
+// that never completed (a qenv task unwinding after a crash or at the end
+// of a run: SetDiscard), in the order asked. They are not in the run and
+// not checked against the model: they say what a crash or the end of the
+// run cut off, for reports.
+func (r *Recorder) Interrupted() []qtrace.Step {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]qtrace.Step(nil), r.interrupted...)
 }
 
 // Option configures a Recorder.
@@ -111,10 +125,12 @@ var (
 )
 
 // SetDiscard installs a check, made for every step, of whether the calling
-// goroutine is unwinding work that never completed: a qenv task killed by
-// a crash or at the end of a run runs its deferred functions, and a step
-// recorded in one (a //quint:action function's, which records on return)
-// describes an effect that did not happen. qenv installs it.
+// goroutine is unwinding work that never completed. A qenv task killed by
+// a crash stays frozen; when the simulation is closed it unwinds, and runs
+// its deferred functions. A step recorded in one (a //quint:action
+// function's, which records on return) would claim a completion that did
+// not happen: it goes to the recorder's Interrupted list, not to its sink.
+// qenv installs the check.
 func SetDiscard(f func() bool) { discard.Store(&f) }
 
 // SetFallback installs where a step whose context carries no recorder goes
@@ -155,12 +171,12 @@ func From(ctx context.Context) *Recorder {
 // there is none, unless a run is Strict. This is the function
 // //quint:action advice calls.
 func Record(ctx context.Context, action string, err error, kv ...any) {
-	if f := discard.Load(); f != nil && (*f)() {
-		return
-	}
 	if r := From(ctx); r != nil {
 		r.Record(ctx, action, err, kv...)
 		return
+	}
+	if f := discard.Load(); f != nil && (*f)() {
+		return // interrupted work with nowhere to report it
 	}
 	if strict.Load() > 0 {
 		panic(fmt.Sprintf("qobs: step %q has no recorder: its context carries none, its goroutine belongs to no "+
@@ -193,6 +209,27 @@ func (r *Recorder) Record(ctx context.Context, action string, err error, kv ...a
 	if r == nil {
 		return
 	}
+	s, ok := r.step(ctx, action, err, kv)
+	if !ok {
+		return
+	}
+	if f := discard.Load(); f != nil && (*f)() {
+		s.Time = time.Now()
+		r.mu.Lock()
+		r.interrupted = append(r.interrupted, *s)
+		r.mu.Unlock()
+		return
+	}
+	// seq is taken here, after the effect the step describes has happened.
+	// Two concurrent steps may be numbered in either order; the
+	// reconstructor only relies on seq within a thread (see qtrace).
+	s.Seq = r.seq.Add(1)
+	s.Time = time.Now()
+	r.sink.Record(ctx, s)
+}
+
+// step builds a step from Record's arguments; false if "when" excludes it.
+func (r *Recorder) step(ctx context.Context, action string, err error, kv []any) (*qtrace.Step, bool) {
 	s := qtrace.Step{Action: action, Recorder: r.id, Actor: r.actor, Process: r.process, Outcome: outcome(err)}
 	if err != nil {
 		s.Error = err.Error()
@@ -208,7 +245,7 @@ func (r *Recorder) Record(ctx context.Context, action string, err error, kv ...a
 		switch {
 		case k == "when":
 			if (v == "ok" && err != nil) || (v == "error" && err == nil) {
-				return
+				return nil, false
 			}
 		case k == "actor":
 			s.Actor = fmt.Sprint(v)
@@ -237,12 +274,7 @@ func (r *Recorder) Record(ctx context.Context, action string, err error, kv ...a
 			s.Args[k] = v
 		}
 	}
-	// seq is taken here, after the effect the step describes has happened.
-	// Two concurrent steps may be numbered in either order; the
-	// reconstructor only relies on seq within a thread (see qtrace).
-	s.Seq = r.seq.Add(1)
-	s.Time = time.Now()
-	r.sink.Record(ctx, &s)
+	return &s, true
 }
 
 func outcome(err error) string {

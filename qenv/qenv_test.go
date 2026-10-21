@@ -139,6 +139,7 @@ func TestCrashReleasesAndRedelivers(t *testing.T) {
 	st := qenv.NewStore(s, "db", qenv.ReadCommitted)
 	q := qenv.NewQueue(s, "jobs")
 	crashNext := true
+	s.OnCrash(func(p *qenv.Process) { p.Restart() }) // a supervisor
 	var p *qenv.Process
 	p = s.Process("worker", false, func(ctx context.Context) {
 		for {
@@ -150,9 +151,7 @@ func TestCrashReleasesAndRedelivers(t *testing.T) {
 			tx.Put("job", d.Body)
 			if crashNext {
 				crashNext = false
-				p.Crash()
-				p.Restart()
-				qenv.Yield(ctx) // the crashed task never gets past here
+				p.Crash() // the crashing task stops here
 				t.Error("a crashed task ran on")
 			}
 			if err := tx.Commit(); err != nil {
@@ -532,16 +531,23 @@ func TestStrictStepWithNowhereToGo(t *testing.T) {
 	qobs.Record(context.Background(), "lost", nil)
 }
 
-// A task killed by a crash unwinds its deferred functions, and a step one
-// of them records (as //quint:action advice does on return) describes work
-// that never completed: it is discarded.
+// A task killed by a crash stays frozen, and unwinds only when the
+// simulation is closed. A step one of its deferred functions records then
+// (as //quint:action advice does on return) describes work that never
+// completed: it goes to the recorder's Interrupted list, not the run.
 func TestKilledTasksRecordNothing(t *testing.T) {
 	mem := &qobs.MemorySink{}
-	s := qenv.New(qenv.WithContext(qenv.Nominal{}, qobs.WithRecorder(context.Background(), qobs.NewRecorder(mem))))
+	rec := qobs.NewRecorder(mem)
+	s := qenv.New(qenv.WithContext(qenv.Nominal{}, qobs.WithRecorder(context.Background(), rec)))
+	cleaned := false
 	p := s.Process("writer", true, func(ctx context.Context) {
+		if qenv.ProcessOf(ctx).Incarnation > 1 {
+			return
+		}
 		func() {
 			defer qobs.Record(ctx, "write", nil) // recorded on return
-			qenv.Sleep(ctx, time.Hour)           // crashed before it returns
+			defer func() { cleaned = true }()
+			qenv.Sleep(ctx, time.Hour) // crashed before it returns
 		}()
 	})
 	s.Spawn("nemesis", func(ctx context.Context) {
@@ -552,9 +558,36 @@ func TestKilledTasksRecordNothing(t *testing.T) {
 	if err := s.Run(time.Minute); err != nil {
 		t.Fatal(err)
 	}
-	s.Close() // kills the restarted incarnation's sleeping task too
+	if cleaned {
+		t.Fatal("a crashed task's deferred functions ran during the run: it should stay frozen")
+	}
+	s.Close() // unwinds the frozen task
 	if steps := mem.Steps(); len(steps) != 1 || steps[0].Action != "crashed" {
 		t.Fatalf("steps %v, want only the nemesis's", steps)
+	}
+	if in := rec.Interrupted(); len(in) != 1 || in[0].Action != "write" {
+		t.Fatalf("interrupted %v, want the write", in)
+	}
+}
+
+// A task that crashes its own process stops there, as if the process died
+// under it: nothing after the Crash runs, until the simulation is closed.
+func TestSelfCrashStopsAtOnce(t *testing.T) {
+	s := qenv.New(qenv.Nominal{})
+	after := false
+	s.Process("suicidal", true, func(ctx context.Context) {
+		if qenv.ProcessOf(ctx).Incarnation > 1 {
+			return
+		}
+		qenv.ProcessOf(ctx).Crash()
+		after = true
+	})
+	if err := s.Run(time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	if after {
+		t.Fatal("the task ran on after crashing its own process")
 	}
 }
 
