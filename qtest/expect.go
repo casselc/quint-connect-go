@@ -73,6 +73,26 @@ func Violates(invariant string) Expectation {
 	}}
 }
 
+// AnyOf: the report meets at least one of es.
+func AnyOf(es ...Expectation) Expectation {
+	return Expectation{describeOr(es), func(r *validate.Report) bool {
+		for _, e := range es {
+			if e.check(r) {
+				return true
+			}
+		}
+		return false
+	}}
+}
+
+func describeOr(es []Expectation) string {
+	var s []string
+	for _, e := range es {
+		s = append(s, e.desc)
+	}
+	return strings.Join(s, ", or ")
+}
+
 func orAny(action string) string {
 	if action == "" {
 		return "model"

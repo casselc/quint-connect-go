@@ -3,7 +3,9 @@ package qtest
 import (
 	"context"
 	"testing"
+	"time"
 
+	"github.com/casselc/quint-connect-go/qenv"
 	"github.com/casselc/quint-connect-go/qobs"
 )
 
@@ -25,5 +27,50 @@ func TestExpectations(t *testing.T) {
 		if e.check(Record(t, b, rec("deposit", 5, 6)).Report) {
 			t.Errorf("%s matched a state mismatch", e)
 		}
+	}
+}
+
+// Explore: two concurrent withdrawals, each checking the balance first. With
+// a row lock the account never goes negative; without one, under read
+// committed, some interleaving overdraws it.
+func TestExplore(t *testing.T) {
+	RequireQuint(t)
+	b := "../validate/testdata/account.yaml"
+	scenario := func(lock bool) func(qenv.Chooser) {
+		return func(c qenv.Chooser) {
+			s := qenv.New(c)
+			defer s.Close()
+			st := qenv.NewStore(s, "db", qenv.ReadCommitted)
+			st.Load("balance", 10)
+			ctx := context.Background()
+			qobs.Record(ctx, "deposit", nil, "amount", 10, "obs.balance", 10)
+			for i := 0; i < 2; i++ {
+				s.Spawn("withdraw", func(ctx context.Context) {
+					_ = qenv.Retry(ctx, st, 3, func(tx qenv.Txn) error {
+						var v any
+						if lock {
+							v, _, _ = tx.GetForUpdate("balance")
+						} else {
+							v, _ = tx.Get("balance")
+						}
+						if v.(int) < 7 {
+							return nil
+						}
+						tx.Put("balance", v.(int)-7)
+						tx.OnCommit(func() { qobs.Record(ctx, "withdraw", nil, "amount", 7, "obs.balance", v.(int)-7) })
+						return nil
+					})
+				})
+			}
+			if err := s.Run(time.Second); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	Explore(t, b, ExploreConfig{Seeds: 20}, scenario(true)).Expect(t, Conforms())
+	x := Explore(t, b, ExploreConfig{Seeds: 20}, scenario(false))
+	x.Expect(t, AnyOf(Mismatch("withdraw"), Rejects("withdraw")))
+	if len(x.Failing()) == 20 {
+		t.Fatal("every interleaving overdrew: the schedule is not being explored")
 	}
 }
