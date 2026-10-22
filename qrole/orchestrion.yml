@@ -1,0 +1,63 @@
+# yaml-language-server: $schema=https://datadoghq.dev/orchestrion/schema.json
+#
+# Load roles (qrole): a server's requests, a client's operations and their
+# attempts, measured where the code says (DESIGN.md §15.3). A project opts
+# in by importing github.com/casselc/quint-connect-go/qrole in its tool file
+# and building with qweave (or Orchestrion). The annotated function takes
+# a context.Context; its final error result, if any, is the outcome.
+meta:
+  name: github.com/casselc/quint-connect-go/qrole
+  description: Measure load roles (qmeta's queue and orbit) at annotated functions.
+
+aspects:
+  # //quint:serve name:<server> on a request handler
+  - id: quint-serve
+    join-point:
+      function-body:
+        directive: 'quint:serve'
+    advice:
+      - prepend-statements:
+          imports:
+            context: context
+            quintqrole: github.com/casselc/quint-connect-go/qrole
+          template: |-
+            {{- $ctx := .Function.ArgumentOfType "context.Context" -}}
+            {{- $err := .Function.ResultOfType "error" -}}
+            {{- $name := "" -}}
+            {{- range .DirectiveArgs "quint:serve" }}{{ if eq .Key "name" }}{{ $name = .Value }}{{ end }}{{ end -}}
+            __qrole_done := quintqrole.Serve({{ if ne $ctx "" }}{{ $ctx }}{{ else }}context.TODO(){{ end }}, {{ printf "%q" $name }})
+            defer func() { __qrole_done({{ if ne $err "" }}{{ $err }}{{ else }}nil{{ end }}) }()
+  # //quint:operation service:<service> on the function making all attempts
+  - id: quint-operation
+    join-point:
+      function-body:
+        directive: 'quint:operation'
+    advice:
+      - prepend-statements:
+          imports:
+            context: context
+            quintqrole: github.com/casselc/quint-connect-go/qrole
+          template: |-
+            {{- $ctx := .Function.ArgumentOfType "context.Context" -}}
+            {{- $err := .Function.ResultOfType "error" -}}
+            {{- $svc := "" -}}
+            {{- range .DirectiveArgs "quint:operation" }}{{ if eq .Key "service" }}{{ $svc = .Value }}{{ end }}{{ end -}}
+            __qrole_done := quintqrole.Operation({{ if ne $ctx "" }}{{ $ctx }}{{ else }}context.TODO(){{ end }}, {{ printf "%q" $svc }})
+            defer func() { __qrole_done({{ if ne $err "" }}{{ $err }}{{ else }}nil{{ end }}) }()
+  # //quint:call service:<service> on the function making one attempt
+  - id: quint-call
+    join-point:
+      function-body:
+        directive: 'quint:call'
+    advice:
+      - prepend-statements:
+          imports:
+            context: context
+            quintqrole: github.com/casselc/quint-connect-go/qrole
+          template: |-
+            {{- $ctx := .Function.ArgumentOfType "context.Context" -}}
+            {{- $err := .Function.ResultOfType "error" -}}
+            {{- $svc := "" -}}
+            {{- range .DirectiveArgs "quint:call" }}{{ if eq .Key "service" }}{{ $svc = .Value }}{{ end }}{{ end -}}
+            __qrole_done := quintqrole.Call({{ if ne $ctx "" }}{{ $ctx }}{{ else }}context.TODO(){{ end }}, {{ printf "%q" $svc }})
+            defer func() { __qrole_done({{ if ne $err "" }}{{ $err }}{{ else }}nil{{ end }}) }()

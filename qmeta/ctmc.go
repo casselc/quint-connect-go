@@ -94,6 +94,11 @@ func failProb(u, workers int, mu, timeout float64) float64 {
 // Index of a state in vectors over the chain.
 func (c *Chain) Index(s State) int { return s.U*(c.V+1) + s.V }
 
+// Clamp returns s moved into the chain's bounds.
+func (c *Chain) Clamp(s State) State {
+	return State{min(max(s.U, 0), c.N), min(max(s.V, 0), c.V)}
+}
+
 // States is the number of states.
 func (c *Chain) States() int { return (c.N + 1) * (c.V + 1) }
 
@@ -245,10 +250,14 @@ func (c *Chain) HittingTimes(target func(State) bool) []float64 {
 	return h
 }
 
-// Expect returns the expected state (E[u], E[v]) at each of times, from
-// the state from, by uniformization: X(t) ~ sum_k Poisson(Lt; k) P^k with
-// P = I + Q/L.
-func (c *Chain) Expect(from State, times []float64) []State2 {
+type edge struct {
+	to   int
+	prob float64
+}
+
+// uniformized is the chain's jump matrix P = I + Q/L, as edges and the
+// probability of staying, with its rate L.
+func (c *Chain) uniformized() (float64, [][]edge, []float64) {
 	n := c.States()
 	L := 0.0
 	for u := 0; u <= c.N; u++ {
@@ -261,10 +270,6 @@ func (c *Chain) Expect(from State, times []float64) []State2 {
 		}
 	}
 	L *= 1.01
-	type edge struct {
-		to   int
-		prob float64
-	}
 	edges := make([][]edge, n)
 	stay := make([]float64, n)
 	for u := 0; u <= c.N; u++ {
@@ -277,6 +282,113 @@ func (c *Chain) Expect(from State, times []float64) []State2 {
 			}
 		}
 	}
+	return L, edges, stay
+}
+
+// poisson is the weight of k jumps at time t for rate L.
+func poisson(L, t float64, k int) float64 {
+	lt := L * t
+	if lt == 0 {
+		if k == 0 {
+			return 1
+		}
+		return 0
+	}
+	lg, _ := math.Lgamma(float64(k + 1))
+	return math.Exp(float64(k)*math.Log(lt) - lt - lg)
+}
+
+// ExpectAll is Expect from every state at once: out[i][c.Index(s)] is the
+// expected state at times[i] from s. Expectation is linear, so one
+// backward pass (P^k applied to u and v) costs what one Expect does.
+func (c *Chain) ExpectAll(times []float64) [][]State2 {
+	n := c.States()
+	gu, gv := make([]float64, n), make([]float64, n)
+	for u := 0; u <= c.N; u++ {
+		for v := 0; v <= c.V; v++ {
+			gu[c.Index(State{u, v})], gv[c.Index(State{u, v})] = float64(u), float64(v)
+		}
+	}
+	eu, ev := c.backward(times, gu, nil), c.backward(times, gv, nil)
+	out := make([][]State2, len(times))
+	for i := range out {
+		out[i] = make([]State2, n)
+		for j := range out[i] {
+			out[i][j] = State2{eu[i][j], ev[i][j]}
+		}
+	}
+	return out
+}
+
+// RecoveryWithin is, for every state, the probability of having been
+// healthy within t seconds: the states' distribution, not only its mean
+// (HittingTimes). Near a metastable region the two differ most: a state
+// that usually drains in seconds has a long expected time if it can tip
+// into a storm it takes hours to leave.
+func (c *Chain) RecoveryWithin(healthy func(State) bool, t float64) []float64 {
+	n := c.States()
+	g := make([]float64, n)
+	absorb := make([]bool, n)
+	for u := 0; u <= c.N; u++ {
+		for v := 0; v <= c.V; v++ {
+			if healthy(State{u, v}) {
+				g[c.Index(State{u, v})], absorb[c.Index(State{u, v})] = 1, true
+			}
+		}
+	}
+	return c.backward([]float64{t}, g, absorb)[0]
+}
+
+// backward returns E[g(X(t)) | X(0) = s] for every s and each of times, by
+// uniformization, with the absorbing states (nil: none) made to stay.
+func (c *Chain) backward(times []float64, g []float64, absorb []bool) [][]float64 {
+	n := c.States()
+	L, edges, stay := c.uniformized()
+	g = append([]float64(nil), g...)
+	next := make([]float64, n)
+	out := make([][]float64, len(times))
+	for i := range out {
+		out[i] = make([]float64, n)
+	}
+	maxT := 0.0
+	for _, t := range times {
+		maxT = math.Max(maxT, t)
+	}
+	K := int(L*maxT + 10*math.Sqrt(L*maxT) + 50)
+	for k := 0; k <= K; k++ {
+		for ti, t := range times {
+			wk := poisson(L, t, k)
+			if wk < 1e-300 {
+				continue
+			}
+			for i := range out[ti] {
+				out[ti][i] += wk * g[i]
+			}
+		}
+		for i := range next {
+			if absorb != nil && absorb[i] {
+				next[i] = g[i]
+				continue
+			}
+			a := stay[i] * g[i]
+			for _, e := range edges[i] {
+				a += e.prob * g[e.to]
+			}
+			next[i] = a
+		}
+		g, next = next, g
+	}
+	return out
+}
+
+// Expect returns the expected state (E[u], E[v]) at each of times, from
+// the state from, by uniformization: X(t) ~ sum_k Poisson(Lt; k) P^k with
+// P = I + Q/L. A from outside the chain's bounds is clamped to them: an
+// observed system can exceed a bound the chain only approximates.
+func (c *Chain) Expect(from State, times []float64) []State2 {
+	from = c.Clamp(from)
+	n := c.States()
+	L, edges, stay := c.uniformized()
 	pi := make([]float64, n)
 	pi[c.Index(from)] = 1
 	next := make([]float64, n)
@@ -292,16 +404,7 @@ func (c *Chain) Expect(from State, times []float64) []State2 {
 	// Poisson weights per time, in log space for large Lt
 	for k := 0; k <= K; k++ {
 		for ti, t := range times {
-			lt := L * t
-			var wk float64
-			if lt == 0 {
-				if k == 0 {
-					wk = 1
-				}
-			} else {
-				lg, _ := math.Lgamma(float64(k + 1))
-				wk = math.Exp(float64(k)*math.Log(lt) - lt - lg)
-			}
+			wk := poisson(L, t, k)
 			if wk < 1e-300 {
 				continue
 			}

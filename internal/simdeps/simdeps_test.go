@@ -16,9 +16,11 @@ var simulated = []string{
 	"github.com/casselc/quint-connect-go/qtrace",
 	"github.com/casselc/quint-connect-go/qload",
 	"github.com/casselc/quint-connect-go/qmeta",
+	"github.com/casselc/quint-connect-go/qrole",
 	"github.com/casselc/quint-connect-go/examples/glomers/maelstrom",
 	"github.com/casselc/quint-connect-go/examples/glomers/broadcast",
 	"github.com/casselc/quint-connect-go/examples/checkout",
+	"github.com/casselc/quint-connect-go/examples/retrystorm",
 }
 
 type pkg struct {

@@ -34,6 +34,7 @@ times. The four policies compared are `immediate`, `backoff`, `budget`
 | `TestHegelBudgetConforms` / `TestHegelCatchesUncapped` | model, Hegel bursts | faithful conforms; `Uncapped` found and shrunk |
 | `TestPredictedRecovery` | CTMC | predicted recovery time per policy at 8, 9 and 9.5 requests/s |
 | `TestStormAfterSpike` | simulation (seeds 1–6) | which policies recover from +5 requests/s for a minute at 9 requests/s |
+| `TestAlertsFromTheChain` | load roles → calibrated chain → alert | an app instrumented with `qrole` (server, client with the policy) under the spike; the chain calibrated on its u and v; the rule holds through backoff's storm, cannot fire with a budget, never fires without a spike |
 | `TestFindTrigger` | Hegel over simulations | a trigger exists for `immediate` (at 9) and for `backoff` (at 8); none is found with a budget |
 
 Results (recovery is from a full queue with 30 requests in the orbit):

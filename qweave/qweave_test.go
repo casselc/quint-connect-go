@@ -88,3 +88,29 @@ func TestFunctionBodyAdvice(t *testing.T) {
 		}
 	}
 }
+
+// qrole's aspects (//quint:serve, //quint:operation, //quint:call) weave
+// counting into a server and a client with no qrole calls of their own; the
+// fixture's test fails unwoven.
+func TestRolesFixtureRuns(t *testing.T) {
+	if testing.Short() {
+		t.Skip("builds the fixture")
+	}
+	r, err := qweave.Weave(qweave.Config{Dir: "testdata/roles"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Files) != 1 || len(r.Skipped) != 0 {
+		t.Fatalf("woven %d files, skipped %v", len(r.Files), r.Skipped)
+	}
+	overlay, err := r.WriteOverlay(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("go", "test", "-count=1", "-overlay="+overlay, "./...")
+	cmd.Dir = "testdata/roles"
+	cmd.Env = os.Environ()
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+}

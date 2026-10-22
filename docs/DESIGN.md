@@ -1644,3 +1644,63 @@ context slept and waited as that task, and lost increments. Code in a
 woven goroutine must record and sleep through `context.Background()`,
 which qenv resolves to the goroutine's own task. The skill says so.
 
+
+### 15.10 Phase 4 as built
+
+**Load roles (`qrole`).** Three annotations, woven by qrole's aspect
+file (`//quint:serve name:N`, `//quint:operation service:S`,
+`//quint:call service:S`), or the calls they weave (`Serve`, `Operation`,
+`Call`), each returning a function that takes the outcome:
+- u is a server's requests from arrival to response, waiting included
+  (`Roles.Queue`);
+- v, the orbit, is the operations in progress with no attempt in flight:
+  operations minus calls (`Roles.Orbit`). It needs no knowledge of the
+  retry policy, which is why the client side is two annotations;
+- `Roles.Instrument` exports them as OTel gauges, with counters of
+  requests and attempts by outcome. A simulated run gets a registry of
+  its own through its context (`WithRoles`), as with recorders.
+
+**Action metrics.** `qrole.MetricsSink` counts steps by action and outcome
+(`quint.steps`) and passes them on. Every `//quint:action` becomes a rate
+and an error ratio, counted as the model counts steps. Latency was left
+out: a step has one timestamp, at its effect.
+
+**Calibration from observations.** `qmeta.Trajectories` turns a series of
+sampled (u, v) into Calibrate's trajectories: from each sample, the
+states some seconds later, averaged per cell of the state grid. Any
+series works, a qload run's probes or a production scrape.
+- A series taken mostly in a storm cannot tell a higher arrival rate
+  from a shorter timeout. The fit took λ to μ and above, where nothing
+  recovers. `CalibrateTimeout` holds λ, which a running system measures
+  (its rate of new operations), and fits the timeout.
+- Loss evaluated each trajectory with its own transient analysis, 12,000
+  states each time, and a calibration from one run's cells had not
+  finished after several minutes. Expectation is linear, so one backward pass
+  (`ExpectAll`) gives the expectation from every state at once. The same
+  calibration takes 5 seconds.
+
+**Alerts from the chain.** `Chain.Region(healthy, bound)` is the set of
+states the system is more likely than not still unhealthy from after
+`bound` seconds (`RecoveryWithin`: one more backward pass, with healthy
+states absorbing).
+- The first version used the expected hitting time, and alerted at
+  (13, 0) at λ = 9, μ = 10: a state that drains in about a second. Near
+  a storm, the mean is dominated by the rare run that tips into it and
+  stays for hours. So the probability defines the region, and the mean is
+  still reported (`Region.Recovery`).
+- `Region.Rules` writes a Prometheus rule group over qrole's metric
+  names: one term per band of u, `u in [lo, hi) and v >= vmin`, coarsened
+  to bands of `Step` (10) that each take their largest vmin, so the rule
+  fires only inside the region. The chain's parameters, the healthy set
+  and the bound go into the annotations, so a policy change in code is a
+  diff in the rule.
+
+**The example (`examples/retrystorm/alerts.go`).** A server and a
+retrying client, instrumented with qrole, run under a spike in a qload
+experiment that probes u and v. The chain is calibrated on the run, its
+region taken at two minutes, and the alert checked against the run.
+- With backoff alone it holds for the whole last minute of the storm
+  (u = 100, v = 143).
+- With a retry budget the chain has no region: the rule cannot fire, and
+  the run has recovered.
+- Without a spike it never fires.

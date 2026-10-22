@@ -1,0 +1,76 @@
+package qrole_test
+
+import (
+	"context"
+	"errors"
+	"testing"
+
+	"go.opentelemetry.io/otel/attribute"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
+
+	"github.com/casselc/quint-connect-go/qrole"
+)
+
+// An operation waiting between attempts is in the orbit; one with an
+// attempt in flight is not. A done function counts once.
+func TestRoles(t *testing.T) {
+	r := qrole.New()
+	ctx := qrole.WithRoles(context.Background(), r)
+	op := qrole.Operation(ctx, "api")
+	call := qrole.Call(ctx, "api")
+	serve := qrole.Serve(ctx, "api")
+	if u, v := r.Queue("api"), r.Orbit("api"); u != 1 || v != 0 {
+		t.Fatalf("attempt in flight: u=%d v=%d", u, v)
+	}
+	serve(errors.New("late"))
+	call(errors.New("timeout"))
+	call(nil) // counted once
+	if u, v := r.Queue("api"), r.Orbit("api"); u != 0 || v != 1 {
+		t.Fatalf("waiting to retry: u=%d v=%d", u, v)
+	}
+	op(nil)
+	if ok, failed := r.Attempts("api"); ok != 0 || failed != 1 {
+		t.Errorf("attempts %d ok, %d failed", ok, failed)
+	}
+	if ok, failed := r.Served("api"); ok != 0 || failed != 1 {
+		t.Errorf("served %d ok, %d failed", ok, failed)
+	}
+	if qrole.From(context.Background()) != qrole.Default {
+		t.Error("a bare context does not record into Default")
+	}
+}
+
+// Instrument exports u and v as gauges with the labels qmeta's rules use.
+func TestInstrument(t *testing.T) {
+	r := qrole.New()
+	ctx := qrole.WithRoles(context.Background(), r)
+	reader := sdkmetric.NewManualReader()
+	if err := r.Instrument(sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader)).Meter("test")); err != nil {
+		t.Fatal(err)
+	}
+	qrole.Serve(ctx, "api")
+	qrole.Operation(ctx, "api")
+	qrole.Operation(ctx, "api")
+	var rm metricdata.ResourceMetrics
+	if err := reader.Collect(ctx, &rm); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]int64{}
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			if g, ok := m.Data.(metricdata.Gauge[int64]); ok {
+				for _, p := range g.DataPoints {
+					for _, k := range []attribute.Key{"name", "service"} {
+						if v, ok := p.Attributes.Value(k); ok {
+							got[m.Name+"/"+v.AsString()] = p.Value
+						}
+					}
+				}
+			}
+		}
+	}
+	if got[qrole.MetricServeInflight+"/api"] != 1 || got[qrole.MetricOrbit+"/api"] != 2 {
+		t.Errorf("gauges %v", got)
+	}
+}

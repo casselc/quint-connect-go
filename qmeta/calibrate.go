@@ -1,6 +1,7 @@
 package qmeta
 
 import (
+	"fmt"
 	"math"
 	"time"
 
@@ -41,11 +42,21 @@ func Simulate(cfg qload.Config, from State, times []float64, runs int) Trajector
 }
 
 // Loss is the squared distance between the chain's expected trajectories
-// and simulated ones.
+// and simulated ones. Trajectories with the same times share one backward
+// pass (ExpectAll), so a series' many cells cost what one does.
 func (c *Chain) Loss(data []Trajectory) float64 {
 	loss := 0.0
+	all := map[string][][]State2{}
 	for _, tr := range data {
-		exp := c.Expect(tr.From, tr.Times)
+		key := fmt.Sprint(tr.Times)
+		if _, ok := all[key]; !ok {
+			all[key] = c.ExpectAll(tr.Times)
+		}
+		i0 := c.Index(c.Clamp(tr.From))
+		exp := make([]State2, len(tr.Times))
+		for i := range exp {
+			exp[i] = all[key][i][i0]
+		}
 		for i := range exp {
 			du, dv := exp[i].U-tr.Mean[i].U, exp[i].V-tr.Mean[i].V
 			loss += du*du + dv*dv
@@ -61,6 +72,19 @@ func (c *Chain) Loss(data []Trajectory) float64 {
 // keeps (individual timers, retry counts), so the fitted values differ
 // from the nominal ones; predictions should use the fitted chain.
 func Calibrate(p Params, data []Trajectory) (Params, float64) {
+	return fit(p, data, []int{0, 1})
+}
+
+// CalibrateTimeout is Calibrate with the arrival rate held: fit to a
+// running system, whose rate of new operations is measured (qrole's
+// operation counter), not inferred. A series taken mostly in a storm cannot
+// tell a higher arrival rate from a shorter timeout, and a fitted rate at
+// or above the service rate makes every state look unrecoverable.
+func CalibrateTimeout(p Params, data []Trajectory) (Params, float64) {
+	return fit(p, data, []int{1})
+}
+
+func fit(p Params, data []Trajectory, dims []int) (Params, float64) {
 	nominal := p
 	loss := func(q Params) float64 {
 		reg := sq((q.Lambda-nominal.Lambda)/nominal.Lambda) + sq((q.Timeout-nominal.Timeout)/nominal.Timeout)
@@ -71,7 +95,7 @@ func Calibrate(p Params, data []Trajectory) (Params, float64) {
 	for _, step := range steps {
 		for improved := true; improved; {
 			improved = false
-			for _, dim := range []int{0, 1} {
+			for _, dim := range dims {
 				for _, dir := range []float64{1 + step, 1 - step} {
 					q := p
 					if dim == 0 {

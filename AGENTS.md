@@ -36,7 +36,8 @@ qenv/         deterministic simulation: scheduler, virtual time, processes, choo
 qenv/weave/   Orchestrion aspects: sync locks, wait groups and //qenv:go goroutines simulated inside qenv, real outside
 qgosim/       separate module: qenv and whole programs in gosim (the fork: branch gosim-fork, ./fetch-gosim.sh)
 qweave/       separate module: weaves Orchestrion aspects with types into a go -overlay (cmd/qweave); also gosim's
-qload/ qmeta/ load simulation (open/closed-loop clients, servers, triggers); CTMC, recovery property, Hegel trigger search
+qload/ qmeta/ load simulation (open/closed-loop clients, servers, triggers); CTMC, recovery property, alert rules
+qrole/        load roles (//quint:serve, //quint:operation, //quint:call; aspects in orchestrion.yml): u and v as gauges
 cmd/quintgo/  CLI
 skills/       agent skills, the source of truth (embedded by package skills;
               symlinked into .agents/skills and .claude/skills, checked by skills_test.go)
@@ -217,6 +218,10 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
 - qload metrics are time series of rates; sample counters reset every
   tick. `Sample.Orbit` is known only in hindsight (an attempt is in the
   orbit from its start if it times out) and is filled when the run ends.
+- An alert region is defined by the probability of recovering within the
+  bound (`RecoveryWithin`), not the mean hitting time, which near a storm
+  is dominated by rare tips into it. Calibrate a running system with
+  `CalibrateTimeout` (λ held): a fit of λ to storm data drives it to μ.
 - `qmeta`'s chain ranks policies; its absolute times are not the
   simulation's. Keep its orbit bound well above the storm's size, and
   assert orderings or orders of magnitude, not seconds.
