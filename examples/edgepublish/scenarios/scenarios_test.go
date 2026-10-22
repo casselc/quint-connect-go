@@ -26,7 +26,7 @@ func TestScenarios(t *testing.T) {
 	for _, name := range Names {
 		t.Run(name, func(t *testing.T) {
 			r := qtest.Record(t, "../binding.yaml", func(*qobs.Recorder) { Run(name, io.Discard) },
-				qtest.SkipIfEmpty(), qtest.WithOptions(opt))
+				qtest.SkipIfEmpty(), qtest.WithOptions(opt), qtest.Global()) // deliveries run on their own goroutines
 			if len(r.Report.Actors) != 1 {
 				t.Fatalf("actors: %d", len(r.Report.Actors))
 			}

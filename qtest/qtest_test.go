@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
 
 	"github.com/casselc/quint-connect-go/itf"
@@ -71,5 +72,34 @@ func TestRecordReportsTheBrokenStep(t *testing.T) {
 	f := r.Report.Actors[0].Failure
 	if f == nil || f.Kind != "disabled" || f.Index != 1 || f.Step.Action != "withdraw" {
 		t.Fatalf("failure: %+v", f)
+	}
+}
+
+// A step from a goroutine the scenario starts has no run to land in
+// without Global: Record fails, naming the fix, instead of checking a run
+// that lost it. With Global it lands in the run.
+func TestRecordGlobalOptIn(t *testing.T) {
+	needQuint(t)
+	scenario := func(rec *qobs.Recorder) {
+		done := make(chan struct{})
+		go func() { //qenv:ok a goroutine no run follows: what Global is for
+			defer close(done)
+			qobs.Record(context.Background(), "deposit", nil, "amount", 10, "obs.balance", 10)
+		}()
+		<-done
+	}
+	f := &failTB{TB: t}
+	done := make(chan struct{})
+	go func() { //qenv:ok failTB's Fatalf ends the goroutine (runtime.Goexit)
+		defer close(done)
+		Record(f, account, scenario, opts()...)
+	}()
+	<-done
+	if len(f.errs) == 0 || !strings.Contains(f.errs[0], "pass qtest.Global()") {
+		t.Errorf("without Global: errors %q, want the escaped step named with the fix", f.errs)
+	}
+	Record(t, account, scenario, append(opts(), Global())...).Expect(t, Conforms())
+	if qobs.Global() != nil {
+		t.Error("Record left its global recorder installed")
 	}
 }

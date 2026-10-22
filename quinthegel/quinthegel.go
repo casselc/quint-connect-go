@@ -110,17 +110,37 @@ func (r *Recorder) Choices() []qenv.Choice {
 	return append([]qenv.Choice(nil), r.env.Choices...)
 }
 
-// Install makes r the calling goroutine's run (qrun.Start) and the global
-// qobs recorder until the returned function is called, so code woven with
-// Orchestrion (//quint:action) records into it: on this goroutine whatever
-// other tests run in parallel, on goroutines it starts through the global
-// one. Hegel runs test cases one at a time, so one global recorder per case
-// is safe; with hegel.WithConcurrency the rules of one case share it.
-func (r *Recorder) Install() (restore func()) {
+// Install makes r the calling goroutine's run (qrun.Start) and, with
+// global, the global qobs recorder (qobs.InstallGlobal) until the returned
+// function is called, so code woven with Orchestrion (//quint:action)
+// records into it: on this goroutine whatever other tests run in
+// parallel, on goroutines it starts only through the global one. Hegel
+// runs test cases one at a time, so one global recorder per case is safe;
+// with hegel.WithConcurrency the rules of one case share it. A global
+// install fails while another test's is in place: such tests must not run
+// in parallel.
+func (r *Recorder) Install(global bool) (restore func(), err error) {
 	end := qrun.Start(r.Context(context.Background()))
-	prev := qobs.Global()
-	qobs.SetGlobal(r.Recorder)
-	return func() { qobs.SetGlobal(prev); end() }
+	if !global {
+		return end, nil
+	}
+	undo, err := qobs.InstallGlobal(r.Recorder)
+	if err != nil {
+		end()
+		return nil, err
+	}
+	return func() { undo(); end() }, nil
+}
+
+// begin installs r for a test case (Install, global as configured),
+// aborting the case if it cannot (a Hegel case's Errorf aborts it).
+func (r *Recorder) begin(tc interface{ Errorf(string, ...any) }, global bool) (restore func()) {
+	restore, err := r.Install(global)
+	if err != nil {
+		tc.Errorf("quinthegel: %v", err)
+		return func() {}
+	}
+	return restore
 }
 
 // Context returns ctx carrying r (qobs.WithRecorder): code recording
@@ -168,8 +188,11 @@ type Config struct {
 	Validate validate.Options
 	// Recorder options for each test case's recorder, e.g. qobs.WithActor.
 	Recorder []qobs.Option
-	// Global installs each case's recorder as the global qobs recorder,
-	// for code woven with Orchestrion.
+	// Global installs each case's recorder as the global qobs recorder
+	// too (Recorder.Install), for steps from goroutines the body starts
+	// (a server's, a cluster's). Without it only the body's goroutine and
+	// code recording through the recorder's context record into the case.
+	// Tests with it must not run in parallel.
 	Global bool
 	// Keep is where the generated Quint modules, step logs and ITF go
 	// (default $QUINTGO_KEEP/<test>, else t.TempDir()). The module of a
@@ -237,9 +260,7 @@ func Test(t *testing.T, cfg Config, body func(ht *hegel.T, rec *Recorder), opts 
 	}
 	hegel.Test(t, func(ht *hegel.T) {
 		rec := NewRecorder(ht, cfg.Recorder...)
-		if cfg.Global {
-			defer rec.Install()()
-		}
+		defer rec.begin(ht, cfg.Global)()
 		body(ht, rec)
 		steps := rec.Steps()
 		if len(steps) == 0 {
@@ -344,9 +365,7 @@ func batched(t *testing.T, cfg Config, body func(ht *hegel.T, rec *Recorder), op
 	start := time.Now() //qenv:ok the rounds' real time budget
 	record := func(ht *hegel.T) []qtrace.Step {
 		rec := NewRecorder(ht, cfg.Recorder...)
-		if cfg.Global {
-			defer rec.Install()()
-		}
+		defer rec.begin(ht, cfg.Global)()
 		body(ht, rec)
 		steps := rec.Steps()
 		if len(steps) == 0 && !cfg.AllowEmpty {

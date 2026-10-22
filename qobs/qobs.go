@@ -146,6 +146,34 @@ func SetGlobal(r *Recorder) { global.Store(r) }
 // Global returns the installed recorder, or nil.
 func Global() *Recorder { return global.Load() }
 
+// installed is the recorder InstallGlobal put in place, while it is.
+var installed atomic.Pointer[Recorder]
+
+// InstallGlobal installs r as the global recorder for a test's run
+// (qtest.Global, quinthegel's Config.Global): the steps of goroutines no
+// run can follow (a server's, a cluster's) go to it. A second install
+// while one is in place fails: the two runs would take each other's
+// steps, so tests that install it must not run in parallel. restore puts
+// back the recorder that was there before, unless something else has
+// replaced r since (it is not undone by identity, then: a test's
+// restore cannot remove another's recorder).
+func InstallGlobal(r *Recorder) (restore func(), err error) {
+	if r == nil {
+		return nil, errors.New("qobs: InstallGlobal(nil)")
+	}
+	if !installed.CompareAndSwap(nil, r) {
+		return nil, errors.New("qobs: another run's global recorder is installed: runs that install one (qtest.Global, " +
+			"quinthegel's Config.Global) must not run in parallel; drop t.Parallel, or record through the run's context")
+	}
+	prev := global.Swap(r)
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			global.CompareAndSwap(r, prev)
+			installed.CompareAndSwap(r, nil)
+		})
+	}, nil
+}
 
 var recorderKey = qrun.NewKey[*Recorder]("recorder")
 

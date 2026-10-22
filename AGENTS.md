@@ -225,8 +225,12 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   `qenv.WaitIdle`. The native runtime runs in real time and cannot tell.
 - `qrun.Start(ctx)` makes ctx the goroutine's run without a simulation
   (`qtest.Record`, `quinthegel.Recorder.Install`), and `qenv.New` inherits
-  it. Goroutines the run starts are not in it: Record still installs the
-  global recorder for them, so such scenarios must not run in parallel.
+  it. Goroutines the run starts are not in it: their steps fail Record
+  (the run is strict) unless it is given `qtest.Global()` (quinthegel's
+  `Config.Global`), which installs the global recorder for them
+  (`qobs.InstallGlobal`). A second install while one is in place fails,
+  so such tests must not run in parallel; a restore puts back the
+  previous recorder only if its own is still installed.
 - A model that learns a log from its reads checks Kafka, Kinesis and a
   simulated log with one binding (examples/streams): the consumer is the
   one place every tier can record.

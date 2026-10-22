@@ -48,3 +48,37 @@ func TestRecorderAdd(t *testing.T) {
 		t.Fatalf("got %+v", got)
 	}
 }
+
+// A second global install fails while one is in place, and a restore
+// puts back what was there before only if its recorder is still the
+// installed one.
+func TestInstallGlobal(t *testing.T) {
+	var a, b MemorySink
+	ra, rb := NewRecorder(&a), NewRecorder(&b)
+	restore, err := InstallGlobal(ra)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := InstallGlobal(rb); err == nil || !strings.Contains(err.Error(), "must not run in parallel") {
+		t.Errorf("second install: %v, want it refused", err)
+	}
+	Record(context.Background(), "a", nil)
+	restore()
+	restore() // idempotent
+	if Global() != nil {
+		t.Errorf("restore left %p installed", Global())
+	}
+	restore, err = InstallGlobal(rb)
+	if err != nil {
+		t.Fatalf("install after restore: %v", err)
+	}
+	SetGlobal(ra) // something else replaced it
+	restore()
+	if Global() != ra {
+		t.Error("restore removed a recorder it had not installed")
+	}
+	SetGlobal(nil)
+	if len(a.Steps()) != 1 || len(b.Steps()) != 0 {
+		t.Errorf("steps a %v, b %v", a.Steps(), b.Steps())
+	}
+}

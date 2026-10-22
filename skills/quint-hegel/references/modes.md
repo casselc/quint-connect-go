@@ -16,7 +16,10 @@
     the cheapest, but shrinks nothing.
   - `Off` records only.
 - **`Global: true`** installs each case's recorder as the global qobs
-  recorder, for implementation-side `qobs.Record` or woven code. Rules
+  recorder too, for steps from goroutines the body starts (a server's
+  handlers, a cluster's nodes). The body's own goroutine always records
+  into the case. Tests with it must not run in parallel: a second install
+  fails. Rules
   can also call `rec.Step(action, err, kv...)`. Every step becomes a Hegel
   note, so the shrunk run prints as model actions.
 - **Generators.** Draw invalid inputs too: unknown ids, non-positive

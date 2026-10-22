@@ -74,6 +74,10 @@ templates (collections, outcomes, ITF), or setting up the analyzers
   Use `qtest.Validate` for steps recorded elsewhere. (`RecordAndCheck`
   and `Check` are deprecated: every verdict is an `Expect`.) Start with
   `qtest.RequireQuint(t)`, which skips the test without quint.
+  The scenario's goroutine records into the run. Steps from goroutines
+  it starts (an HTTP server's handlers, a cluster's nodes) fail the test
+  unless you pass `qtest.Global()`. That option installs the run's
+  recorder globally, so such tests must not run in parallel.
 - **Expected verdicts** (mutants): `qtest.Record(...).Expect(t, e...)`,
   where each `e` says how the run must show up:
   - `qtest.Conforms()`;

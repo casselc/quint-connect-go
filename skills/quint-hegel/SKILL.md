@@ -45,8 +45,8 @@ func TestBankAgainstModel(t *testing.T) {
 - **Modes:** `Batched` is the usual choice (bulk checks, replayed in
   `Each` on a failure so Hegel shrinks it); `Each` checks every case;
   `After` checks once at the end and shrinks nothing. `Global: true`
-  installs each case's recorder for implementation-side or woven
-  steps. Read [references/modes.md](references/modes.md) for the
+  also installs each case's recorder globally, for steps from goroutines
+  the body starts (not in parallel tests). Read [references/modes.md](references/modes.md) for the
   modes' costs and options, generators and budgets.
 - **Expected failures** (a mutant, a known bug): use
   `quinthegel.FindViolation`. It checks every case with the verdict

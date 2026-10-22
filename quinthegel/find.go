@@ -86,9 +86,7 @@ func FindViolation(t testing.TB, cfg Config, body func(tc hegel.TestCase, rec *R
 		defer func() { out = hegelOut.stop() }() // also when a case's t.Fatal ends the goroutine
 		err = hegel.Run(func(tc hegel.TestCase) {
 			rec := NewRecorder(tc, cfg.Recorder...)
-			if cfg.Global {
-				defer rec.Install()()
-			}
+			defer rec.begin(tc, cfg.Global)()
 			body(tc, rec)
 			steps := rec.Steps()
 			if len(steps) == 0 && cfg.AllowEmpty {

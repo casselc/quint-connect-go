@@ -23,6 +23,7 @@ func (f *failTB) Errorf(format string, a ...any) {
 	f.failed = true
 }
 func (f *failTB) Fatalf(format string, a ...any)  { f.Errorf(format, a...); runtime.Goexit() }
+func (f *failTB) Fatal(a ...any)                  { f.Errorf("%s", fmt.Sprint(a...)); runtime.Goexit() }
 func (f *failTB) FailNow()                        { f.failed = true; runtime.Goexit() }
 func (f *failTB) Failed() bool                    { return f.failed }
 func (f *failTB) Logf(format string, args ...any) {}

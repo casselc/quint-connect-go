@@ -375,7 +375,9 @@ recorder opt-in.
   as recovering) is documented, not changed.
 - **W2. The global recorder opt-in.** `qtest.Record` and quinthegel install
   it only with `qtest.Global()`; installs restore by identity and a second
-  concurrent one fails; with no default global, an escaped step means one.
+  concurrent one fails; with no default global, an escaped step means one. Done
+  (`qobs.InstallGlobal`; Record is strict and names `qtest.Global()` when a
+  step escapes; `Recorder.Install(global)`).
 - **W3. Removals.** V5's deprecations and their last callers; dead or
   internal-only exports (`Sim.Faults`, `Sim.Native`, `Sim.OnSettle`,
   `Sim.Fault`, `qobs.InContext`, `KeepIn`, `ReplayFiles`, `CheckRuns`,

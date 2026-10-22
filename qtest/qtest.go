@@ -41,6 +41,8 @@ type Config struct {
 	// Invariants, if set, replace the binding's list
 	// (validate.Checker.WithInvariants); empty and non-nil checks none.
 	Invariants []string
+	// Global installs Record's recorder as the global one (Global).
+	Global bool
 }
 
 // Option changes a Config.
@@ -52,6 +54,14 @@ func RecorderOptions(opts ...qobs.Option) Option {
 	return func(c *Config) { c.Recorder = append(c.Recorder, opts...) }
 }
 func SkipIfEmpty() Option { return func(c *Config) { c.SkipIfEmpty = true } }
+
+// Global makes Record install its recorder as the global one
+// (qobs.InstallGlobal) while the scenario runs, for the steps of
+// goroutines the scenario starts (a server's handlers, a cluster's
+// nodes), which no run can follow. Such tests must not run in parallel:
+// a second install fails. Without it only the scenario's goroutine, and
+// code recording through its recorder's context, record into the run.
+func Global() Option { return func(c *Config) { c.Global = true } }
 
 // Constants checks against another instance of the binding's model: these
 // constants override the binding's, e.g. Constants(map[string]string{"STOCK": "1000"}).
@@ -163,18 +173,32 @@ func Record(t testing.TB, bindingPath string, scenario func(rec *qobs.Recorder),
 	}
 	mem := &qobs.MemorySink{}
 	rec := qobs.NewRecorder(qobs.Tee{mem, file}, c.Recorder...)
-	// The scenario's goroutine is the run's (qrun.Start), whatever global
-	// recorder a test in parallel installs; the global one is for the
-	// goroutines it starts (servers, clusters), which no run can follow:
-	// tests whose scenarios start goroutines must not run in parallel.
+	// The scenario's goroutine is the run's (qrun.Start), whatever a test
+	// in parallel does; the global recorder, with Global, is for the
+	// goroutines it starts (servers, clusters), which no run can follow.
+	// Without it, their steps would be lost: the run is strict, and they
+	// fail the test.
 	end := qrun.Start(qobs.WithRecorder(context.Background(), rec))
-	prev := qobs.Global()
-	qobs.SetGlobal(rec)
+	restore := func() {}
+	if c.Global {
+		if restore, err = qobs.InstallGlobal(rec); err != nil {
+			end()
+			t.Fatalf("quintgo: %v", err)
+		}
+	}
+	mark, _ := qobs.Escaped(0)
 	func() {
+		release := qobs.Strict()
 		defer end()
-		defer qobs.SetGlobal(prev)
+		defer restore()
+		defer release()
 		scenario(rec)
 	}()
+	if n, msgs := qobs.Escaped(mark); n > mark && !c.Global {
+		t.Errorf("quintgo: %d steps were recorded from goroutines outside the scenario's run (the first: %s); "+
+			"record through the scenario's context (rec's: qobs.WithRecorder), or pass qtest.Global() for goroutines "+
+			"the scenario starts", n-mark, firstOr(msgs))
+	}
 	if err := file.Close(); err != nil {
 		t.Fatalf("quintgo: step log: %v", err)
 	}
@@ -270,4 +294,12 @@ func fail(t testing.TB, r *Run) {
 	}
 	t.Fatalf("quintgo: the recorded trace does not satisfy the model\n%s  step log: %s\n  model-level ITF: %s",
 		r.Report.Summary(), r.StepLog, strings.Join(itfs, ", "))
+}
+
+// firstOr is the first of msgs, or a placeholder when none was kept.
+func firstOr(msgs []string) string {
+	if len(msgs) == 0 {
+		return "not kept"
+	}
+	return msgs[0]
 }
