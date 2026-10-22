@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/jellevandenhooff/gosim/internal/gosimtool"
 	"github.com/jellevandenhooff/gosim/internal/prettylog"
 )
 
@@ -88,9 +89,28 @@ func (r *MetaT) RunWith(t testing.TB, config *RunConfig, chooser Chooser, emit f
 	}
 }
 
+// Start returns a MetaT of its own for pkg, a test binary not shared with
+// ForOtherPackage or other Starts: run several in parallel, one run at a
+// time each. Close it when done.
+func Start(t *testing.T, pkg string) (*MetaT, error) {
+	return newRunner(gosimtool.GetPathForPrecompiledTestBinary(t, pkg))
+}
+
+// Close stops the test binary.
+func (r *MetaT) Close() {
+	if !r.dead {
+		r.kill()
+	}
+}
+
+// Alive reports whether the test binary still runs: a run a chooser
+// aborted stops it (RunWith).
+func (r *MetaT) Alive() bool { return !r.dead }
+
 // kill stops the test binary and forgets it, so that ForOtherPackage starts
 // a new one.
 func (r *MetaT) kill() {
+	r.dead = true
 	r.cmd.Process.Kill()
 	r.cmd.Wait()
 	runnerMapMu.Lock()

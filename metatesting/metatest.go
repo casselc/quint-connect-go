@@ -47,7 +47,8 @@ type RunResult struct {
 //
 // Behind the scenes a MetaT executes and controls a gosim test binary.
 type MetaT struct {
-	cmd *exec.Cmd
+	cmd  *exec.Cmd
+	dead bool // stopped (kill, Close): it runs nothing more
 
 	w *json.Encoder
 	r *json.Decoder
