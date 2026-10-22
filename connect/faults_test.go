@@ -79,7 +79,6 @@ func followTraces(t *testing.T, forgets bool) ([][]qtrace.Step, map[string]int) 
 			kinds[f.Kind]++
 		}
 		mem := &qobs.MemorySink{}
-		sc.Progress = func() int { return len(mem.Steps()) }
 		s := qenv.New(qenv.WithContext(sc, qobs.WithRecorder(context.Background(), qobs.NewRecorder(mem))))
 		j := &journal{forgets: forgets}
 		var p *qenv.Process

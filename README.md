@@ -247,7 +247,8 @@ that created it). During such runs recording is strict (`qobs.Strict`): a
 step with nowhere to go panics, naming the fix, rather than vanish. That
 happens only for a goroutine started with `go`, which `quintgo lint -sim
 DIR` flags, along with wall-clock time. A Hegel test records the same way,
-with `qenv.WithContext(quinthegel.Chooser(tc), rec.Context(ctx))`.
+with `rec.Env(quinthegel.Chooser(tc))`, which also records the run's
+choices: `qenv.Replay(v.Choices)` repeats a shrunk failure outside Hegel.
 
 Code you cannot rewrite against seams (plain `sync.Mutex`,
 `sync.RWMutex`, `sync.WaitGroup`, `go` statements) can be woven in at

@@ -13,6 +13,7 @@ package qenv
 import (
 	"context"
 	"fmt"
+	"github.com/casselc/quint-connect-go/qobs"
 	"math/rand/v2"
 	"strings"
 )
@@ -56,6 +57,10 @@ type Choice struct {
 	N     int
 	Value int
 	Bytes []byte
+	// Step is how many steps the run had recorded when the choice was made
+	// (a Recorder's, through the run's step recorder): which step a fault
+	// came after. Replay ignores it.
+	Step int
 }
 
 func (c Choice) String() string {
@@ -164,13 +169,27 @@ func (s *Seeded) Entropy(n int) []byte {
 type Recorder struct {
 	C       Chooser
 	Choices []Choice
+
+	steps *qobs.Recorder // the run's step recorder, found on the first choice
 }
 
 // Choose implements Chooser.
 func (r *Recorder) Choose(kind string, n int) int {
 	v := r.C.Choose(kind, n)
-	r.Choices = append(r.Choices, Choice{Kind: kind, N: n, Value: v})
+	r.Choices = append(r.Choices, Choice{Kind: kind, N: n, Value: v, Step: r.progress()})
 	return v
+}
+
+// progress is the run's step count: its recorder is the one the calling
+// goroutine's run records into (qrun), the same for every choice of a run.
+func (r *Recorder) progress() int {
+	if r.steps == nil {
+		r.steps = qobs.From(nil)
+	}
+	if r.steps == nil {
+		return 0
+	}
+	return r.steps.Count()
 }
 
 // Faults returns the recorded fault choices that were not nominal.

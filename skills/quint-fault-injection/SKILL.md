@@ -115,9 +115,12 @@ qtest.Explore(t, "app.binding.yaml", qtest.ExploreConfig{Seeds: 100, Rates: rate
   - Turn whole kinds off with `{"fault.kube": 0}`, or per run with
     `qenv.Swarm`.
 - **Shrinking:**
-  `quinthegel.FindViolation(t, cfg, func(tc, rec) { app.Run(qenv.WithContext(quinthegel.Chooser(tc), rec.Context(ctx)), cfg) })`
+  `quinthegel.FindViolation(t, cfg, func(tc, rec) { app.Run(rec.Env(quinthegel.Chooser(tc)), cfg) })`
   shrinks a failure to the interleaving and faults it needs; faults
   appear as notes. Skip it under `testing.Short()`.
+  `rec.Env` records the run's choices too: `qenv.Replay(v.Choices)`
+  repeats the shrunk failure outside Hegel, a regression test with no
+  Hegel in it. State the failure with `v.Expect(t, qtest.Rejects(...))`.
 - **Extending qenv** (a new double, a scheduler change): run its tests
   with `QENV_CHECK=1` (or `s.Check = true`). The scheduler then verifies
   its own invariants at every step. `TestSchedulerSemantics` states its

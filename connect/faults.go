@@ -29,9 +29,9 @@ type FaultMap map[string]func(s *Step) *Fault
 // (qtest.Check). A run that cannot follow the trace leaves faults in
 // Script.Remaining, or records steps the model rejects.
 //
-// Give the script the run's progress (Script.Progress: the number of steps
-// recorded), and a Base chooser for the schedule if it should not be the
-// nominal one.
+// The script waits on the run's own step recorder (the one in the
+// simulation's context); give it a Base chooser for the schedule if it
+// should not be the nominal one.
 func FaultScript(tr *itf.Trace, faults FaultMap, opt ReplayOptions) (*qenv.Script, error) {
 	sc := &qenv.Script{}
 	recorded := 0

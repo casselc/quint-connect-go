@@ -2,6 +2,7 @@ package qenv
 
 import (
 	"fmt"
+	"github.com/casselc/quint-connect-go/qobs"
 	"strings"
 	"sync"
 )
@@ -25,9 +26,9 @@ func (s Scripted) String() string {
 // other fault choice is nominal, and non-fault choices are Base's (nil:
 // nominal, the canonical schedule).
 //
-// Progress tells how many steps the run has taken (the length of its
-// recorder's steps): a scripted fault waits for the steps before it in the
-// trace, so it lands where the trace put it. A fault the run never comes
+// Progress tells how many steps the run has taken (nil: its step
+// recorder's Count, found through the run): a scripted fault waits for the
+// steps before it in the trace, so it lands where the trace put it. A fault the run never comes
 // to stays in Remaining, and the run did not follow the trace.
 type Script struct {
 	Faults   []Scripted
@@ -42,7 +43,16 @@ func (s *Script) due(kind string) bool {
 	if s.next >= len(s.Faults) || s.Faults[s.next].Kind != kind {
 		return false
 	}
-	return s.Progress == nil || s.Progress() >= s.Faults[s.next].After
+	if s.Faults[s.next].After == 0 {
+		return true
+	}
+	if s.Progress != nil {
+		return s.Progress() >= s.Faults[s.next].After
+	}
+	if r := qobs.From(nil); r != nil {
+		return r.Count() >= s.Faults[s.next].After
+	}
+	return true // no recorder to wait for
 }
 
 // Choose implements Chooser.

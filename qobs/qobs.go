@@ -38,6 +38,7 @@ type Outcomer interface{ QuintOutcome() string }
 type Recorder struct {
 	id      string
 	seq     atomic.Uint64
+	added   atomic.Uint64 // steps written by Add
 	sink    Sink
 	actor   string
 	process string
@@ -87,6 +88,10 @@ func NewRecorder(sink Sink, opts ...Option) *Recorder {
 	return r
 }
 
+// Count is how many steps the recorder has recorded (Add's included): a
+// run's progress, which its choices are aligned to (qenv.Choice.Step).
+func (r *Recorder) Count() int { return int(r.seq.Load() + r.added.Load()) }
+
 // ID is the recorder id (the scope of quint.seq).
 func (r *Recorder) ID() string { return r.id }
 
@@ -96,6 +101,7 @@ func (r *Recorder) ID() string { return r.id }
 func (r *Recorder) Add(steps ...qtrace.Step) {
 	for i := range steps {
 		r.sink.Record(context.Background(), &steps[i])
+		r.added.Add(1)
 	}
 }
 

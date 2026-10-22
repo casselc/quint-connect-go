@@ -37,6 +37,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/casselc/quint-connect-go/qenv"
 	"github.com/casselc/quint-connect-go/qobs"
 	"github.com/casselc/quint-connect-go/qtrace"
 	"github.com/casselc/quint-connect-go/validate"
@@ -52,6 +53,7 @@ type Recorder struct {
 	mem *qobs.MemorySink
 	n   int
 	mu  sync.Mutex
+	env *qenv.Recorder // Env's
 }
 
 // NewRecorder returns a recorder for the test case tc. opts configure the
@@ -87,11 +89,24 @@ func (r *Recorder) Steps() []qtrace.Step { return r.mem.Steps() }
 // Add appends steps recorded elsewhere, as they are: by another process,
 // or inside a simulation that reports its steps to the test (gosim's).
 // Like recorded steps, they are noted on the test case.
-func (r *Recorder) Add(steps ...qtrace.Step) {
-	sink := qobs.Tee{r.mem, noteSink{r}}
-	for i := range steps {
-		sink.Record(context.Background(), &steps[i])
+func (r *Recorder) Add(steps ...qtrace.Step) { r.Recorder.Add(steps...) }
+
+// Env is the chooser a simulation of this test case runs on: c's choices
+// (usually Chooser(tc)), recorded into r (Choices), with r in its context,
+// so the run's steps and its choices are both r's. A shrunk failure's
+// choices then replay it (qenv.Replay(v.Choices)), outside Hegel.
+func (r *Recorder) Env(c qenv.Chooser) qenv.Chooser {
+	r.env = &qenv.Recorder{C: c}
+	return qenv.WithContext(r.env, r.Context(context.Background()))
+}
+
+// Choices are the choices made through Env, aligned to the steps
+// (Choice.Step).
+func (r *Recorder) Choices() []qenv.Choice {
+	if r.env == nil {
+		return nil
 	}
+	return append([]qenv.Choice(nil), r.env.Choices...)
 }
 
 // Install makes r the global qobs recorder until the returned function is
@@ -105,9 +120,8 @@ func (r *Recorder) Install() (restore func()) {
 }
 
 // Context returns ctx carrying r (qobs.WithRecorder): code recording
-// through it, such as a qenv simulation made with
-// qenv.WithContext(quinthegel.Chooser(tc), rec.Context(ctx)), records into r
-// without the global recorder (Config.Global).
+// through it records into r without the global recorder (Config.Global).
+// For a qenv simulation use Env, which also records its choices.
 func (r *Recorder) Context(ctx context.Context) context.Context {
 	return qobs.WithRecorder(ctx, r.Recorder)
 }

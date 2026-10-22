@@ -121,3 +121,7 @@ the rest, each after the U items it depends on.
 - S1: done (qrun).
 - U2 (P2): done (DESIGN §18): `Some`, `All`, `None`; `Violation.Expect`.
   `Expect` on `qmeta.Recovery` goes with P4's one recovery API.
+- U3 (S4): choices aligned to steps (DESIGN §19): `Choice.Step`, Script
+  waiting on the run's recorder, `Recorder.Env`, `Violation.Choices`
+  replayable. One `Run` type for Explore, FindViolation and qgosim waits
+  for U4's `qtest.System`, which returns it.

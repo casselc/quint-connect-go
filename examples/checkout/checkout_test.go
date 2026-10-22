@@ -8,6 +8,7 @@ import (
 	"github.com/casselc/quint-connect-go/examples/checkout"
 	"github.com/casselc/quint-connect-go/examples/checkout/shop"
 	"github.com/casselc/quint-connect-go/qenv"
+	"github.com/casselc/quint-connect-go/qobs"
 	"github.com/casselc/quint-connect-go/qtest"
 	"github.com/casselc/quint-connect-go/quinthegel"
 	"hegel.dev/go/hegel"
@@ -73,26 +74,37 @@ func TestMutants(t *testing.T) {
 }
 
 // Hegel makes every choice of the environment and shrinks a write skew to
-// the interleaving and faults it needs.
+// the interleaving and faults it needs. The shrunk run's choices replay it
+// outside Hegel, step for step: a regression test needs no Hegel.
 func TestHegelShrinksWriteSkew(t *testing.T) {
 	qtest.RequireQuint(t)
 	if testing.Short() {
 		t.Skip("shrinking against the model")
 	}
 	v := quinthegel.FindViolation(t, quinthegel.Config{Binding: binding}, func(tc hegel.TestCase, rec *quinthegel.Recorder) {
-		c := qenv.WithContext(quinthegel.Chooser(tc), rec.Context(context.Background())) // the run records into rec
+		c := rec.Env(quinthegel.Chooser(tc)) // the run records its steps and choices into rec
 		if _, err := checkout.Run(c, checkout.Config{Isolation: qenv.SnapshotIsolation, Mutation: shop.LockWithoutWrite}); err != nil {
 			tc.Errorf("%v", err)
 		}
 	}, hegel.WithTestCases(50), hegel.WithSeed(1))
 	v.Expect(t, qtest.AnyOf(qtest.Rejects("ship"), qtest.Rejects("cancel")))
+
+	mem := &qobs.MemorySink{}
+	if _, err := checkout.Run(qenv.WithContext(qenv.Replay(v.Choices), qobs.WithRecorder(context.Background(), qobs.NewRecorder(mem))),
+		checkout.Config{Isolation: qenv.SnapshotIsolation, Mutation: shop.LockWithoutWrite}); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := quinthegel.Render(mem.Steps()), quinthegel.Render(v.Steps); got != want {
+		t.Errorf("the replayed run differs:\n%s\nfrom the shrunk run:\n%s", got, want)
+	}
+	qtest.Validate(t, binding, mem.Steps()).Expect(t, qtest.AnyOf(qtest.Rejects("ship"), qtest.Rejects("cancel")))
 }
 
 // Hegel explores the faithful shop under snapshot isolation, in batches.
 func TestHegelFaithful(t *testing.T) {
 	qtest.RequireQuint(t)
 	quinthegel.Test(t, quinthegel.Config{Binding: binding, Mode: quinthegel.Batched}, func(ht *hegel.T, rec *quinthegel.Recorder) {
-		if _, err := checkout.Run(qenv.WithContext(quinthegel.Chooser(ht), rec.Context(context.Background())), checkout.Config{Isolation: qenv.SnapshotIsolation}); err != nil {
+		if _, err := checkout.Run(rec.Env(quinthegel.Chooser(ht)), checkout.Config{Isolation: qenv.SnapshotIsolation}); err != nil {
 			ht.Fatalf("%v", err)
 		}
 	}, hegel.WithTestCases(30))

@@ -1925,3 +1925,31 @@ shrunk run is checked once more, since cached verdicts keep only their
 summary. With `Violation.Expect`, the four tests that matched strings in
 summaries state their verdicts like the rest (`Rejects("rotateGen")`,
 `Violates("convergedWhenSettled")`).
+
+## 19. Choices aligned to steps (U3)
+
+A run had two records that did not meet: the steps it recorded and the
+choices it made.
+- A Script waiting for the steps before a fault needed a `Progress`
+  closure wired to the run's sink by hand.
+- A shrunk Hegel failure kept its steps but not its choices, so it could
+  not be replayed outside Hegel, run on gosim, or kept as a seed.
+
+**`Choice.Step`.** `qenv.Recorder` stamps every choice with the run's step
+count (`qobs.Recorder.Count`). The run's recorder is found once, through
+qrun, on the first choice. A choice's step says which step a fault came
+after, what fault-to-action coverage will build on. A Script with no
+`Progress` waits on the same count, so `FaultScript`'s callers set
+nothing.
+
+**`quinthegel.Recorder.Env(c)`** is the chooser a test case's simulation
+runs on: `c`'s choices recorded into the case's recorder, the recorder in
+the chooser's context. It replaces
+`qenv.WithContext(quinthegel.Chooser(tc), rec.Context(ctx))`. The shrunk
+`Violation` carries its `Choices`. Checkout's write-skew test replays
+them with `qenv.Replay`: the same steps, rejected the same way, with no
+Hegel in the run.
+
+Writing that test hit P3 of the review: `qtest.Check` fails a test on a
+violation before `.Expect` can say it was wanted. The test uses
+`Validate`.

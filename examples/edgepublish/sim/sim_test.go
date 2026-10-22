@@ -1,7 +1,6 @@
 package sim_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/casselc/quint-connect-go/examples/edgepublish/publisher"
@@ -96,7 +95,7 @@ func TestHegelShrinksNoRotationLock(t *testing.T) {
 		t.Skip("shrinking against the model")
 	}
 	v := quinthegel.FindViolation(t, quinthegel.Config{Binding: binding}, func(tc hegel.TestCase, rec *quinthegel.Recorder) {
-		c := qenv.WithContext(quinthegel.Chooser(tc), rec.Context(context.Background()))
+		c := rec.Env(quinthegel.Chooser(tc))
 		if err := sim.Run(c, sim.Config{Mutation: publisher.NoRotationLock, NoCrashes: true, NoAmbiguous: true, Requests: 4}); err != nil {
 			tc.Errorf("%v", err)
 		}

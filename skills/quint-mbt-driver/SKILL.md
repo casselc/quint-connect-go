@@ -99,7 +99,6 @@ sc, err := connect.FaultScript(tr, connect.FaultMap{
 	"writeFail": func(*connect.Step) *connect.Fault { return &connect.Fault{Kind: "journal.write", Option: 1, Recorded: true} },
 	"restart":   func(*connect.Step) *connect.Fault { return &connect.Fault{Kind: "nemesis.crash.writer", Recorded: true} },
 }, connect.ReplayOptions{})
-sc.Progress = func() int { return len(mem.Steps()) }   // the run's recorded steps
 s := qenv.New(qenv.WithContext(sc, qobs.WithRecorder(ctx, qobs.NewRecorder(mem))))
 // ... deploy, s.Run, then: sc.Remaining() is empty, and
 qtest.Check(t, binding, mem.Steps())
