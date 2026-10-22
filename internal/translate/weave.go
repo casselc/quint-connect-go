@@ -1,116 +1,57 @@
 package translate
 
 import (
+	"crypto/sha256"
+	"encoding/json"
+	"fmt"
 	"log"
-	"log/slog"
 	"os"
-	"path/filepath"
-
-	"golang.org/x/tools/go/packages"
+	"sort"
 
 	"github.com/jellevandenhooff/gosim/internal/gosimtool"
-	"github.com/jellevandenhooff/gosim/weave"
 )
 
-// weaveOverlay holds the woven sources of the packages being translated, by
-// file path: every package load reads them instead of the files on disk.
-// weaveHash identifies the aspects, for the translation cache.
+// weaveOverlay holds replacement sources for the packages being
+// translated, by file path, and every package load reads them instead of
+// the files on disk. They come from GOSIM_OVERLAY, a file in the go
+// command's overlay format (go build -overlay): {"Replace": {path:
+// replacement path}}. A weaver (quint-connect-go's qweave) writes it, so
+// that annotated code is woven in a simulation as in an ordinary build.
+// weaveHash identifies the overlay's contents, for the translation cache.
 var (
 	weaveOverlay map[string][]byte
 	weaveHash    string
 )
 
-// notAspects are tool imports that bring no aspects of their own.
-var notAspects = map[string]bool{"github.com/DataDog/orchestrion": true}
-
-// weaveModule weaves the packages of patterns with the aspects of the
-// module's tool file (weave.ToolFile), setting weaveOverlay and weaveHash.
-func weaveModule(patterns []string, cfg gosimtool.BuildConfig) {
-	modDir, err := gosimtool.FindGoModDir()
-	if err != nil {
-		log.Fatal(err)
-	}
-	tool := weave.ToolFile(modDir)
-	if tool == "" {
+// loadOverlay reads GOSIM_OVERLAY, if set.
+func loadOverlay(gosimtool.BuildConfig) {
+	path := os.Getenv("GOSIM_OVERLAY")
+	if path == "" {
 		return
 	}
-	imports, err := weave.Tool(tool)
+	b, err := os.ReadFile(path)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("GOSIM_OVERLAY: %v", err)
 	}
-	var aspectPkgs []string
-	for _, p := range imports {
-		if !notAspects[p] {
-			aspectPkgs = append(aspectPkgs, p)
-		}
-	}
-	if len(aspectPkgs) == 0 {
-		return
-	}
-	pkgs, err := loadPackages(aspectPkgs, cfg, packages.NeedName|packages.NeedFiles, false)
-	if err != nil {
-		log.Fatal(err)
-	}
-	var aspects []*weave.Aspect
-	for _, p := range pkgs {
-		if len(p.GoFiles) == 0 {
-			continue
-		}
-		file := filepath.Join(filepath.Dir(p.GoFiles[0]), "orchestrion.yml")
-		if _, err := os.Stat(file); err != nil {
-			continue
-		}
-		as, skipped, err := weave.Load(file)
-		if err != nil {
-			log.Fatal(err)
-		}
-		for _, s := range skipped {
-			slog.Debug("weave: skipping aspect", "file", s.File, "aspect", s.ID, "why", s.Why)
-		}
-		aspects = append(aspects, as...)
-	}
-	if len(aspects) == 0 {
-		return
-	}
-	weaveHash = weave.Hash(aspects)
-
-	graph, err := loadPackages(patterns, cfg, loadDepGraph, true)
-	if err != nil {
-		log.Fatal(err)
+	var o struct{ Replace map[string]string }
+	if err := json.Unmarshal(b, &o); err != nil {
+		log.Fatalf("GOSIM_OVERLAY %s: %v", path, err)
 	}
 	overlay := map[string][]byte{}
-	seen := map[string]bool{}
-	var visit func(p *packages.Package)
-	visit = func(p *packages.Package) {
-		if seen[p.ID] {
-			return
-		}
-		seen[p.ID] = true
-		if p.Module != nil { // not the standard library
-			for _, f := range p.GoFiles {
-				if _, done := overlay[f]; done {
-					continue
-				}
-				src, err := os.ReadFile(f)
-				if err != nil {
-					log.Fatal(err)
-				}
-				out, err := weave.File(f, src, aspects)
-				if err != nil {
-					log.Fatal(err)
-				}
-				if out != nil {
-					overlay[f] = out
-				}
-			}
-		}
-		for _, imp := range p.Imports {
-			visit(imp)
-		}
+	h := sha256.New()
+	names := make([]string, 0, len(o.Replace))
+	for n := range o.Replace {
+		names = append(names, n)
 	}
-	for _, p := range graph {
-		visit(p)
+	sort.Strings(names)
+	for _, n := range names {
+		src, err := os.ReadFile(o.Replace[n])
+		if err != nil {
+			log.Fatalf("GOSIM_OVERLAY %s: %v", path, err)
+		}
+		overlay[n] = src
+		fmt.Fprintf(h, "%s\x00%x\x00", n, sha256.Sum256(src))
 	}
 	weaveOverlay = overlay
-	slog.Debug("weave: woven files", "count", len(overlay))
+	weaveHash = fmt.Sprintf("%x", h.Sum(nil))
 }

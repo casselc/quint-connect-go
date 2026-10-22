@@ -16,15 +16,11 @@ upstream's history so that they can be rebased onto a newer upstream:
   lines the program `Emit`s (`metatesting.MetaT.RunWith`), and runs
   binaries in parallel (`Start`, `Close`, `Alive`).
 
-- Weaving (`weave/`, `internal/translate/weave.go`): before translating,
-  the translator applies the Orchestrion aspects
-  (https://datadoghq.dev/orchestrion) of the packages the module's tool
-  file imports (`gosim.tool.go`, else `orchestrion.tool.go`), at the source
-  level: woven files go to every package load as an overlay, with `//line`
-  directives keeping the original positions. Supported so far:
-  function-body join points with a directive, prepend-statements advice
-  with Orchestrion's template helpers. Other aspects are skipped (logged at
-  debug level).
+- Overlays (`internal/translate/weave.go`): `GOSIM_OVERLAY` names a file in
+  the go command's overlay format (`go build -overlay`), whose replacement
+  sources every package load reads. quint-connect-go's qweave writes it
+  with woven code (Orchestrion aspects), so `//quint:action` records in a
+  simulation; any tool can.
 
 quint-connect-go uses it through `qgosim` (its `fetch-gosim.sh` clones
 this branch). It moves to a repository of its own later. Race mode

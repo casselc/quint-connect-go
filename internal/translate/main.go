@@ -442,7 +442,7 @@ func translatePackages(cache *cache.Cache, listPatterns []string, rootOutputDir 
 
 	listPatterns = append(listPatterns, TranslatedRuntimePackages...)
 
-	weaveModule(listPatterns, cfg)
+	loadOverlay(cfg)
 
 	listedPkgs, err := loadPackages(listPatterns, cfg, loadDepGraph, true)
 	if err != nil {
