@@ -301,7 +301,10 @@ names what it needs.
   quint-hegel split into references; quint-start rows for gosim, weaving,
   Kubernetes controllers and fuzzing, with a ten-line System snippet; the
   `v.Summary` advice removed; a skills test that fails on deprecated
-  identifiers.
+  identifiers. *Done:* the three skills split into references
+  (simulation, experiment, alerts; emitting, binding, production-logs,
+  patterns; modes, pitfalls); quint-start's new rows and System snippet;
+  `v.Summary` advice gone; `TestSkillsAvoidDeprecated`.
 - **V17. Models.** Refusals as steps in checkout (DESIGN §26's open item),
   with the model action and the mutants it kills.
 

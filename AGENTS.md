@@ -140,7 +140,10 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   `skills/<name>/references/*.md`, linked from its SKILL.md with when to
   read each; verdicts and expectations are in
   `quint-verification-workflow/references/verdicts.md`. `skills_test.go`
-  checks every link resolves.
+  checks every link resolves, and fails on deprecated identifiers
+  (qtest.Check, RecordAndCheck, qtest.Explore(binding), SweepExplore,
+  Explored, `step [i]`): when deprecating an API, add it to
+  `TestSkillsAvoidDeprecated`.
 - Skills live in `skills/<name>/SKILL.md`, never directly in `.agents/` or
   `.claude/`, which only hold symlinks to them. Add a symlink in both when
   adding a skill (`skills_test.go` checks it). A skill's front-matter
