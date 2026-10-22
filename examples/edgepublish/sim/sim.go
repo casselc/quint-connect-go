@@ -75,6 +75,7 @@ func (e *exporter) start() {
 		next := 0 // queue[:next] are taken or exported
 		for w := 0; w < cfg.Workers; w++ {
 			qenv.Go(ctx, "export", func(ctx context.Context) {
+				qenv.Daemon(ctx) // a worker waits for exports forever once the queue is drained
 				for {
 					id := ""
 					qenv.Wait(ctx, func() bool {
