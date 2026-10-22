@@ -146,6 +146,7 @@ func loadPackages(patterns []string, b gosimtool.BuildConfig, mode packages.Load
 	env := append(os.Environ(), "GOOS="+b.GOOS, "GOARCH="+b.GOARCH, "CGO_ENABLED=0")
 	cfg.BuildFlags = []string{"-tags", strings.Join(tags, ",")}
 	cfg.Env = env
+	cfg.Overlay = weaveOverlay
 
 	// load packages
 	packages, err := packages.Load(cfg, patterns...)
@@ -440,6 +441,8 @@ func translatePackages(cache *cache.Cache, listPatterns []string, rootOutputDir 
 	}
 
 	listPatterns = append(listPatterns, TranslatedRuntimePackages...)
+
+	weaveModule(listPatterns, cfg)
 
 	listedPkgs, err := loadPackages(listPatterns, cfg, loadDepGraph, true)
 	if err != nil {
