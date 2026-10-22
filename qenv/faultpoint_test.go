@@ -115,7 +115,7 @@ type counting struct {
 }
 
 func (c *counting) Choose(kind string, n int) int { c.n++; return c.Chooser.Choose(kind, n) }
-func (c *counting) Unwrap() qenv.Chooser        { return c.Chooser }
+func (c *counting) Unwrap() qenv.Chooser          { return c.Chooser }
 
 func TestWrappersSeeThrough(t *testing.T) {
 	type key struct{}
