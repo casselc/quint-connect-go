@@ -31,7 +31,7 @@ type LoadConfig struct {
 	// default, 4 attempts 200 ms apart).
 	Retry func(rnd *rand.Rand) shop.Retrier
 	// Faults during the run (zero: none, a nominal schedule). A crash
-	// ("fault.nemesis") is a choice once per virtual second.
+	// ("nemesis") is a choice once per virtual second.
 	Faults qenv.Rates
 	Seed   uint64
 	// Sink, if set, also receives the run's model steps.

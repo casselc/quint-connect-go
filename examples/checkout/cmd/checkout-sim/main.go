@@ -39,7 +39,7 @@ func main() {
 			fail(err)
 		}
 		c := qenv.NewSeeded(uint64(seed))
-		c.Rates.Kinds = map[string]float64{"fault.nemesis": *crash}
+		c.Rates.Kinds = map[string]float64{"nemesis": *crash}
 		// the run records through its simulation's context
 		rec := qobs.NewRecorder(sink, qobs.WithActor(fmt.Sprintf("seed%d", seed)))
 		if _, err := checkout.Run(qenv.WithContext(c, qobs.WithRecorder(context.Background(), rec)), cfg); err != nil {

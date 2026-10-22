@@ -41,7 +41,7 @@ func main() {
 			fail(err)
 		}
 		c := qenv.NewSeeded(uint64(seed))
-		c.Rates = qenv.Rates{Default: *rate, Kinds: map[string]float64{"fault.nemesis": *crash}}
+		c.Rates = qenv.Rates{Default: *rate, Kinds: map[string]float64{"nemesis": *crash}}
 		rec := qobs.NewRecorder(sink, qobs.WithActor(fmt.Sprintf("seed%d", seed)))
 		if _, err := twophase.Run(qenv.WithContext(c, qobs.WithRecorder(context.Background(), rec)), twophase.Config{Mutation: m}); err != nil {
 			fail(err)

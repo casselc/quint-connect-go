@@ -41,7 +41,7 @@ var ErrConflict = errors.New("qenv: transaction conflict (serialization failure)
 var ErrDeadlock = fmt.Errorf("%w: deadlock (lock waits form a cycle); lock rows in one order", ErrConflict)
 
 // ErrUnknownOutcome is returned by Commit when the connection is lost
-// during commit (fault "fault.store.commit"): the transaction may or may
+// during commit (fault kind "store.commit"): the transaction may or may
 // not have committed, and the caller cannot tell.
 var ErrUnknownOutcome = errors.New("qenv: commit outcome unknown (connection lost)")
 
@@ -83,7 +83,7 @@ type Txn interface {
 type Store struct {
 	Name string
 	Iso  Isolation
-	// CommitFaults enables "fault.store.commit": a commit that is applied
+	// CommitFaults enables the fault kind "store.commit": a commit that is applied
 	// but reported as ErrUnknownOutcome.
 	CommitFaults bool
 

@@ -46,7 +46,7 @@ func TestSeededRunsConform(t *testing.T) {
 	qtest.RequireQuint(t)
 	for seed := uint64(1); seed <= 5; seed++ {
 		c := qenv.NewSeeded(seed)
-		c.Rates.Kinds = map[string]float64{"fault.partition": 0.3}
+		c.Rates.Kinds = map[string]float64{"partition": 0.3}
 		steps := run(t, c, "")
 		qtest.Validate(t, binding, steps).Expect(t, qtest.Conforms())
 		t.Logf("seed %d: %d steps", seed, len(steps))
@@ -90,7 +90,7 @@ func TestHegelFindsNoRetry(t *testing.T) {
 	}
 	v := quinthegel.FindViolation(t, quinthegel.Config{Binding: binding, Opts: []qtest.Option{qtest.Global()}}, func(tc hegel.TestCase, rec *quinthegel.Case) {
 		c := quinthegel.Choices(tc)
-		c.Rates.Kinds = map[string]float64{"fault.partition": 0.3}
+		c.Rates.Kinds = map[string]float64{"partition": 0.3}
 		rec.Add(run(t, c, "NoRetry")...)
 	}, hegel.WithTestCases(60), hegel.WithSeed(1))
 	v.Expect(t, qtest.Violates("convergedWhenSettled"))

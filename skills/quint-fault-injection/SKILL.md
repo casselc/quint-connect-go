@@ -138,7 +138,7 @@ quinthegel.Shrink(t, sys, rates, hegel.WithTestCases(50)).Expect(t, qtest.Violat
     `qenv.DefaultRates.Set("nemesis", 0.05)` (a kind as reports print
     it; `Set` returns a copy). `qenv.NoFaults` runs the schedule's
     choices only (a zero `Rates` is the default rates).
-  - Turn whole kinds off with `{"fault.kube": 0}`, or per run with
+  - Turn whole kinds off with `{"kube": 0}`, or per run with
     `qenv.Swarm`.
 - **Shrinking:**
   `quinthegel.FindViolation(t, cfg, func(tc, rec) { app.Run(rec.Env(quinthegel.Choices(tc)), cfg) })`
@@ -154,7 +154,7 @@ quinthegel.Shrink(t, sys, rates, hegel.WithTestCases(50)).Expect(t, qtest.Violat
   `request.Only("unavailable")`, a prefix. Scripts name the option
   (`qenv.Scripted{Kind: "db.request", Name: "lostResponse"}`), which
   waits for a choice that offers it, and coverage lists options by name,
-  as do recorded runs (`fault.db.request=lostResponse(2/3)`). A kind has
+  as do recorded runs (`db.request=lostResponse`). A kind has
   one option list: `qenv.Faults` panics if a second declaration differs.
   `qenv.FaultPoint` declares its own (its errors' names, `crash`).
 - **Extending qenv** (a new double, a scheduler change): run its tests

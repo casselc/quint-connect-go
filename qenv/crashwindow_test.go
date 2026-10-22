@@ -17,7 +17,7 @@ func TestServiceCrashWindow(t *testing.T) {
 		n := 0
 		for seed := uint64(1); seed <= 40; seed++ {
 			c := qenv.NewSeeded(seed)
-			c.Rates = qenv.Rates{Kinds: map[string]float64{"fault.nemesis": 0.3}}
+			c.Rates = qenv.Rates{Kinds: map[string]float64{"nemesis": 0.3}}
 			s := qenv.New(c)
 			applied := false
 			proc := s.Process("server", true, func(context.Context) {})

@@ -4,12 +4,12 @@
 // simulated network. Generated clients (NewXClient(conn)) and servers
 // (RegisterXServer(srv, impl)) are used unchanged, and every fault of the
 // network is a qenv choice, so seeds explore them and Hegel shrinks them:
-//   - "fault.grpc.<name>.conn": "unavailable", the connection refused before
+//   - "grpc.<name>.conn": "unavailable", the connection refused before
 //     the request is sent (codes.Unavailable: nothing happened, a retry is
 //     safe);
-//   - "fault.rpc.<name>.request": "drop" (never processed) or "duplicate"
+//   - "rpc.<name>.request": "drop" (never processed) or "duplicate"
 //     (processed twice, as a retransmission can);
-//   - "fault.rpc.<name>.response": "lost" after the handler ran;
+//   - "rpc.<name>.response": "lost" after the handler ran;
 //   - a crash of the server's process, which kills handlers mid-flight and
 //     loses requests while it is down.
 //

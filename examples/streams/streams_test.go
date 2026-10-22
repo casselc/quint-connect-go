@@ -30,7 +30,7 @@ func seeds(n int) int {
 
 // faulty raises every fault kind to one choice in ten, nemeses (crashes,
 // evictions) to one step in twenty.
-var faulty = qenv.Rates{Default: 0.1, Kinds: map[string]float64{"fault.nemesis": 0.05}}
+var faulty = qenv.Rates{Default: 0.1, Kinds: map[string]float64{"nemesis": 0.05}}
 
 // The faithful pipeline delivers every event exactly once, in key order,
 // through lost produce requests and acknowledgements, lost commits,

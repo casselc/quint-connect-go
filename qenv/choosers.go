@@ -35,11 +35,12 @@ type (
 	// Nominal makes every choice 0: no faults, canonical schedule.
 	Nominal = choice.Nominal
 
-	// Rates gives the probability that a fault choice is not nominal, by kind.
-	// A kind matches its own entry, else the longest entry that is a prefix of
-	// it ("fault.rpc" covers "fault.rpc.response"), else Default. A zero Rates
-	// in an ExploreConfig (and wherever a default applies) is DefaultRates;
-	// NoFaults is none at all.
+	// Rates gives the probability that a fault choice is not nominal, by
+	// kind, named as reports print it, without the "fault." prefix
+	// ("nemesis", "rpc.payments"). A kind matches its own entry, else the
+	// longest entry that covers it ("rpc" covers "rpc.payments.response",
+	// not "rpcx"), else Default. A zero Rates in an ExploreConfig (and
+	// wherever a default applies) is DefaultRates; NoFaults is none at all.
 	Rates = choice.Rates
 
 	// Seeded makes choices from a seeded generator: schedule choices uniformly,
@@ -130,7 +131,7 @@ func Replay(choices []Choice) *Replayer { return choice.Replay(choices) }
 
 // Swarm turns some fault kinds off for a whole run, chosen once from c:
 // runs with fewer kinds of faults reach deeper into each kind (swarm
-// testing). kinds are prefixes such as "fault.rpc"; each is on in about
+// testing). kinds are as reports print them, such as "rpc"; each is on in about
 // half of the runs, and a Hegel-driven swarm shrinks toward all off.
 func Swarm(c Chooser, kinds ...string) Chooser { return choice.Swarm(c, kinds...) }
 

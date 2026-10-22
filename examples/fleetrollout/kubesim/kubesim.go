@@ -9,7 +9,7 @@
 //     (status.observedGeneration lags, by a schedule choice);
 //   - every write bumps resourceVersion, and an update with a stale one
 //     fails with a conflict;
-//   - a request can fail ("fault.kube.request" 1), or, for an update, be
+//   - a request can fail ("kube.request" 1), or, for an update, be
 //     applied with its response lost (2): the caller cannot tell.
 //
 // Patches are recorded as model steps here, where they take effect; so are

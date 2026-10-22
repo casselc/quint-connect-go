@@ -29,7 +29,7 @@ func seeds(n int) int {
 
 // crashy crashes a process at one scheduling step in twenty, and loses or
 // duplicates one message in five.
-var crashy = qenv.Rates{Default: 0.2, Kinds: map[string]float64{"fault.nemesis": 0.05}}
+var crashy = qenv.Rates{Default: 0.2, Kinds: map[string]float64{"nemesis": 0.05}}
 
 // The protocol is correct through crashes, lost and duplicated votes and
 // decisions, and lost responses: every run is a behaviour of the Choreo

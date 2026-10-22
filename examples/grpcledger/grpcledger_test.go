@@ -37,7 +37,7 @@ var noFaults = qenv.Rates{Kinds: map[string]float64{}}
 
 // crashy crashes the server at one scheduling step in fifty, on top of the
 // network's faults.
-var crashy = qenv.Rates{Default: 0.05, Kinds: map[string]float64{"fault.nemesis": 0.02}}
+var crashy = qenv.Rates{Default: 0.05, Kinds: map[string]float64{"nemesis": 0.02}}
 
 // The faithful ledger conforms through refused connections, lost and
 // duplicated requests, lost responses and server crashes: every retry is
@@ -105,7 +105,7 @@ func TestNoDedupeSweep(t *testing.T) {
 		return err
 	}}
 	sw := sys.Sweep(t, qtest.SweepConfig{Factors: space,
-		Explore: qtest.ExploreConfig{Seeds: 30, Rates: qenv.Rates{Default: 0.1, Kinds: map[string]float64{"fault.nemesis": 0.02}}},
+		Explore: qtest.ExploreConfig{Seeds: 30, Rates: qenv.Rates{Default: 0.1, Kinds: map[string]float64{"nemesis": 0.02}}},
 		Expect: func(row qsweep.Row) []qtest.Claim {
 			if row.On("rpc.ledger.request") || row.On("rpc.ledger.response") {
 				return []qtest.Claim{reapplied}
@@ -133,8 +133,8 @@ func TestShrinkDoubleApply(t *testing.T) {
 // applied), and the faithful ledger still conforms.
 func TestCrashAfterCommit(t *testing.T) {
 	qtest.RequireQuint(t)
-	net := []string{"fault.grpc.ledger.conn", "fault.rpc.ledger.request", "fault.rpc.ledger.response"}
-	crashes := qtest.ExploreConfig{Seeds: 30, Rates: qenv.Rates{Kinds: map[string]float64{"fault.nemesis": 0.05}}}
+	net := []string{"grpc.ledger.conn", "rpc.ledger.request", "rpc.ledger.response"}
+	crashes := qtest.ExploreConfig{Seeds: 30, Rates: qenv.Rates{Kinds: map[string]float64{"nemesis": 0.05}}}
 	run := func(m ledger.Mutation) qtest.System {
 		cfg := grpcledger.Config{Mutation: m, CrashAfterCommit: true}
 		return qtest.System{Binding: binding, Run: func(c qenv.Chooser) error {

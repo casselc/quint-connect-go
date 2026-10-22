@@ -12,13 +12,13 @@ func (s *Store) Write(ctx context.Context, k, v string) error
 - Weave with qweave, with `_ "github.com/casselc/quint-connect-go/qenv/fault"`
   in the tool file. Or call `qenv.FaultPoint(ctx, "store.write", true,
   ErrUnavailable)` at the top yourself.
-- In a simulation the entry becomes the choice `fault.store.write`.
+- In a simulation the entry becomes a fault choice of kind `store.write`.
   Option 0 goes on. Each other option returns one of the named errors
   (the package's own sentinels), with zero values for the other results.
   `crash:true` adds a crash of the process there, restarted as the
   nemesis restarts it. With no error named, the fault is a
   `*qenv.InjectedError`. Outside a simulation the call returns nil.
-- Rates apply as to any fault kind (`Kinds: {"fault.store": 0.2}`), and
+- Rates apply as to any fault kind (`Kinds: {"store": 0.2}`), and
   shrinking removes the faults the failure does not need.
 - **Coverage.** `x := sys.Explore(t, cfg); t.Log(x.Evidence().Faults)`; claim it
   with `x.Expect(t, qtest.Reaches("store.commit").Faulted().InAtLeast(0.5))`

@@ -2,15 +2,15 @@
 // contract (Kinesis's is a subset), as the pipeline's Writer and Reader
 // see it. Its contract allows, and its faults produce:
 //   - a produce request lost before it lands, or landed with its
-//     acknowledgement lost ("fault.log.produce": lost, lostAck): the
+//     acknowledgement lost ("log.produce": lost, lostAck): the
 //     producer client retries, several requests in flight per partition.
 //     With Idempotent (Kafka's default), the log takes a producer's
 //     records of a partition in sequence and drops its duplicates, so
 //     retries keep the order; without, a retried record lands after the
 //     ones sent behind it, and a lost acknowledgement writes it twice;
 //   - a commit lost, or landed with its acknowledgement lost
-//     ("fault.log.commit": lost, lostAck);
-//   - a fetch that goes back to the committed offset ("fault.log.fetch":
+//     ("log.commit": lost, lostAck);
+//   - a fetch that goes back to the committed offset ("log.fetch":
 //     rewind): a duplicate delivery, as after a fetch-session reset;
 //   - a consumer evicted from its group at any step ("rebalance.<name>",
 //     a nemesis, as a session timeout does): the group's generation moves

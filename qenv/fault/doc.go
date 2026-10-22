@@ -7,7 +7,7 @@
 //	func (s *Store) Write(ctx context.Context, k, v string) error
 //
 // At the function's entry the woven code calls qenv.FaultPoint: in a
-// simulation a fault choice "fault.db.write" between going on (option 0),
+// simulation a fault choice of kind "db.write" between going on (option 0),
 // returning one of the named errors (expressions of the function's own
 // package) with zero values for the other results, and, with crash:true,
 // crashing the process there. A function with no error result can only

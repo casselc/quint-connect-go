@@ -7,7 +7,7 @@
 //
 // The environment:
 //   - S3 and the table store (publisher.MemStore), whose writes may fail
-//     or fail ambiguously (applied, then an error: "fault.s3.<kind>") and
+//     or fail ambiguously (applied, then an error: "s3.<kind>") and
 //     take a chosen time ("sched.s3.latency"), during which the clock
 //     moves and other pushes run;
 //   - the collector's persistent queue: requests arrive over time, and a

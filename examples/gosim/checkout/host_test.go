@@ -31,7 +31,7 @@ func explore(t *testing.T, iso qenv.Isolation, m shop.Mutation, x qtest.ExploreC
 
 // crashy crashes a process at one nemesis choice in twenty (one every
 // 100ms of simulated time on the native runtime).
-var crashy = qenv.Rates{Default: 0.05, Kinds: map[string]float64{"fault.nemesis": 0.05}}
+var crashy = qenv.Rates{Default: 0.05, Kinds: map[string]float64{"nemesis": 0.05}}
 
 // The faithful shop conforms at every isolation level, through crashes of
 // whole machines, lost responses, duplicates and redeliveries.

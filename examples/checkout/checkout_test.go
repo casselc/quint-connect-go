@@ -27,7 +27,7 @@ func explore(t *testing.T, cfg checkout.Config, x qtest.ExploreConfig) *qtest.Ex
 }
 
 // crashy crashes a process at one scheduling step in twenty.
-var crashy = qenv.Rates{Default: 0.05, Kinds: map[string]float64{"fault.nemesis": 0.05}}
+var crashy = qenv.Rates{Default: 0.05, Kinds: map[string]float64{"nemesis": 0.05}}
 
 var levels = []qenv.Isolation{qenv.Serializable, qenv.SnapshotIsolation, qenv.ReadCommitted}
 

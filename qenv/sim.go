@@ -592,7 +592,7 @@ func (p *Process) ID() string { return fmt.Sprintf("%s#%d", p.Name, p.Incarnatio
 func (p *Process) Down() bool { return p.down }
 
 // Process creates and boots a process. If crashable, the scheduler may
-// crash it at any step (fault "fault.crash.<name>"), and restart it after
+// crash it at any step (a nemesis, "nemesis.crash.<name>" in a Script), and restart it after
 // the crash.
 func (s *Sim) Process(name string, crashable bool, start func(ctx context.Context)) *Process {
 	p := &Process{Name: name, Incarnation: 1, sim: s, start: start}

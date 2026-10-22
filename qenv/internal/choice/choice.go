@@ -110,12 +110,19 @@ type Choice struct {
 	Name string
 }
 
+// String is the choice as reports print it: a fault by its kind without
+// the "fault." prefix and its option's name ("rpc.counter.request=duplicate"),
+// else its number; a schedule choice as value/options ("sched.task=1/3").
 func (c Choice) String() string {
-	if c.Kind == "entropy" {
+	switch {
+	case c.Kind == "entropy":
 		return fmt.Sprintf("entropy/%d", c.N)
-	}
-	if c.Name != "" {
-		return fmt.Sprintf("%s=%s(%d/%d)", c.Kind, c.Name, c.Value, c.N)
+	case IsFault(c.Kind) && c.Name != "":
+		return fmt.Sprintf("%s=%s", strings.TrimPrefix(c.Kind, "fault."), c.Name)
+	case IsFault(c.Kind):
+		return fmt.Sprintf("%s=%d", strings.TrimPrefix(c.Kind, "fault."), c.Value)
+	case c.Name != "":
+		return fmt.Sprintf("%s=%s", c.Kind, c.Name)
 	}
 	return fmt.Sprintf("%s=%d/%d", c.Kind, c.Value, c.N)
 }
@@ -164,11 +171,12 @@ func EntropyOf(c Chooser) func(n int) []byte {
 	return nil
 }
 
-// Rates gives the probability that a fault choice is not nominal, by kind.
-// A kind matches its own entry, else the longest entry that is a prefix of
-// it ("fault.rpc" covers "fault.rpc.response"), else Default. A zero Rates
-// in an ExploreConfig (and wherever a default applies) is DefaultRates;
-// NoFaults is none at all.
+// Rates gives the probability that a fault choice is not nominal, by kind,
+// named as reports print it, without the "fault." prefix ("nemesis",
+// "rpc.payments"). A kind matches its own entry, else the longest entry
+// that covers it ("rpc" covers "rpc.payments.response", not "rpcx"), else
+// Default. A zero Rates in an ExploreConfig (and wherever a default
+// applies) is DefaultRates; NoFaults is none at all.
 type Rates struct {
 	Default float64
 	Kinds   map[string]float64
@@ -176,17 +184,15 @@ type Rates struct {
 
 // NoFaults makes every fault choice nominal: a run with the schedule's
 // choices only.
-var NoFaults = Rates{Kinds: map[string]float64{"fault": 0}}
+var NoFaults = Rates{Kinds: map[string]float64{}}
 
 // Set returns r with kind's rate p. kind is as reports print it
-// ("rpc.payments.request", "nemesis") or with its "fault." prefix, and
-// covers the kinds it is a prefix of; r itself is not changed:
+// ("rpc.payments.request", "nemesis"), and covers the kinds below it; r
+// itself is not changed:
 //
 //	rates := qenv.DefaultRates.Set("rpc.payments.response", 0.3)
 func (r Rates) Set(kind string, p float64) Rates {
-	if !IsFault(kind) {
-		kind = "fault." + kind
-	}
+	bare(kind, "Rates.Set")
 	out := Rates{Default: r.Default, Kinds: make(map[string]float64, len(r.Kinds)+1)}
 	for k, v := range r.Kinds {
 		out.Kinds[k] = v
@@ -195,10 +201,13 @@ func (r Rates) Set(kind string, p float64) Rates {
 	return out
 }
 
-// Of returns the rate of a kind.
+// Of returns the rate of a fault choice's kind (as the Chooser gets it,
+// "fault.rpc.payments.response", or as reports print it).
 func (r Rates) Of(kind string) float64 {
+	kind = strings.TrimPrefix(kind, "fault.")
 	best, rate := -1, r.Default
 	for k, v := range r.Kinds {
+		bare(k, "a Rates key")
 		if covers(k, kind) && len(k) > best {
 			best, rate = len(k), v
 		}
@@ -206,8 +215,18 @@ func (r Rates) Of(kind string) float64 {
 	return rate
 }
 
+// bare panics on a kind written with the chooser's "fault." prefix, which
+// users never write: it would match nothing, and a rate or a switch
+// would silently not apply.
+func bare(kind, where string) {
+	if kind == "fault" || strings.HasPrefix(kind, "fault.") {
+		panic(fmt.Sprintf("qenv: %s %q: name the kind without the \"fault.\" prefix (%q), as reports print it; NoFaults turns every kind off",
+			where, kind, strings.TrimPrefix(strings.TrimPrefix(kind, "fault"), ".")))
+	}
+}
+
 // covers reports whether a kind prefix covers kind: itself, or a kind
-// below it ("fault.rpc" covers "fault.rpc.x", not "fault.rpcx").
+// below it ("rpc" covers "rpc.x", not "rpcx").
 func covers(prefix, kind string) bool {
 	return kind == prefix || strings.HasPrefix(kind, prefix+".")
 }
@@ -215,7 +234,7 @@ func covers(prefix, kind string) bool {
 // DefaultRates inject a fault at one fault choice in twenty, except a
 // nemesis (a crash, a partition), which is considered at every scheduling
 // step and so happens at one step in two hundred.
-var DefaultRates = Rates{Default: 0.05, Kinds: map[string]float64{"fault.nemesis": 0.005}}
+var DefaultRates = Rates{Default: 0.05, Kinds: map[string]float64{"nemesis": 0.005}}
 
 // Seeded makes choices from a seeded generator: schedule choices uniformly,
 // fault choices at their Rates.
@@ -357,11 +376,12 @@ func (r *Replayer) entropy(n int) []byte {
 
 // Swarm turns some fault kinds off for a whole run, chosen once from c:
 // runs with fewer kinds of faults reach deeper into each kind (swarm
-// testing). kinds are prefixes such as "fault.rpc"; each is on in about
+// testing). kinds are as reports print them, such as "rpc"; each is on in about
 // half of the runs, and a Hegel-driven swarm shrinks toward all off.
 func Swarm(c Chooser, kinds ...string) Chooser {
 	s := &swarm{c: c, off: map[string]bool{}}
 	for _, k := range kinds {
+		bare(k, "Swarm's kind")
 		s.off[k] = c.Choose("swarm."+k, 2) == 0
 	}
 	return s
@@ -372,6 +392,7 @@ func Swarm(c Chooser, kinds ...string) Chooser {
 func Without(c Chooser, kinds ...string) Chooser {
 	s := &swarm{c: c, off: map[string]bool{}}
 	for _, k := range kinds {
+		bare(k, "Without's kind")
 		s.off[k] = true
 	}
 	return s
@@ -385,7 +406,7 @@ type swarm struct {
 func (s *swarm) Choose(kind string, n int) int {
 	if IsFault(kind) {
 		for k, off := range s.off {
-			if off && covers(k, kind) {
+			if off && covers(k, strings.TrimPrefix(kind, "fault.")) {
 				return 0
 			}
 		}

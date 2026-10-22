@@ -28,7 +28,11 @@ type Reach struct {
 // Reaches claims that some run reached the fault kind ("rpc.payments.request",
 // as reports print it); InAtLeast and Faulted make it stronger.
 func Reaches(kind string) Reach {
-	return Reach{kind: strings.TrimPrefix(kind, "fault."), share: 0}
+	if strings.HasPrefix(kind, "fault.") {
+		panic(fmt.Sprintf("qtest: Reaches(%q): name the kind without the \"fault.\" prefix (%q), as reports print it",
+			kind, strings.TrimPrefix(kind, "fault.")))
+	}
+	return Reach{kind: kind, share: 0}
 }
 
 // InAtLeast wants the kind reached in at least share (0 to 1) of the runs.

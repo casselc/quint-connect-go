@@ -773,10 +773,10 @@ status lags. The conventions:
 
 | Double | Contract | Faults (choices) |
 |---|---|---|
-| `Store` | transactions at `Serializable` (optimistic validation of reads, scans and writes), `SnapshotIsolation` (first committer wins, write skew allowed) or `ReadCommitted` (latest committed reads, last writer wins); `GetForUpdate` row locks; a crashed process's transactions abort | the interleaving of statements; a commit applied but reported unknown (`fault.store.commit`) |
+| `Store` | transactions at `Serializable` (optimistic validation of reads, scans and writes), `SnapshotIsolation` (first committer wins, write skew allowed) or `ReadCommitted` (latest committed reads, last writer wins); `GetForUpdate` row locks; a crashed process's transactions abort | the interleaving of statements; a commit applied but reported unknown (`store.commit`) |
 | `Queue` | at least once; FIFO only if `Ordered` | lost acknowledgements, redelivery of a crashed consumer's messages, delivery order |
 | `Service` (RPC) | at most one response, maybe never | lost or duplicated requests, lost responses (the ambiguous failure) |
-| `Process` | tasks die together; no deferred code runs; a restart rebuilds from durable doubles only | crashes at any step (`fault.nemesis`, per step) |
+| `Process` | tasks die together; no deferred code runs; a restart rebuilds from durable doubles only | crashes at any step (`nemesis`, per step) |
 | kubesim (fleetrollout) | generation bumps on spec change; status lags; resourceVersion conflicts | failed requests, applied updates with lost responses, status lag |
 
 Profiles turn "harness quirk or real bug?" into a table. In

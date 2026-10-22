@@ -7,7 +7,7 @@ import (
 // Queue is an at-least-once message queue: a published message is
 // delivered until a consumer acknowledges it. Its contract allows, and its
 // faults produce:
-//   - redelivery: an acknowledgement is lost ("fault.queue.ack"), or the
+//   - redelivery: an acknowledgement is lost ("queue.ack"), or the
 //     consumer crashed holding the message;
 //   - reordering, unless Ordered: which pending message is delivered next
 //     is a schedule choice.
@@ -101,7 +101,7 @@ func (q *Queue) Receive(ctx context.Context) *Delivery {
 var queueAck = DeclareFaults("queue.ack", "lost")
 
 // Ack acknowledges a delivery. The acknowledgement may be lost
-// ("fault.queue.ack"): the message is then delivered again.
+// ("queue.ack"): the message is then delivered again.
 func (d *Delivery) Ack(ctx context.Context) {
 	Yield(ctx)
 	q := d.q

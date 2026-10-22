@@ -52,7 +52,7 @@ func main() {
 		switch *backend {
 		case "sim":
 			c := qenv.NewSeeded(uint64(i))
-			c.Rates = qenv.Rates{Default: *rate, Kinds: map[string]float64{"fault.nemesis": *rate / 2}}
+			c.Rates = qenv.Rates{Default: *rate, Kinds: map[string]float64{"nemesis": *rate / 2}}
 			_, err = streams.Run(qenv.WithContext(c, ctx), streams.Config{Mutation: m})
 		case "kafka":
 			err = runKafka(ctx, m)

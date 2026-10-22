@@ -37,9 +37,9 @@ type Capacity struct {
 // Service is a remote service: a handler run in its own process, reached
 // over a network whose contract is "at most a response, maybe late, maybe
 // never". Its faults:
-//   - "fault.rpc.<name>.request": 1 loses the request (never processed),
+//   - "rpc.<name>.request": 1 loses the request (never processed),
 //     2 duplicates it (processed twice, as a retransmission can);
-//   - "fault.rpc.<name>.response": 1 loses the response after the request
+//   - "rpc.<name>.response": 1 loses the response after the request
 //     was processed, the ambiguous failure that makes retries dangerous.
 //
 // A request to a crashed process is lost.

@@ -1,10 +1,11 @@
 package qtest
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/casselc/quint-connect-go/qenv"
-
 	"github.com/casselc/quint-connect-go/qtrace"
 	"github.com/casselc/quint-connect-go/validate"
 )
@@ -59,11 +60,23 @@ func TestReach(t *testing.T) {
 		{Reaches("rpc.x.request").InAtLeast(0.6), true},
 		{Reaches("rpc.x.request").InAtLeast(0.8), false},
 		{Reaches("rpc.x.request").Faulted().InAtLeast(0.5), false},
-		{Reaches("fault.rpc.x.request").Faulted(), true},
+		{Reaches("rpc.x.request").Faulted(), true},
 		{Reaches("rpc.y.request"), false},
 	} {
 		if msg := c.r.judgeRuns(runs); (msg == "") != c.ok {
 			t.Errorf("%v: %q", c.r, msg)
 		}
 	}
+}
+
+// Reaches names a kind as reports print it; the chooser's "fault." prefix
+// fails with the fix rather than being read two ways.
+func TestReachesWantsTheBareKind(t *testing.T) {
+	defer func() {
+		if msg := fmt.Sprint(recover()); !strings.Contains(msg, `("rpc.x")`) {
+			t.Errorf("panic %q, want the bare kind", msg)
+		}
+	}()
+	Reaches("fault.rpc.x")
+	t.Error("a prefixed kind was accepted")
 }

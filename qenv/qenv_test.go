@@ -456,7 +456,7 @@ func TestSchedulerSemantics(t *testing.T) {
 func TestNemesisEvery(t *testing.T) {
 	for _, busy := range []int{1, 50} {
 		c := qenv.NewSeeded(1)
-		c.Rates = qenv.Rates{Kinds: map[string]float64{"fault.nemesis": 1}}
+		c.Rates = qenv.Rates{Kinds: map[string]float64{"nemesis": 1}}
 		s := qenv.New(c)
 		s.NemesisEvery = time.Second
 		crashes := 0

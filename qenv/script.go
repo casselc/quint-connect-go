@@ -11,8 +11,9 @@ import (
 )
 
 // A Scripted fault is one fault a Script makes happen: at the first choice
-// of Kind ("fault.<kind>", or "nemesis.<name>" for a nemesis such as
-// "nemesis.crash.payments") once the run has taken After steps, the
+// of Kind (as reports print it, "rpc.payments.response"; "nemesis.<name>"
+// for a nemesis such as "nemesis.crash.payments") once the run has taken
+// After steps, the
 // script's earlier faults of the same kind have happened, and so have the
 // ones it Follows.
 type Scripted struct {
@@ -63,7 +64,11 @@ func (s *Script) due(kind string) int {
 		s.done = make([]bool, len(s.Faults))
 	}
 	for i, f := range s.Faults {
-		if strings.TrimPrefix(f.Kind, "fault.") != kind || s.done[i] {
+		if strings.HasPrefix(f.Kind, "fault.") {
+			panic(fmt.Sprintf("qenv: script fault %d: kind %q: name it without the \"fault.\" prefix (%q), as reports print it",
+				i, f.Kind, strings.TrimPrefix(f.Kind, "fault.")))
+		}
+		if f.Kind != kind || s.done[i] {
 			continue
 		}
 		for _, j := range f.Follows {

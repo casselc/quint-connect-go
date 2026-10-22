@@ -411,7 +411,12 @@ recorder opt-in.
   never reached validate). `qenv.Current` stays: unlike `qrun.Current` it
   is a simulation task's context only, which woven sync needs.
 - **W6. The `fault.` prefix out** of everything users type or read; it
-  stays in the Chooser protocol.
+  stays in the Chooser protocol. Done: Rates keys, `Without`, `Swarm`, `Reaches`
+  and Script kinds are bare, and a prefixed one panics with the fix;
+  `NoFaults` is an empty rate map; run lines print
+  `rpc.counter.request=duplicate`, not `fault.…=duplicate(2/3)`.
+  `Store.CommitFaults` stays a field for now (W7 decides its default with
+  CrashWindow's).
 - **W7. Crashes per virtual time, CrashWindow on**, by default on every
   runtime; examples retuned, claims not loosened.
 - **W8. First hour and docs.** A quickstart in README; quint-start in the

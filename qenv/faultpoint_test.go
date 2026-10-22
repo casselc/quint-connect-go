@@ -97,7 +97,7 @@ func TestWithout(t *testing.T) {
 	ctx := context.WithValue(context.Background(), key{}, "run")
 	all := qenv.NewSeeded(1)
 	all.Rates = qenv.Rates{Default: 1}
-	c := qenv.Without(qenv.WithContext(all, ctx), "fault.test.off")
+	c := qenv.Without(qenv.WithContext(all, ctx), "test.off")
 	if qenv.ContextOf(c).Value(key{}) != "run" {
 		t.Fatal("the context is lost")
 	}

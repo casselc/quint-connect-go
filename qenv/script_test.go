@@ -217,19 +217,19 @@ func TestScriptPartialOrder(t *testing.T) {
 	}
 }
 
-// A scripted kind may be named as the chooser sees it, with the "fault."
-// prefix (a recorded choice's Kind): it once never matched, and the fault
-// never happened.
+// A scripted kind written with the chooser's "fault." prefix fails with the
+// fix: it once never matched, and the fault silently never happened.
 func TestScriptPrefixedKind(t *testing.T) {
 	sc := &qenv.Script{Faults: []qenv.Scripted{{Kind: "fault.test.prefixed", Option: 1}}}
 	s := qenv.New(sc)
-	var err error
-	s.Spawn("writer", func(ctx context.Context) { err = qenv.FaultPoint(ctx, "test.prefixed", false, errUnavailable) })
-	if rerr := s.Run(time.Minute); rerr != nil {
-		t.Fatal(rerr)
-	}
-	s.Close()
-	if err == nil {
-		t.Error("the scripted fault did not happen")
-	}
+	s.Spawn("writer", func(ctx context.Context) { _ = qenv.FaultPoint(ctx, "test.prefixed", false, errUnavailable) })
+	defer func() {
+		r := recover()
+		s.Close()
+		if msg := fmt.Sprint(r); !strings.Contains(msg, `name it without the "fault." prefix ("test.prefixed")`) {
+			t.Errorf("panic %q, want the kind without its prefix", msg)
+		}
+	}()
+	_ = s.Run(time.Minute)
+	t.Error("a prefixed kind ran")
 }

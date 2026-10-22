@@ -23,7 +23,7 @@ type simResp struct {
 
 // SimClient is the API across a simulated network: requests and responses
 // can be lost or duplicated (qenv.Service), and the cloud throttles
-// ("fault.dbaas.throttle").
+// ("dbaas.throttle").
 type SimClient struct {
 	svc     *qenv.Service[simReq, simResp]
 	Timeout time.Duration

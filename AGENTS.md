@@ -295,6 +295,11 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   a prefix (`k.Only("unavailable")`), so an option's number means one
   thing at every call. Coverage and scripts name options from the
   declaration.
+- Users name fault kinds as reports print them, without the chooser's
+  `fault.` prefix: Rates keys (`"nemesis"`, `"rpc.payments"`), `Without`,
+  `Swarm`, `Reaches`, Script kinds. A prefixed one panics with the fix (it
+  once matched nothing, silently). The prefix stays in the Chooser
+  protocol (`Choose("fault.<kind>", n)`, a recorded `Choice.Kind`).
 - Option 0 of every qenv choice is nominal (no fault, canonical order).
   Keep that convention in new doubles: it is what makes Hegel's shrinking
   remove faults.

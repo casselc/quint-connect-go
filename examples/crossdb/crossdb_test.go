@@ -18,7 +18,7 @@ func explore(t *testing.T, cfg crossdb.Config, x qtest.ExploreConfig) *qtest.Exp
 }
 
 // crashy crashes the provider at one scheduling step in fifty.
-var crashy = qenv.Rates{Default: 0.05, Kinds: map[string]float64{"fault.nemesis": 0.02}}
+var crashy = qenv.Rates{Default: 0.05, Kinds: map[string]float64{"nemesis": 0.02}}
 
 // Through lost and duplicated requests, lost responses, throttling, an
 // eventually consistent cloud and provider crashes, the faithful provider
@@ -37,13 +37,13 @@ func TestFaithfulConforms(t *testing.T) {
 // is worse: Crossplane refuses to go on.
 func TestGeneratedExternalName(t *testing.T) {
 	qtest.RequireQuint(t)
-	noFaults := qenv.Rates{Default: 0, Kinds: map[string]float64{"fault": 0}}
+	noFaults := qenv.NoFaults
 	explore(t, crossdb.Config{Mutation: provider.GeneratedExternalName, NoCrashes: true}, qtest.ExploreConfig{Seeds: 20, Rates: noFaults}).
 		Expect(t, qtest.Conforms())
 	explore(t, crossdb.Config{Mutation: provider.GeneratedExternalName, NoCrashes: true}, qtest.ExploreConfig{Seeds: 40}).
 		Expect(t, qtest.Violates("settledCorrectly"))
 	// crashes alone: an incomplete create, and a resource that never gets ready
-	crashesOnly := qenv.Rates{Kinds: map[string]float64{"fault": 0, "fault.nemesis": 0.05}}
+	crashesOnly := qenv.Rates{Kinds: map[string]float64{"nemesis": 0.05}}
 	explore(t, crossdb.Config{Mutation: provider.GeneratedExternalName}, qtest.ExploreConfig{Seeds: 40, Rates: crashesOnly}).
 		Expect(t, qtest.Violates("settledCorrectly"))
 }
@@ -61,7 +61,7 @@ func TestNoClientTokenDuplicates(t *testing.T) {
 // idempotent cloud) leaves a secret that does not open the database.
 func TestPasswordFromCreate(t *testing.T) {
 	qtest.RequireQuint(t)
-	lossy := qenv.Rates{Default: 0.05, Kinds: map[string]float64{"fault.rpc.dbaas.response": 0.3}}
+	lossy := qenv.Rates{Default: 0.05, Kinds: map[string]float64{"rpc.dbaas.response": 0.3}}
 	explore(t, crossdb.Config{Mutation: provider.PasswordFromCreate, NoCrashes: true}, qtest.ExploreConfig{Seeds: 40, Rates: lossy}).
 		Expect(t, qtest.Violates("settledCorrectly"))
 }

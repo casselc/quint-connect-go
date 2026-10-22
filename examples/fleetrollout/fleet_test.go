@@ -45,7 +45,7 @@ func TestIgnoreObservedGenerationOverBudget(t *testing.T) {
 // controller never knew): either puts the rollout over budget.
 func TestInMemoryProgress(t *testing.T) {
 	qtest.RequireQuint(t)
-	noKubeFaults := qenv.Rates{Default: 0.05, Kinds: map[string]float64{"fault.kube": 0}}
+	noKubeFaults := qenv.Rates{Default: 0.05, Kinds: map[string]float64{"kube": 0}}
 	system(fleetrollout.Config{Mutation: rollout.InMemoryProgress, NoCrashes: true}).
 		Explore(t, qtest.ExploreConfig{Seeds: 15, Rates: noKubeFaults}).Expect(t, qtest.Conforms())
 	system(fleetrollout.Config{Mutation: rollout.InMemoryProgress}).
@@ -61,7 +61,7 @@ func TestHegelShrinksInMemoryProgress(t *testing.T) {
 	}
 	quinthegel.FindViolation(t, quinthegel.Config{Binding: binding, Opts: []qtest.Option{qtest.Global()}}, func(tc hegel.TestCase, _ *quinthegel.Case) {
 		c := quinthegel.Choices(tc)
-		c.Rates.Kinds = map[string]float64{"fault.nemesis": 0.05}
+		c.Rates.Kinds = map[string]float64{"nemesis": 0.05}
 		if _, err := fleetrollout.Run(c, fleetrollout.Config{Mutation: rollout.InMemoryProgress}); err != nil {
 			tc.Errorf("%v", err)
 		}

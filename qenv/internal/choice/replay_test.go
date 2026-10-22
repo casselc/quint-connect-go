@@ -1,6 +1,7 @@
 package choice
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -43,12 +44,46 @@ func TestEncodedRunsAreVersioned(t *testing.T) {
 }
 
 // A rate's kind covers itself and the kinds below it, not every kind its
-// name prefixes: "fault.log" once set the rate of "fault.login".
+// name prefixes: "log" once set the rate of "login".
 func TestRatesCoverKindsBelow(t *testing.T) {
-	r := Rates{Default: 0.1, Kinds: map[string]float64{"fault.log": 0.5, "fault.log.append": 0.9}}
-	for kind, want := range map[string]float64{"fault.log": 0.5, "fault.log.read": 0.5, "fault.log.append": 0.9, "fault.login": 0.1} {
+	r := Rates{Default: 0.1, Kinds: map[string]float64{"log": 0.5, "log.append": 0.9}}
+	for kind, want := range map[string]float64{"log": 0.5, "log.read": 0.5, "log.append": 0.9, "login": 0.1} {
 		if got := r.Of(kind); got != want {
 			t.Errorf("Of(%s) = %v, want %v", kind, got, want)
+		}
+	}
+}
+
+// Users name kinds as reports print them; a key with the chooser's
+// "fault." prefix would match nothing, so it fails with the fix.
+func TestRatesWantBareKinds(t *testing.T) {
+	if r := (Rates{Kinds: map[string]float64{"nemesis": 0.5}}); r.Of("fault.nemesis") != 0.5 || r.Of("nemesis") != 0.5 {
+		t.Errorf("a bare key's rate: %v %v", r.Of("fault.nemesis"), r.Of("nemesis"))
+	}
+	if NoFaults.Of("fault.nemesis") != 0 || NoFaults.Of("fault.store.get") != 0 {
+		t.Error("NoFaults injects a fault")
+	}
+	defer func() {
+		if msg := fmt.Sprint(recover()); !strings.Contains(msg, `name the kind without the "fault." prefix ("rpc")`) {
+			t.Errorf("panic %q, want the bare kind", msg)
+		}
+	}()
+	Rates{Kinds: map[string]float64{"fault.rpc": 0.5}}.Of("fault.rpc.x")
+	t.Error("a prefixed key was accepted")
+}
+
+// A fault prints as reports name it, by its option's name when it has one.
+func TestChoiceString(t *testing.T) {
+	for _, c := range []struct {
+		c    Choice
+		want string
+	}{
+		{Choice{Kind: "fault.rpc.counter.request", N: 3, Value: 2, Name: "duplicate"}, "rpc.counter.request=duplicate"},
+		{Choice{Kind: "fault.x", N: 2, Value: 1}, "x=1"},
+		{Choice{Kind: "sched.task", N: 3, Value: 1}, "sched.task=1/3"},
+	} {
+		if got := c.c.String(); got != c.want {
+			t.Errorf("%#v: %q, want %q", c.c, got, c.want)
 		}
 	}
 }
