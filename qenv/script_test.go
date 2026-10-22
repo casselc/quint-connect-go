@@ -61,7 +61,7 @@ func TestScript(t *testing.T) {
 func TestChoicesAlignToSteps(t *testing.T) {
 	mem := &qobs.MemorySink{}
 	sc := &qenv.Script{Faults: []qenv.Scripted{{Kind: "test.scripted", Option: 1, After: 2}}}
-	rec := &qenv.Recorder{C: sc}
+	rec := &qenv.ChoiceLog{C: sc}
 	s := qenv.New(qenv.WithContext(rec, qobs.WithRecorder(context.Background(), qobs.NewRecorder(mem))))
 	s.Process("writer", false, func(ctx context.Context) {
 		for range 4 {
@@ -95,7 +95,7 @@ func TestChoicesAlignToSteps(t *testing.T) {
 func TestEncodeChoices(t *testing.T) {
 	rates := qenv.Rates{Default: 0.3}
 	run := func(c qenv.Chooser) ([]qenv.Choice, []string) {
-		rec := &qenv.Recorder{C: c}
+		rec := &qenv.ChoiceLog{C: c}
 		s := qenv.New(rec)
 		var log []string
 		for _, name := range []string{"a", "b", "c"} {
@@ -136,9 +136,9 @@ func TestEncodeChoices(t *testing.T) {
 // which cannot lose a response, and fires at the first update; coverage
 // names the options; a restriction that is not a prefix is refused.
 func TestNamedFaultOptions(t *testing.T) {
-	kv := qenv.Faults("test.kv", "unavailable", "lostResponse")
+	kv := qenv.DeclareFaults("test.kv", "unavailable", "lostResponse")
 	sc := &qenv.Script{Faults: []qenv.Scripted{{Kind: "test.kv", Name: "lostResponse"}}}
-	rec := &qenv.Recorder{C: sc}
+	rec := &qenv.ChoiceLog{C: sc}
 	s := qenv.New(rec)
 	var got []string
 	s.Process("client", false, func(ctx context.Context) {

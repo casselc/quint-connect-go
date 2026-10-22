@@ -133,7 +133,7 @@ func (m *machine) RuleRestart(tc hegel.TestCase) {
 func TestHegelSchedules(t *testing.T) {
 	qtest.RequireQuint(t)
 	quinthegel.Test(t, quinthegel.Config{Binding: spec, Mode: quinthegel.Batched, Opts: []qtest.Option{qtest.Global()}, AllowEmpty: true, Rounds: 2},
-		func(ht *hegel.T, _ *quinthegel.Recorder) {
+		func(ht *hegel.T, _ *quinthegel.Case) {
 			s := sim(Faithful, uint64(hegel.Draw(ht, hegel.Integers(0, 1<<30))))
 			hegel.RunStateful(ht, &machine{Network: hegelnet.Network{Sim: s, Faults: true, NoTimers: true}}, hegel.WithStatefulStepCount(25))
 		}, hegel.WithTestCases(30), hegel.WithDatabase(""))

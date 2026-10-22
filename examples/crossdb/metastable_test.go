@@ -55,12 +55,12 @@ func TestControlPlaneTrigger(t *testing.T) {
 	}
 	space := qload.TriggerSpace{Start: 10 * time.Minute, MaxSlowdown: 4, MaxDuration: 5 * time.Minute}
 	for _, c := range []struct {
-		r     Requeue
-		found bool
-	}{{FixedRequeue, true}, {CrossplaneDefaults, false}} {
+		r    Requeue
+		want qload.TriggerClaim
+	}{{FixedRequeue, qload.SomeTrigger()}, {CrossplaneDefaults, qload.NoTrigger()}} {
 		t.Run(c.r.Name, func(t *testing.T) {
 			sys := qload.OfSimulation(DefaultControlPlane(c.r).Config(), 0, 5*time.Minute)
-			quinthegel.FindTrigger(t, sys, space, hegel.WithTestCases(25)).Expect(t, c.found)
+			quinthegel.FindTrigger(t, sys, space, hegel.WithTestCases(25)).Expect(t, c.want)
 		})
 	}
 }

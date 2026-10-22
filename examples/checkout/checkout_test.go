@@ -98,8 +98,8 @@ func TestHegelShrinksWriteSkew(t *testing.T) {
 // Hegel explores the faithful shop under snapshot isolation, in batches.
 func TestHegelFaithful(t *testing.T) {
 	qtest.RequireQuint(t)
-	quinthegel.Test(t, quinthegel.Config{Binding: binding, Mode: quinthegel.Batched}, func(ht *hegel.T, rec *quinthegel.Recorder) {
-		if _, err := checkout.Run(rec.Env(quinthegel.Chooser(ht)), checkout.Config{Isolation: qenv.SnapshotIsolation}); err != nil {
+	quinthegel.Test(t, quinthegel.Config{Binding: binding, Mode: quinthegel.Batched}, func(ht *hegel.T, rec *quinthegel.Case) {
+		if _, err := checkout.Run(rec.Env(quinthegel.Choices(ht)), checkout.Config{Isolation: qenv.SnapshotIsolation}); err != nil {
 			ht.Fatalf("%v", err)
 		}
 	}, hegel.WithTestCases(30))

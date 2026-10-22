@@ -33,11 +33,11 @@ type Exploration struct {
 	actions   map[string]bool   // the model's, for checking claims' names
 }
 
-// Coverage is the runs' fault coverage (qenv.CoverageOf): for each fault
+// faultCoverage is the runs' fault coverage (qenv.CoverageOf): for each fault
 // kind, declared with //quint:fault or a double's, how many runs reached it
 // and which options they took. A declared point no run reached is a
 // failure path the exploration never tried.
-func (x *Exploration) Coverage() *qenv.Coverage {
+func (x *Exploration) faultCoverage() *qenv.Coverage {
 	runs := make([][]qenv.Choice, len(x.Runs))
 	for i, r := range x.Runs {
 		runs[i] = r.Choices
@@ -45,10 +45,10 @@ func (x *Exploration) Coverage() *qenv.Coverage {
 	return qenv.CoverageOf(runs)
 }
 
-// CodeCoverage is the runs' code coverage read against their steps
+// codeCoverage is the runs' code coverage read against their steps
 // (collected when the code is woven with qweave -cover): what no run ran, what ran under no step, and
 // the outcomes of an action that ran the same code.
-func (x *Exploration) CodeCoverage() *qcover.Summary {
+func (x *Exploration) codeCoverage() *qcover.Summary {
 	runs := make([]*qcover.Counts, len(x.Runs))
 	for i, r := range x.Runs {
 		runs[i] = r.Code
@@ -136,7 +136,7 @@ func explore(t testing.TB, bindingPath string, cfg ExploreConfig, scenario func(
 				s.Rates = cfg.Rates
 				ch = s
 			}
-			rec := &qenv.Recorder{C: ch}
+			rec := &qenv.ChoiceLog{C: ch}
 			var sink qobs.Sink = mem
 			ctx := context.Background()
 			var code *qcover.Counts
@@ -378,7 +378,7 @@ func describeClaim(c Claim) string {
 // show.
 func (x *Exploration) unfaulted() string {
 	var kinds []string
-	for _, p := range x.Coverage().Unfaulted() {
+	for _, p := range x.faultCoverage().Unfaulted() {
 		kinds = append(kinds, p.Kind)
 	}
 	if len(kinds) == 0 {

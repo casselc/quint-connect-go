@@ -98,7 +98,7 @@ func (q *Queue) Receive(ctx context.Context) *Delivery {
 }
 
 // queueAck is a lost acknowledgement: the message is delivered again.
-var queueAck = Faults("queue.ack", "lost")
+var queueAck = DeclareFaults("queue.ack", "lost")
 
 // Ack acknowledges a delivery. The acknowledgement may be lost
 // ("fault.queue.ack"): the message is then delivered again.

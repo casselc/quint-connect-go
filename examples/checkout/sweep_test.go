@@ -46,9 +46,9 @@ func TestFaithfulSweep(t *testing.T) {
 	if testing.Short() {
 		t.Skip("sweeps hundreds of runs")
 	}
-	sw := sweepSystem(shop.Faithful).Sweep(t, qtest.Sweep{Factors: space, Explore: qtest.ExploreConfig{Seeds: 20, Rates: crashy}})
+	sw := sweepSystem(shop.Faithful).Sweep(t, qtest.SweepConfig{Factors: space, Explore: qtest.ExploreConfig{Seeds: 20, Rates: crashy}})
 	t.Log(sw.Evidence())
-	if u := sw.Coverage().Untried(); len(u) > 0 {
+	if u := sw.Evidence().Faults.Untried(); len(u) > 0 {
 		t.Errorf("fault kinds never together: %v", u)
 	}
 }
@@ -63,7 +63,7 @@ func TestNoIdempotencyKeySweep(t *testing.T) {
 	if testing.Short() {
 		t.Skip("sweeps hundreds of runs")
 	}
-	sweepSystem(shop.NoIdempotencyKey).Sweep(t, qtest.Sweep{Factors: space, Explore: qtest.ExploreConfig{Seeds: 20, Rates: crashy},
+	sweepSystem(shop.NoIdempotencyKey).Sweep(t, qtest.SweepConfig{Factors: space, Explore: qtest.ExploreConfig{Seeds: 20, Rates: crashy},
 		Expect: func(row qsweep.Row) []qtest.Claim {
 			if row.On("rpc.provider") {
 				return []qtest.Claim{qtest.Violates("chargedAtMostOnce")}
@@ -94,7 +94,7 @@ func TestFaultOrders(t *testing.T) {
 			done := false
 			for seed := uint64(1); seed <= 3 && !done; seed++ {
 				sc := &qenv.Script{Base: qenv.NewSeeded(seed), Faults: []qenv.Scripted{{Kind: a, Option: 1}, {Kind: b, Option: 1, Follows: []int{0}}}}
-				rec := &qenv.Recorder{C: sc}
+				rec := &qenv.ChoiceLog{C: sc}
 				mem := &qobs.MemorySink{}
 				if _, err := checkout.Run(qenv.WithContext(rec, qobs.WithRecorder(context.Background(), qobs.NewRecorder(mem))), checkout.Config{Isolation: qenv.SnapshotIsolation}); err != nil {
 					t.Fatal(err)

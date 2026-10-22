@@ -3,7 +3,7 @@
 //
 //  1. Hegel drives, the model judges. A Hegel state machine (or any Hegel
 //     test) exercises the implementation; the model steps it performs are
-//     recorded (explicitly with Recorder.Step, or by //quint:action code
+//     recorded (explicitly with Case.Step, or by //quint:action code
 //     woven with Orchestrion) and checked against the Quint model through
 //     a binding: every step must be a transition of the model, the
 //     observed state must match, and the model's invariants must hold.
@@ -44,28 +44,28 @@ import (
 	"hegel.dev/go/hegel"
 )
 
-// Recorder records the model steps of one Hegel test case. Each recorded
+// Case records the model steps of one Hegel test case. Each recorded
 // step is also a Hegel note, so a shrunk counterexample prints as the
 // sequence of model actions it took.
-type Recorder struct {
+type Case struct {
 	*qobs.Recorder
 	tc  hegel.TestCase
 	mem *qobs.MemorySink
 	n   int
 	mu  sync.Mutex
-	env *qenv.Recorder // Env's
+	env *qenv.ChoiceLog // Env's
 }
 
 // NewRecorder returns a recorder for the test case tc. opts configure the
 // underlying qobs.Recorder (e.g. qobs.WithActor).
-func NewRecorder(tc hegel.TestCase, opts ...qobs.Option) *Recorder {
+func NewRecorder(tc hegel.TestCase, opts ...qobs.Option) *Case {
 	mem := &qobs.MemorySink{}
-	r := &Recorder{tc: tc, mem: mem}
+	r := &Case{tc: tc, mem: mem}
 	r.Recorder = qobs.NewRecorder(qobs.Tee{mem, noteSink{r}}, opts...)
 	return r
 }
 
-type noteSink struct{ r *Recorder }
+type noteSink struct{ r *Case }
 
 func (n noteSink) Record(_ context.Context, s *qtrace.Step) {
 	n.r.mu.Lock()
@@ -79,30 +79,30 @@ func (n noteSink) Record(_ context.Context, s *qtrace.Step) {
 // outcome), and alternating keys and values (see qobs.Recorder.Record):
 // arguments, "obs.<name>" observations of the state after the step, and
 // identity overrides.
-func (r *Recorder) Step(action string, err error, kv ...any) {
+func (r *Case) Step(action string, err error, kv ...any) {
 	r.Record(context.Background(), action, err, kv...)
 }
 
 // Steps returns what was recorded so far.
-func (r *Recorder) Steps() []qtrace.Step { return r.mem.Steps() }
+func (r *Case) Steps() []qtrace.Step { return r.mem.Steps() }
 
 // Add appends steps recorded elsewhere, as they are: by another process,
 // or inside a simulation that reports its steps to the test (gosim's).
 // Like recorded steps, they are noted on the test case.
-func (r *Recorder) Add(steps ...qtrace.Step) { r.Recorder.Add(steps...) }
+func (r *Case) Add(steps ...qtrace.Step) { r.Recorder.Add(steps...) }
 
 // Env is the chooser a simulation of this test case runs on: c's choices
-// (usually Chooser(tc)), recorded into r (Choices), with r in its context,
+// (usually Choices(tc)), recorded into r (Choices), with r in its context,
 // so the run's steps and its choices are both r's. A shrunk failure's
 // choices then replay it (qenv.Replay(v.Choices)), outside Hegel.
-func (r *Recorder) Env(c qenv.Chooser) qenv.Chooser {
-	r.env = &qenv.Recorder{C: c}
+func (r *Case) Env(c qenv.Chooser) qenv.Chooser {
+	r.env = &qenv.ChoiceLog{C: c}
 	return qenv.WithContext(r.env, r.Context(context.Background()))
 }
 
 // Choices are the choices made through Env, aligned to the steps
 // (Choice.Step).
-func (r *Recorder) Choices() []qenv.Choice {
+func (r *Case) Choices() []qenv.Choice {
 	if r.env == nil {
 		return nil
 	}
@@ -118,7 +118,7 @@ func (r *Recorder) Choices() []qenv.Choice {
 // with hegel.WithConcurrency the rules of one case share it. A global
 // install fails while another test's is in place: such tests must not run
 // in parallel.
-func (r *Recorder) Install(global bool) (restore func(), err error) {
+func (r *Case) Install(global bool) (restore func(), err error) {
 	end := qrun.Start(r.Context(context.Background()))
 	if !global {
 		return end, nil
@@ -133,7 +133,7 @@ func (r *Recorder) Install(global bool) (restore func(), err error) {
 
 // begin installs r for a test case (Install, global as configured),
 // aborting the case if it cannot (a Hegel case's Errorf aborts it).
-func (r *Recorder) begin(tc interface{ Errorf(string, ...any) }, global bool) (restore func()) {
+func (r *Case) begin(tc interface{ Errorf(string, ...any) }, global bool) (restore func()) {
 	restore, err := r.Install(global)
 	if err != nil {
 		tc.Errorf("quinthegel: %v", err)
@@ -143,9 +143,9 @@ func (r *Recorder) begin(tc interface{ Errorf(string, ...any) }, global bool) (r
 }
 
 // Context returns ctx carrying r (qobs.WithRecorder): code recording
-// through it records into r without the global recorder (Config.Global).
+// through it records into r without the global recorder (qtest.Global in Config.Opts).
 // For a qenv simulation use Env, which also records its choices.
-func (r *Recorder) Context(ctx context.Context) context.Context {
+func (r *Case) Context(ctx context.Context) context.Context {
 	return qobs.WithRecorder(ctx, r.Recorder)
 }
 
@@ -209,10 +209,10 @@ type Config struct {
 // and its recorder; it typically builds the system under test and calls
 // hegel.RunStateful on a machine whose rules call rec.Step.
 //
-//	quinthegel.Test(t, quinthegel.Config{Binding: "testdata/bank.yaml"}, func(ht *hegel.T, rec *quinthegel.Recorder) {
+//	quinthegel.Test(t, quinthegel.Config{Binding: "testdata/bank.yaml"}, func(ht *hegel.T, rec *quinthegel.Case) {
 //		hegel.RunStateful(ht, &bankMachine{bank: NewBank(), rec: rec})
 //	}, hegel.WithTestCases(30))
-func Test(t *testing.T, cfg Config, body func(ht *hegel.T, rec *Recorder), opts ...hegel.Option) {
+func Test(t *testing.T, cfg Config, body func(ht *hegel.T, rec *Case), opts ...hegel.Option) {
 	t.Helper()
 	if cfg.Mode == Batched {
 		batched(t, cfg, body, opts)
@@ -306,7 +306,7 @@ func Render(steps []qtrace.Step) string {
 }
 
 // batched is Test in Batched mode.
-func batched(t *testing.T, cfg Config, body func(ht *hegel.T, rec *Recorder), opts []hegel.Option) {
+func batched(t *testing.T, cfg Config, body func(ht *hegel.T, rec *Case), opts []hegel.Option) {
 	t.Helper()
 	set := qtest.Resolve(t, cfg.Opts...)
 	c := set.Checker(t, cfg.Binding)

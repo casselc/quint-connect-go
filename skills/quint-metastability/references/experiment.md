@@ -30,7 +30,7 @@ ok, first := qload.Mostly(qload.Of(x, "markPaid", 5*time.Minute), trigger, 3)   
   (`Recovery.Err`): a system that collapsed before the trigger would
   "recover" to its collapsed goodput. With 8 consumers, the checkout shop
   collapses on its own, and that bug was hidden this way. State the
-  verdict with `r.Expect(t, true)` (or `false` for a storm you want to
+  verdict with `r.Expect(t, qload.Recovered())` (or `qload.StaysDegraded()` for a storm you want to
   see).
 - **The verdict allows for noise.** Recovery means goodput is back to at
   least 90% of healthy, give or take two standard errors over the

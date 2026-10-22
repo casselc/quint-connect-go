@@ -16,11 +16,13 @@ type TriggerSearch struct {
 	Runs  int // test cases run
 }
 
-// Expect states whether the search should find a trigger: one that
-// breaks the system, or none in the space. It fails t with the shrunk
-// trigger's run when one was not expected, and returns the run.
-func (s *TriggerSearch) Expect(t testing.TB, found bool) *qload.Recovery {
+// Expect states what the search should find: qload.SomeTrigger (one that
+// breaks the system) or qload.NoTrigger (none in the space). It fails t
+// with the shrunk trigger's run when one was not expected, and returns
+// the run.
+func (s *TriggerSearch) Expect(t testing.TB, c qload.TriggerClaim) *qload.Recovery {
 	t.Helper()
+	found := c.WantsTrigger()
 	switch {
 	case found && s.Found == nil:
 		t.Fatalf("quinthegel: no trigger in %d runs breaks the system; want one (widen the space or raise the test cases)", s.Runs)
@@ -39,7 +41,7 @@ func (s *TriggerSearch) Expect(t testing.TB, found bool) *qload.Recovery {
 // the system when most do not recover (qload.Mostly). Unset bounds
 // default: no extra load, no slowdown, 300 s; Hegel's options bound the
 // search. State what it should find with Expect.
-func FindTrigger(t testing.TB, sys qload.System, space qload.TriggerSpace, opts ...hegel.Option) *TriggerSearch {
+func FindTrigger(t testing.TB, sys qload.Target, space qload.TriggerSpace, opts ...hegel.Option) *TriggerSearch {
 	t.Helper()
 	if space.MaxSlowdown == 0 {
 		space.MaxSlowdown = 1

@@ -38,7 +38,7 @@ func (c *Client) attempt(ctx context.Context) error
   `Snapshot`; `go tool trace` shows what every goroutine was doing as the
   storm began.
 - Where a simulated storm's latency goes: set `env.Sim.Profile =
-  qenv.NewProfile()` in `Deploy`, then `Profile.WriteTo` a file and
+  qenv.NewTimeProfile()` in `Deploy`, then `Profile.WriteTo` a file and
   `go tool pprof -top -cum` it: each wait at a seam, by stack, weighted by
   virtual time (`-tagfocus task=<kind>` for one kind of task).
 - `region := qmeta.New(fit).HealthyRegion(qmeta.Healthy{MaxU: 10}, 120)`

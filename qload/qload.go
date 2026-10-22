@@ -364,9 +364,9 @@ func (m *Metrics) fill() {
 	}
 }
 
-// Config is a single-server, single-client system: the papers' running
+// SimConfig is a single-server, single-client system: the papers' running
 // example.
-type Config struct {
+type SimConfig struct {
 	Server  ServerConfig
 	Client  ClientConfig
 	Horizon time.Duration // how long to run (default 1000 s)
@@ -403,7 +403,7 @@ func (c *Client) inject(n int) {
 }
 
 // Simulate runs a system for its horizon and returns its time series.
-func Simulate(cfg Config) *Metrics {
+func Simulate(cfg SimConfig) *Metrics {
 	if cfg.Horizon == 0 {
 		cfg.Horizon = 1000 * time.Second
 	}

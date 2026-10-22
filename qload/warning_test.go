@@ -33,18 +33,18 @@ func (f *fatalTB) Fatalf(format string, args ...any) { f.msg = fmt.Sprintf(forma
 func TestRecoveryExpect(t *testing.T) {
 	r := Assess(Experiment{Rate: 1}, "done", Trigger{}, time.Second, 1)
 	f := &fatalTB{}
-	r.Expect(f, true)
+	r.Expect(f, Recovered())
 	if !strings.Contains(f.msg, "Experiment.Healthy is not set") {
 		t.Errorf("unset Healthy: %q", f.msg)
 	}
 	stuck := Recovery{Before: 10, After: 1, Recovered: false}
 	f = &fatalTB{}
-	stuck.Expect(f, true)
+	stuck.Expect(f, Recovered())
 	if !strings.Contains(f.msg, "want recovery") {
 		t.Errorf("stuck: %q", f.msg)
 	}
 	f = &fatalTB{}
-	stuck.Expect(f, false)
+	stuck.Expect(f, StaysDegraded())
 	if f.msg != "" {
 		t.Errorf("a metastable failure, as wanted: %q", f.msg)
 	}

@@ -34,8 +34,8 @@ func With[T any](ctx context.Context, k *Key[T], v T) context.Context {
 	return context.WithValue(ctx, k, v)
 }
 
-// In returns ctx's value for k, without the goroutine's run.
-func In[T any](ctx context.Context, k *Key[T]) (T, bool) {
+// InContext returns ctx's value for k, without the goroutine's run.
+func InContext[T any](ctx context.Context, k *Key[T]) (T, bool) {
 	if ctx != nil {
 		if v, ok := ctx.Value(k).(T); ok {
 			return v, true
@@ -48,11 +48,11 @@ func In[T any](ctx context.Context, k *Key[T]) (T, bool) {
 // Get returns the value for k of ctx or, if ctx (nil allowed) carries
 // none, of the calling goroutine's run.
 func Get[T any](ctx context.Context, k *Key[T]) (T, bool) {
-	if v, ok := In(ctx, k); ok {
+	if v, ok := InContext(ctx, k); ok {
 		return v, true
 	}
 	if rc, ok := Current(); ok {
-		return In(rc, k)
+		return InContext(rc, k)
 	}
 	var zero T
 	return zero, false

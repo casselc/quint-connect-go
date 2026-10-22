@@ -184,7 +184,7 @@ func runMachine(tc hegel.TestCase, mut queue.Mutation) {
 func TestHegelRunsConform(t *testing.T) {
 	qtest.RequireQuint(t)
 	quinthegel.Test(t, quinthegel.Config{Binding: "jobqueue.binding.yaml", Mode: quinthegel.After, Opts: []qtest.Option{qtest.Global()}, AllowEmpty: true},
-		func(ht *hegel.T, _ *quinthegel.Recorder) { runMachine(ht, queue.Faithful) },
+		func(ht *hegel.T, _ *quinthegel.Case) { runMachine(ht, queue.Faithful) },
 		hegel.WithTestCases(40), hegel.WithDatabase(""))
 }
 
@@ -196,7 +196,7 @@ func TestHegelShrinksAckAnyLease(t *testing.T) {
 	if testing.Short() {
 		t.Skip("shrinking against the model runs quint dozens of times")
 	}
-	v := quinthegel.FindViolation(t, quinthegel.Config{Binding: "jobqueue.binding.yaml", Opts: []qtest.Option{qtest.Global()}}, func(tc hegel.TestCase, _ *quinthegel.Recorder) {
+	v := quinthegel.FindViolation(t, quinthegel.Config{Binding: "jobqueue.binding.yaml", Opts: []qtest.Option{qtest.Global()}}, func(tc hegel.TestCase, _ *quinthegel.Case) {
 		runMachine(tc, queue.AckAnyLease)
 	}, hegel.WithTestCases(60), hegel.WithSeed(5))
 	if last := v.Last(); last.Action != "ack" || last.Outcome != "ok" {

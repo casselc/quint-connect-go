@@ -10,7 +10,7 @@ sys := qtest.System{Binding: "app.binding.yaml", Run: func(c qenv.Chooser) error
 	row, _ := qtest.RowOf(c) // the sweep's row; outside a sweep, ok is false
 	return app.Run(c, cfgOf(row))
 }}
-sys.Sweep(t, qtest.Sweep{Factors: space, Explore: qtest.ExploreConfig{Seeds: 20},
+sys.Sweep(t, qtest.SweepConfig{Factors: space, Explore: qtest.ExploreConfig{Seeds: 20},
 	Expect: func(r qsweep.Row) []qtest.Claim { ... }}) // nil: Conforms
 ```
 

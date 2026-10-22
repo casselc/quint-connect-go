@@ -129,7 +129,7 @@ func RunOn(s *qenv.Sim, cfg Config) error {
 		if d := s.Choose("sched.s3.latency", 4); d > 0 {
 			qenv.Sleep(ctx, time.Duration(d)*5*time.Second)
 		}
-		k := qenv.Faults("s3."+op.Kind, "fail", "ambiguous") // the options' names, for coverage and scripts
+		k := qenv.DeclareFaults("s3."+op.Kind, "fail", "ambiguous") // the options' names, for coverage and scripts
 		if cfg.NoAmbiguous {
 			k = k.Only("fail")
 		}

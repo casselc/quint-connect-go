@@ -16,11 +16,11 @@ type FaultKind struct {
 	Options []string
 }
 
-// Faults declares a fault kind: name without the "fault." prefix ("kube.request")
+// DeclareFaults declares a fault kind: name without the "fault." prefix ("kube.request")
 // and its options in order (choice.Declare: the one registry, which also
 // holds the sites DeclareFault registers). Declaring it again with other
 // options panics: option numbers would change meaning.
-func Faults(name string, options ...string) FaultKind {
+func DeclareFaults(name string, options ...string) FaultKind {
 	choice.Declare(name, options...)
 	return FaultKind{Name: name, Options: append([]string(nil), options...)}
 }

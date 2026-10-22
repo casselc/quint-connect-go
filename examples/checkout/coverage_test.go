@@ -23,12 +23,12 @@ func TestCodeCoverage(t *testing.T) {
 	}
 	x := explore(t, checkout.Config{Isolation: qenv.SnapshotIsolation}, qtest.ExploreConfig{Seeds: 30, Rates: crashy, Parallel: 4})
 	x.Expect(t, qtest.Conforms())
-	t.Log(x.Coverage())
-	t.Log(x.CodeCoverage())
+	t.Log(x.Evidence().Faults)
+	t.Log(x.Evidence().Code)
 	// kept for qanalysis/actionmap, which reads it against the code each
 	// action reaches statically
 	if k := os.Getenv("QUINTGO_KEEP"); k != "" {
-		b, err := json.Marshal(x.CodeCoverage())
+		b, err := json.Marshal(x.Evidence().Code)
 		if err == nil {
 			err = os.WriteFile(filepath.Join(k, "checkout-coverage.json"), b, 0o644)
 		}

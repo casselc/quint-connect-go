@@ -88,7 +88,7 @@ func TestModelTracesCatchManifestBeforeTable(t *testing.T) {
 // woven: `go run github.com/DataDog/orchestrion go test ./mbt/ -run RoundTrip`.
 func TestRoundTrip(t *testing.T) {
 	files := traces(t)
-	checker, err := validate.NewChecker("../binding.yaml", validate.Options{Backend: os.Getenv("QUINTGO_BACKEND"), Dir: t.TempDir()})
+	checker, err := validate.NewChecker("../binding.yaml", validate.Options{Backend: os.Getenv("QUINT_BACKEND"), Dir: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}

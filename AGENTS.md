@@ -104,7 +104,9 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   needs Docker, kind, kubectl and helm (`kind/setup.sh` installs Crossplane;
   `CA_BUNDLE=` for a TLS-intercepting proxy). CRD and deepcopy are generated:
   `go run sigs.k8s.io/controller-tools/cmd/controller-gen@v0.19.0 object crd paths=./apis/... output:crd:dir=./package/crds`.
-- Backend: `QUINT_BACKEND=rust|typescript` (`QUINTGO_BACKEND` also works).
+- Backend: `QUINT_BACKEND=rust|typescript`, for connect, validate and
+  qtest alike (unset: rust for validation, quint's own default for
+  connect's `quint run`).
   `QUINTGO_KEEP=/dir` keeps generated modules and traces from qtest and
   quinthegel. `QUINTGO_SEED=n` runs an exploration's seed n alone (each
   failing run's report prints the command). `QUINTGO_VERBOSE=1` shows
@@ -224,11 +226,11 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   for records) calls `qenv.Daemon(ctx)`; a double's receive uses
   `qenv.WaitIdle`. The native runtime runs in real time and cannot tell.
 - `qrun.Start(ctx)` makes ctx the goroutine's run without a simulation
-  (`qtest.Record`, `quinthegel.Recorder.Install`), and `qenv.New` inherits
+  (`qtest.Record`, `quinthegel.Case.Install`), and `qenv.New` inherits
   it. Goroutines the run starts are not in it: their steps fail Record
-  (the run is strict) unless it is given `qtest.Global()` (quinthegel's
-  `Config.Global`), which installs the global recorder for them
-  (`qobs.InstallGlobal`). A second install while one is in place fails,
+  (the run is strict) unless it is given `qtest.Global()` (in
+  quinthegel's `Config.Opts` too), which installs the global recorder for
+  them (`qobs.InstallGlobal`). A second install while one is in place fails,
   so such tests must not run in parallel; a restore puts back the
   previous recorder only if its own is still installed.
 - A model that learns a log from its reads checks Kafka, Kinesis and a
@@ -287,7 +289,7 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   (`qenv.Wrapper`): `New`, `ContextOf`, `EntropyOf` and nemeses by name
   look through the chain (`qenv.As[T]`). A wrapper without it hides the
   run's context and entropy.
-- A double declares its fault kinds by name (`qenv.Faults("kube.request",
+- A double declares its fault kinds by name (`qenv.DeclareFaults("kube.request",
   "unavailable", "lostResponse")`) and chooses with `Sim.FaultOf`, which
   returns the option's name. A call that cannot fail in some options takes
   a prefix (`k.Only("unavailable")`), so an option's number means one
@@ -296,7 +298,7 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
 - Option 0 of every qenv choice is nominal (no fault, canonical order).
   Keep that convention in new doubles: it is what makes Hegel's shrinking
   remove faults.
-- `quinthegel.Chooser` draws 512-byte chunks (`hegel.Binary(n, n)`), not
+- `quinthegel.Choices` draws 512-byte chunks (`hegel.Binary(n, n)`), not
   one draw per choice: per-choice draws made a shrinking test 20x slower. A task's
   panic is re-raised by `Sim.Run` with its original value, because Hegel
   aborts a test case by panicking from whichever goroutine draws.
@@ -428,7 +430,7 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   history plus our commits, its `FORK.md` saying what they change.
   `qgosim/fetch-gosim.sh` pins the commit qgosim needs (`REF`): change the
   fork there, push the branch, then bump `REF`. Choosers with entropy
-  (`qenv.EntropyOf`: Seeded, quinthegel.Chooser, a Recorder or Replay of
+  (`qenv.EntropyOf`: Seeded, quinthegel.Choices, a ChoiceLog or Replay of
   them) hand gosim bytes in chunks for every choice but faults. A chooser
   without it (a plain wrapper) falls back to one round trip per choice,
   about 9 times slower.

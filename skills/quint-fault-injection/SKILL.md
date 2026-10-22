@@ -1,6 +1,6 @@
 ---
 name: quint-fault-injection
-description: Test Go services against a Quint model under deterministic fault injection with quint-connect-go's qenv package - write the app against seams (qenv.DB/Txn, broker and service interfaces, qenv.Go/Now/Sleep), deploy it into a simulated environment (crashable processes, a store at Serializable/SnapshotIsolation/ReadCommitted, an at-least-once queue, lossy RPC, fake Kubernetes API servers), explore seeds with qtest.Explore or shrink with Hegel (quinthegel.Chooser + quinthegel.FindViolation), and carry the same model to a real environment (kwok, Maelstrom-style). Use when a system's correctness depends on retries, idempotency, outboxes, isolation levels, crashes, status lag or lost responses, or when a bug only shows up in a real environment.
+description: Test Go services against a Quint model under deterministic fault injection with quint-connect-go's qenv package - write the app against seams (qenv.DB/Txn, broker and service interfaces, qenv.Go/Now/Sleep), deploy it into a simulated environment (crashable processes, a store at Serializable/SnapshotIsolation/ReadCommitted, an at-least-once queue, lossy RPC, fake Kubernetes API servers), explore seeds with qtest.Explore or shrink with Hegel (quinthegel.Choices + quinthegel.FindViolation), and carry the same model to a real environment (kwok, Maelstrom-style). Use when a system's correctness depends on retries, idempotency, outboxes, isolation levels, crashes, status lag or lost responses, or when a bug only shows up in a real environment.
 ---
 
 # Fault injection with qenv
@@ -141,14 +141,14 @@ quinthegel.Shrink(t, sys, rates, hegel.WithTestCases(50)).Expect(t, qtest.Violat
   - Turn whole kinds off with `{"fault.kube": 0}`, or per run with
     `qenv.Swarm`.
 - **Shrinking:**
-  `quinthegel.FindViolation(t, cfg, func(tc, rec) { app.Run(rec.Env(quinthegel.Chooser(tc)), cfg) })`
+  `quinthegel.FindViolation(t, cfg, func(tc, rec) { app.Run(rec.Env(quinthegel.Choices(tc)), cfg) })`
   shrinks a failure to the interleaving and faults it needs; faults
   appear as notes. Skip it under `testing.Short()`.
   `rec.Env` records the run's choices too: `qenv.Replay(v.Choices)`
   repeats the shrunk failure outside Hegel, a regression test with no
   Hegel in it. State the failure with `v.Expect(t, qtest.Rejects(...))`.
 - **A new double's faults:** declare the kind's options by name,
-  `var request = qenv.Faults("db.request", "unavailable", "lostResponse")`,
+  `var request = qenv.DeclareFaults("db.request", "unavailable", "lostResponse")`,
   and choose with `s.FaultOf(request)` (it returns "" or the option's
   name). A read that cannot lose a response takes
   `request.Only("unavailable")`, a prefix. Scripts name the option

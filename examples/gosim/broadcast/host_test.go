@@ -56,7 +56,7 @@ func TestSeededRunsConform(t *testing.T) {
 // The same choices give the same run: a recorded run replays exactly, and
 // qenv.Replay would panic at the first choice that differs.
 func TestReplayIsDeterministic(t *testing.T) {
-	rec := &qenv.Recorder{C: qenv.NewSeeded(7)}
+	rec := &qenv.ChoiceLog{C: qenv.NewSeeded(7)}
 	first := run(t, rec, "")
 	second := run(t, qenv.Replay(rec.Choices), "")
 	if len(rec.Choices) == 0 || len(first) != len(second) {
@@ -88,8 +88,8 @@ func TestHegelFindsNoRetry(t *testing.T) {
 	if testing.Short() {
 		t.Skip("shrinking against the model")
 	}
-	v := quinthegel.FindViolation(t, quinthegel.Config{Binding: binding, Opts: []qtest.Option{qtest.Global()}}, func(tc hegel.TestCase, rec *quinthegel.Recorder) {
-		c := quinthegel.Chooser(tc)
+	v := quinthegel.FindViolation(t, quinthegel.Config{Binding: binding, Opts: []qtest.Option{qtest.Global()}}, func(tc hegel.TestCase, rec *quinthegel.Case) {
+		c := quinthegel.Choices(tc)
 		c.Rates.Kinds = map[string]float64{"fault.partition": 0.3}
 		rec.Add(run(t, c, "NoRetry")...)
 	}, hegel.WithTestCases(60), hegel.WithSeed(1))

@@ -18,7 +18,7 @@ import (
 // by Go; outside a simulation the real methods run.
 func TestWovenSyncInSimulation(t *testing.T) {
 	hegel.Test(t, func(ht *hegel.T) {
-		s := qenv.New(quinthegel.Chooser(ht))
+		s := qenv.New(quinthegel.Choices(ht))
 		s.Check = true
 		defer s.Close()
 		var mu sync.RWMutex

@@ -13,8 +13,8 @@ import (
 // spike to 20 requests/s between 200 s and 400 s fills the queue, and it
 // stays full long after the spike: a metastable failure. Throttled to 8
 // requests/s, the same spike drains away.
-func example(rate float64) qload.Config {
-	return qload.Config{
+func example(rate float64) qload.SimConfig {
+	return qload.SimConfig{
 		Server: qload.ServerConfig{Name: "server", ServiceRate: 10, QueueCap: 100},
 		Client: qload.ClientConfig{Name: "client", Rate: qload.Spike(rate, 20, 200*time.Second, 400*time.Second),
 			Timeout: 9 * time.Second, Retries: 3},
@@ -48,7 +48,7 @@ func TestRetryStormIsMetastable(t *testing.T) {
 // value, and after the last value the last one holds.
 func TestPiecewise(t *testing.T) {
 	shape := qload.Piecewise(time.Minute, 0.5, 4, 12, 8) // 2, 6 and 4 requests/s
-	m := qload.Simulate(qload.Config{
+	m := qload.Simulate(qload.SimConfig{
 		Server:  qload.ServerConfig{Name: "s", ServiceRate: 100, QueueCap: 1000},
 		Client:  qload.ClientConfig{Name: "c", Rate: shape, Timeout: time.Second},
 		Horizon: 4 * time.Minute, Seed: 1,

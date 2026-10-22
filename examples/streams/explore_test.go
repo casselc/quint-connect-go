@@ -49,7 +49,7 @@ func TestFaithfulSweep(t *testing.T) {
 		_, err := streams.Run(c, streams.Config{Partitions: row.Int("partitions"), Consumers: row.Int("consumers")})
 		return err
 	}}
-	sw := sys.Sweep(t, qtest.Sweep{Factors: space, Explore: qtest.ExploreConfig{Seeds: 10, Rates: faulty}})
+	sw := sys.Sweep(t, qtest.SweepConfig{Factors: space, Explore: qtest.ExploreConfig{Seeds: 10, Rates: faulty}})
 	t.Log(sw.Evidence())
 }
 

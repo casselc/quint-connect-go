@@ -46,7 +46,7 @@ var ErrUnavailable = errors.New("kubesim: the API server did not answer")
 
 // kubeRequest is a request that failed, or, for an update, was applied
 // with its response lost: the caller cannot tell them apart.
-var kubeRequest = qenv.Faults("kube.request", "unavailable", "lostResponse")
+var kubeRequest = qenv.DeclareFaults("kube.request", "unavailable", "lostResponse")
 
 // Cluster is a simulated member cluster.
 type Cluster struct {

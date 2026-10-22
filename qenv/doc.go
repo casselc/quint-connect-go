@@ -6,7 +6,7 @@
 // (no fault, first in line), so a Hegel-driven Chooser shrinks a failing
 // run toward fewer faults and a canonical schedule.
 //
-// The same run can be driven by Hegel (quinthegel.Chooser), a seed
+// The same run can be driven by Hegel (quinthegel.Choices), a seed
 // (NewSeeded), a recorded list of choices (Replay), or no faults at all
 // (Nominal). The choosers are implemented apart from the simulation
 // (qenv/internal/choice) and are qenv's API.

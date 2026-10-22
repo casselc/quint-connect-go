@@ -8,12 +8,12 @@ go run -C path/to/qweave ./cmd/qweave -C . -cover [-coverpkg your/module/pkg] go
 
 ```go
 x := sys.Explore(t, qtest.ExploreConfig{Seeds: 30}) // sys is a qtest.System; coverage is collected when woven
-t.Log(x.CodeCoverage()) // never run, run by no step, outcomes that ran the same code
+t.Log(x.Evidence().Code) // never run, run by no step, outcomes that ran the same code
 ```
 
 - Skip the test when `len(qcover.Blocks()) == 0` (not woven).
 - "Never run" after a conforming exploration: an error path whose fault
-  was never taken (check `x.Coverage()`), code the model's environment
+  was never taken (check `x.Evidence().Faults`), code the model's environment
   rules out, dead code, or a scenario the model does not describe.
 - "Run by no step" is code no step of its own task explains: clients
   whose steps the services record, relays, setup, or work after a task's
@@ -26,7 +26,7 @@ t.Log(x.CodeCoverage()) // never run, run by no step, outcomes that ran the same
 
 Build the real environment's binaries with `go build -cover`, run them
 with `GOCOVERDIR=dir`, and compare with a woven simulation's summary
-(write it as JSON from `x.CodeCoverage()`):
+(write it as JSON from `x.Evidence().Code`):
 
 ```sh
 quintgo cover -covdir run1,run2 -sim summary.json
@@ -42,13 +42,13 @@ counters are per process, so the real side has no per-step attribution.
 `actionmap` (qanalysis) has the call graph: `go run ./cmd/actionmap ./...`
 lists dead functions (no main, init or exported API reaches them). With a
 summary and the runs' fault coverage, `actionmap.UntriedErrorPaths(m, s,
-x.Coverage())` lists the blocks no run ran in the callers of a fault point
+x.Evidence().Faults)` lists the blocks no run ran in the callers of a fault point
 the runs reached but never faulted: its error handling. Untried, not dead:
 raise the kind's rate or script it first.
 
 ## One report: `x.Evidence()`
 
-`t.Log(x.Evidence())` (an exploration, or a sweep's `Swept`) says in a few
+`t.Log(x.Evidence())` (an exploration, or a sweep's `SweepResult`) says in a few
 lines what the runs show: verdicts by reason, fault kinds faulted and
 pairs together (and those never faulted), the code run (when woven
 with `-cover`), and mutants killed (set `Mutants` from

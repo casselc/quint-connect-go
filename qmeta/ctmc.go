@@ -301,10 +301,10 @@ func poisson(L, t float64, k int) float64 {
 	return math.Exp(float64(k)*math.Log(lt) - lt - lg)
 }
 
-// ExpectAll is Expect from every state at once: out[i][c.Index(s)] is the
+// MeanAll is Expect from every state at once: out[i][c.Index(s)] is the
 // expected state at times[i] from s. Expectation is linear, so one
 // backward pass (P^k applied to u and v) costs what one Expect does.
-func (c *Chain) ExpectAll(times []float64) [][]State2 {
+func (c *Chain) MeanAll(times []float64) [][]State2 {
 	n := c.States()
 	gu, gv := make([]float64, n), make([]float64, n)
 	for u := 0; u <= c.N; u++ {
@@ -384,11 +384,11 @@ func (c *Chain) backward(times []float64, g []float64, absorb []bool) [][]float6
 	return out
 }
 
-// Expect returns the expected state (E[u], E[v]) at each of times, from
+// Mean returns the expected state (E[u], E[v]) at each of times, from
 // the state from, by uniformization: X(t) ~ sum_k Poisson(Lt; k) P^k with
 // P = I + Q/L. A from outside the chain's bounds is clamped to them: an
 // observed system can exceed a bound the chain only approximates.
-func (c *Chain) Expect(from State, times []float64) []State2 {
+func (c *Chain) Mean(from State, times []float64) []State2 {
 	from = c.Clamp(from)
 	n := c.States()
 	L, edges, stay := c.uniformized()

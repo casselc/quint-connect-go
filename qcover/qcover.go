@@ -71,8 +71,8 @@ var Default *Counts
 // block.
 func Hit(id int) {
 	rc, _ := qrun.Current()
-	c, _ := qrun.In(rc, countsKey)
-	task, _ := qrun.In(rc, qrun.Task)
+	c, _ := qrun.InContext(rc, countsKey)
+	task, _ := qrun.InContext(rc, qrun.Task)
 	if c == nil {
 		c = Default
 	}

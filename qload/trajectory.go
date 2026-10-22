@@ -9,7 +9,7 @@ import (
 
 // SimulateTrajectory averages runs simulations of cfg (with constant load, from the
 // state from) into a trajectory for qmeta.Calibrate: the queue and orbit at each time.
-func SimulateTrajectory(cfg Config, from qmeta.State, times []float64, runs int) qmeta.Trajectory {
+func SimulateTrajectory(cfg SimConfig, from qmeta.State, times []float64, runs int) qmeta.Trajectory {
 	tr := qmeta.Trajectory{From: from, Times: times, Mean: make([]qmeta.State2, len(times))}
 	horizon := 0.0
 	for _, t := range times {

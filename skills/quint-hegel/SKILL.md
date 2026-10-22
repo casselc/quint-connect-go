@@ -8,7 +8,7 @@ description: Combine Hegel property-based / state-machine testing (hegel.dev/go/
 Hegel generates and shrinks test cases. Quint knows what the system may
 do. They can be combined in two directions:
 
-| | Hegel drives, model judges (`quinthegel.Test`, `CheckCase`) | Model drives, Hegel varies (`quinthegel.Replay`) |
+| | Hegel drives, model judges (`quinthegel.Test`, `CheckCase`) | Model drives, Hegel varies (`quinthegel.VaryTraces`) |
 |---|---|---|
 | Who chooses the operations | Hegel rules (`Rule*` methods), invalid inputs included | the model's traces (`quint run --mbt`) |
 | Finds | the code doing what the model forbids (accepting a forbidden request), wrong states, invariant violations | divergence on behaviours the model allows, under concrete variations the model abstracts (payloads, timing, noise) |
@@ -36,7 +36,7 @@ func (m *machine) InvariantNoOverdraft(tc hegel.TestCase) { /* the plain PBT pro
 
 func TestBankAgainstModel(t *testing.T) {
 	quinthegel.Test(t, quinthegel.Config{Binding: "bank.binding.yaml", Mode: quinthegel.Each, Opts: []qtest.Option{qtest.Global()}},
-		func(ht *hegel.T, rec *quinthegel.Recorder) {
+		func(ht *hegel.T, rec *quinthegel.Case) {
 			hegel.RunStateful(ht, &machine{bank: New(accounts)}, hegel.WithStatefulStepCount(12))
 		}, hegel.WithTestCases(30))
 }
@@ -54,7 +54,7 @@ func TestBankAgainstModel(t *testing.T) {
   returns the shrunk run; state how it must show with `Expect`:
   ```go
   v := quinthegel.FindViolation(t, quinthegel.Config{Binding: "bank.binding.yaml", Opts: []qtest.Option{qtest.Global()}},
-  	func(tc hegel.TestCase, _ *quinthegel.Recorder) {
+  	func(tc hegel.TestCase, _ *quinthegel.Case) {
   		hegel.RunStateful(tc, &machine{bank: New(accounts, WithMutation(SelfTransfer))})
   	}, hegel.WithTestCases(50), hegel.WithSeed(3))
   v.Expect(t, qtest.Rejects("transfer"))
@@ -72,9 +72,9 @@ func TestBankAgainstModel(t *testing.T) {
 ```go
 traces := quinthegel.Traces(t, connect.Config{Spec: "model/bank.qnt", Main: "bankDesign", MaxSamples: 30, MaxSteps: 20})
 hegel.Test(t, func(ht *hegel.T) {
-	quinthegel.Replay(ht, traces, func(tc hegel.TestCase) connect.Driver {
+	quinthegel.VaryTraces(ht, traces, func(tc hegel.TestCase) connect.Driver {
 		return &noisyDriver{tc: tc} // handlers may hegel.Draw concrete details
-	}, quinthegel.ReplayOptions{Prefix: true})
+	}, quinthegel.VaryOptions{Prefix: true})
 })
 ```
 

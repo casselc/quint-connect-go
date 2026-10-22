@@ -22,7 +22,7 @@ func TestSweepWithTheSystemsRun(t *testing.T) {
 		qobs.Record(qenv.ContextOf(c), "deposit", nil, "amount", n, "obs.balance", n)
 		return nil
 	}}
-	sys.Sweep(t, Sweep{Factors: []qsweep.Factor{qsweep.Ints("amount", 50, 150)}, Explore: ExploreConfig{Seeds: 1},
+	sys.Sweep(t, SweepConfig{Factors: []qsweep.Factor{qsweep.Ints("amount", 50, 150)}, Explore: ExploreConfig{Seeds: 1},
 		Expect: func(row qsweep.Row) []Claim {
 			if row.Int("amount") > 100 {
 				return []Claim{Violates("underLimit")}
@@ -36,7 +36,7 @@ func TestSweepWithTheSystemsRun(t *testing.T) {
 // in none of the "off" row.
 func TestSweepFaultKinds(t *testing.T) {
 	RequireQuint(t)
-	kind := qenv.Faults("test.sweep", "unavailable")
+	kind := qenv.DeclareFaults("test.sweep", "unavailable")
 	sys := System{Binding: "../validate/testdata/account.yaml", Run: func(c qenv.Chooser) error {
 		s := qenv.New(c)
 		defer s.Close()
@@ -47,7 +47,7 @@ func TestSweepFaultKinds(t *testing.T) {
 		qobs.Record(s.Context(), "deposit", nil, "amount", 10, "obs.balance", balance)
 		return nil
 	}}
-	sys.Sweep(t, Sweep{Factors: []qsweep.Factor{qsweep.FaultKind("test.sweep")},
+	sys.Sweep(t, SweepConfig{Factors: []qsweep.Factor{qsweep.FaultKind("test.sweep")},
 		Explore: ExploreConfig{Seeds: 3, Rates: qenv.Rates{Default: 1}},
 		Expect: func(row qsweep.Row) []Claim {
 			if row.On("test.sweep") {

@@ -760,7 +760,7 @@ status lags. The conventions:
   (`Rates`, matched by prefix). Any other kind is a schedule choice,
   uniform under a seed.
 - **Backends.**
-  - `quinthegel.Chooser(tc)` draws entropy in fixed-size byte chunks: a run makes
+  - `quinthegel.Choices(tc)` draws entropy in fixed-size byte chunks: a run makes
     hundreds of choices, and a draw per choice made a shrinking test 20x
     slower.
   - `NewSeeded(seed)` gives random runs, Maelstrom- or Jepsen-style.
@@ -811,7 +811,7 @@ Steps are recorded where effects happen:
 `qtest.Explore` runs a scenario over many seeds and checks every run in
 one `CheckBatch`. `Exploration.Expect` states either that all conform, or
 that some failing run shows the expected verdict.
-`quinthegel.FindViolation` with `quinthegel.Chooser` shrinks a failure to the
+`quinthegel.FindViolation` with `quinthegel.Choices` shrinks a failure to the
 interleaving and faults it needs. In examples/checkout that took 11 quint
 checks; the verdict cache answered the other 599 candidates.
 
@@ -990,7 +990,7 @@ the same workarounds kept appearing in examples. They are now in the core.
   `qtest.Explore` gives each seed its own recorder and runs seeds in
   parallel, and `qmeta.Runs`, `Count` and `Mostly` run a trigger's seeds
   in parallel. A Hegel test records the same way
-  (`quinthegel.Recorder.Context`). The global recorder remains for real
+  (`quinthegel.Case.Context`). The global recorder remains for real
   processes and woven code.
 
   At first, a step recorded through `context.Background()` inside a
@@ -1204,7 +1204,7 @@ two halves:
   `metatesting.MetaT.RunWith` serves a qenv `Chooser`.
 
 A Hegel abort is a panic from inside `Choose`. It stops the binary, and
-the next run starts a fresh one. `quinthegel.Recorder.Add` takes the
+the next run starts a fresh one. `quinthegel.Case.Add` takes the
 emitted steps, so `FindViolation` judges and shrinks gosim runs as it
 does qenv's.
 
@@ -1226,7 +1226,7 @@ Hegel network driver is excluded from `sim` builds.
 - A choice round trip to the host is about 50 µs. A cluster run takes
   350 ms with qenv choosing and 60 ms on gosim's own seed. Eight in ten
   choices are the scheduler's. Handing the simulation entropy in chunks,
-  as `quinthegel.Chooser` already draws it, would remove most of the round
+  as `quinthegel.Choices` already draws it, would remove most of the round
   trips. Fault choices would still go to the host one by one, for their
   rates and notes.
 - The first build translates the standard library and every dependency,
@@ -1483,7 +1483,7 @@ double, process and example runs on it unchanged:
   schedule canonical.
 - **Hegel stays out of the simulated packages.** The Hegel adapters
   moved out of the packages a simulation runs, into quinthegel:
-  `quinthegel.Chooser` (once `qenv.Hegel`), `FindTrigger` and
+  `quinthegel.Choices` (once `qenv.Hegel`), `FindTrigger` and
   `SearchTrigger` (once in qmeta). The Glomers network driver moved to
   `maelstrom/hegelnet`. Build tags had hidden the dependency instead,
   and the first gosim translation found each one late.
@@ -1525,7 +1525,7 @@ checks the branch out next to qgosim and moves it to that commit.
 **Entropy.** A chooser that implements `qenv.Entropy` hands out bytes.
 `qenv.EntropyOf` finds that capability through `WithContext`,
 `Recorder` and `Replay`. The test binary then makes every choice but
-faults from 512-byte chunks, by the same rule as `quinthegel.Chooser`: a
+faults from 512-byte chunks, by the same rule as `quinthegel.Choices`: a
 byte, two above 256 options, modulo n.
 - Faults still go to the host one by one, for their rates and their
   notes on the test case.
@@ -1676,7 +1676,7 @@ series works, a qload run's probes or a production scrape.
 - Loss evaluated each trajectory with its own transient analysis, 12,000
   states each time, and a calibration from one run's cells had not
   finished after several minutes. Expectation is linear, so one backward pass
-  (`ExpectAll`) gives the expectation from every state at once. The same
+  (`MeanAll`) gives the expectation from every state at once. The same
   calibration takes 5 seconds.
 
 **Alerts from the chain.** `Chain.Region(healthy, bound)` is the set of
@@ -1857,7 +1857,7 @@ goroutine.
   a relay, setup, and code after a task's last step: the report lists it
   by function.
 
-**The report** (`Exploration.CodeCoverage()`, `qcover.Summary`):
+**The report** (`Evidence().Code`, a `qcover.Summary`):
 - statements covered;
 - blocks never run, by function;
 - code run by no step;
@@ -1935,17 +1935,17 @@ choices it made.
 - A shrunk Hegel failure kept its steps but not its choices, so it could
   not be replayed outside Hegel, run on gosim, or kept as a seed.
 
-**`Choice.Step`.** `qenv.Recorder` stamps every choice with the run's step
+**`Choice.Step`.** `qenv.ChoiceLog` stamps every choice with the run's step
 count (`qobs.Recorder.Count`). The run's recorder is found once, through
 qrun, on the first choice. A choice's step says which step a fault came
 after, what fault-to-action coverage will build on. A Script with no
 `Progress` waits on the same count, so `FaultScript`'s callers set
 nothing.
 
-**`quinthegel.Recorder.Env(c)`** is the chooser a test case's simulation
+**`quinthegel.Case.Env(c)`** is the chooser a test case's simulation
 runs on: `c`'s choices recorded into the case's recorder, the recorder in
 the chooser's context. It replaces
-`qenv.WithContext(quinthegel.Chooser(tc), rec.Context(ctx))`. The shrunk
+`qenv.WithContext(quinthegel.Choices(tc), rec.Context(ctx))`. The shrunk
 `Violation` carries its `Choices`. Checkout's write-skew test replays
 them with `qenv.Replay`: the same steps, rejected the same way, with no
 Hegel in the run.
@@ -1977,7 +1977,7 @@ not a verdict.
   run whose script did not complete (`Remaining`), the P6 message.
 - `quinthegel.Shrink(t, sys, rates)` lives in quinthegel, which imports qtest:
   Hegel stays out of qtest. It is FindViolation over `sys.Run` on
-  `rec.Env(Chooser(tc))`.
+  `rec.Env(Choices(tc))`.
 
 connect's test is now a System and two calls. It runs in 5 s instead of
 9 s, because Explore checks the traces' runs in one batch. Checkout's
@@ -2121,7 +2121,7 @@ and 3 on an Update (fail, applied with the response lost). Coverage's
 `Injected[2]` then meant nothing without knowing the call, and a
 `Scripted{Option: 2}` panicked if a Get came up first.
 
-`qenv.Faults(name, options...)` declares a kind's options, nominal
+`qenv.DeclareFaults(name, options...)` declares a kind's options, nominal
 unnamed, and `Sim.FaultOf(kind)` returns "" or the option's name.
 `kind.Only(...)` restricts a call to a prefix of the options, and only to
 a prefix, so an option's number means the same option at every call. A
@@ -2272,7 +2272,7 @@ rows, mutants) were separate calls with separate formats. `Evidence`
 puts them in one: verdicts by reason ("violates chargedAtMostOnce",
 "rejects ship", "mismatch after place"), fault kinds faulted and pairs
 together, rows, code and mutants, each part present when its data is.
-`Exploration.Evidence` and `Swept.Evidence` make it; a mutation report is
+`Exploration.Evidence` and `SweepResult.Evidence` make it; a mutation report is
 added by the caller (`Mutants`), since `System.Mutate` runs explorations
 of its own.
 
@@ -2413,7 +2413,7 @@ because its file does not import qenv. One flight recorder may run per
 process.
 
 **B4.** A CPU profile of a simulation shows the scheduler: virtual time
-costs nothing. `qenv.Profile` records, at every wait of a task (Sleep,
+costs nothing. `qenv.TimeProfile` records, at every wait of a task (Sleep,
 Wait, a Signal: calls, locks, queues all wait through them), the stack
 and the virtual time until the task ran again, and writes pprof's format.
 The roadmap put it in a module of its own for pprof's protobuf; the five

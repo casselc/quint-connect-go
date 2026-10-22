@@ -20,13 +20,13 @@ import (
 type Evidence struct {
 	Runs    int `json:"runs"`
 	Conform int `json:"conform"`
-	// Failing counts the failing runs by reason: "violates I", "rejects a
+	// FailingBy counts the failing runs by reason: "violates I", "rejects a
 	// (step the model cannot take)", "mismatch after a", "issue".
-	Failing map[string]int  `json:"failing"`
-	Faults  *qenv.Coverage  `json:"faults,omitempty"`
-	Rows    int             `json:"rows,omitempty"`    // a sweep's rows (0: not a sweep)
-	Code    *qcover.Summary `json:"code,omitempty"`    // when the code is woven with qweave -cover (nil: not)
-	Mutants *MutationReport `json:"mutants,omitempty"` // from System.Mutate, if set
+	FailingBy map[string]int  `json:"failing"`
+	Faults    *qenv.Coverage  `json:"faults,omitempty"`
+	Rows      int             `json:"rows,omitempty"`    // a sweep's rows (0: not a sweep)
+	Code      *qcover.Summary `json:"code,omitempty"`    // when the code is woven with qweave -cover (nil: not)
+	Mutants   *MutationReport `json:"mutants,omitempty"` // from System.Mutate, if set
 }
 
 // WriteJSON writes the evidence to path as JSON, for tools that read a
@@ -43,15 +43,15 @@ func (e *Evidence) WriteJSON(path string) error {
 // Evidence is the exploration's report.
 func (x *Exploration) Evidence() *Evidence {
 	e := evidenceOf(x.Runs)
-	e.Faults = x.Coverage()
+	e.Faults = x.faultCoverage()
 	if x.hasCode() {
-		e.Code = x.CodeCoverage()
+		e.Code = x.codeCoverage()
 	}
 	return e
 }
 
 // Evidence is the sweep's report over every row's runs.
-func (s *Swept) Evidence() *Evidence {
+func (s *SweepResult) Evidence() *Evidence {
 	all := &Exploration{}
 	for _, x := range s.Runs {
 		if x != nil {
@@ -73,13 +73,13 @@ func (x *Exploration) hasCode() bool {
 }
 
 func evidenceOf(runs []*Run) *Evidence {
-	e := &Evidence{Runs: len(runs), Failing: map[string]int{}}
+	e := &Evidence{Runs: len(runs), FailingBy: map[string]int{}}
 	for _, r := range runs {
 		if r.Report.OK() {
 			e.Conform++
 			continue
 		}
-		e.Failing[reason(r.Report)]++
+		e.FailingBy[reason(r.Report)]++
 	}
 	return e
 }
@@ -117,13 +117,13 @@ func (e *Evidence) String() string {
 		fmt.Fprintf(&b, ", %d rows", e.Rows)
 	}
 	fmt.Fprintf(&b, "\n  verdicts  %d conform", e.Conform)
-	reasons := make([]string, 0, len(e.Failing))
-	for r := range e.Failing {
+	reasons := make([]string, 0, len(e.FailingBy))
+	for r := range e.FailingBy {
 		reasons = append(reasons, r)
 	}
 	sort.Strings(reasons)
 	for _, r := range reasons {
-		fmt.Fprintf(&b, " · %d %s", e.Failing[r], r)
+		fmt.Fprintf(&b, " · %d %s", e.FailingBy[r], r)
 	}
 	b.WriteByte('\n')
 	if c := e.Faults; c != nil {

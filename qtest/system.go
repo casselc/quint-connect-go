@@ -40,7 +40,7 @@ func (s System) opts(more ...Option) []Option {
 }
 
 // Explore runs the system once per seed, each time with a seeded qenv
-// chooser (wrapped in a qenv.Recorder, so every run can be replayed) whose
+// chooser (wrapped in a qenv.ChoiceLog, so every run can be replayed) whose
 // context carries a fresh step recorder, then checks every run in one
 // batch (validate.Checker.CheckBatch, without ITF). It is how a simulated
 // system is explored like Maelstrom or Jepsen explore real ones: many
@@ -95,7 +95,7 @@ func (s System) FollowTraces(t testing.TB, trace connect.Config, faults connect.
 // checking its expectation there. The system's Run reads the row from its
 // chooser (RowOf) and configures itself from it: one Run for every
 // workflow. A row's FaultKind factors that are off are off in the chooser.
-func (s System) Sweep(t *testing.T, sw Sweep) *Swept {
+func (s System) Sweep(t *testing.T, sw SweepConfig) *SweepResult {
 	t.Helper()
 	sw.Explore.Opts = s.opts(sw.Explore.Opts...)
 	return sweep(t, s.Binding, sw, s.Run)

@@ -400,7 +400,16 @@ recorder opt-in.
 - **W5. One name per concept.** The reviews' tables: `qload.System` →
   `Target`, `qenv.Recorder` → `ChoiceLog`, `qenv.Faults` → `DeclareFaults`,
   `Chain.Expect` → `Mean`, Evidence the one coverage accessor, recovery
-  and trigger claims by name, and the rest.
+  and trigger claims by name, and the rest. Done: also `qload.Config` → `SimConfig`,
+  `qenv.Profile` → `TimeProfile`, `DeclareFault` → `DeclareFaultSite`,
+  `qenv.Tx` unexported, `qrun.In` → `InContext`, quinthegel's `Recorder`
+  → `Case`, `Chooser` → `Choices`, `EnvChooser` → `ChoiceSource`,
+  `Replay` → `VaryTraces`, `qtest.Sweep`/`Swept` → `SweepConfig`/
+  `SweepResult`, `Evidence.Failing` → `FailingBy`; claims
+  `qload.Recovered`/`StaysDegraded`, `SomeTrigger`/`NoTrigger`;
+  `QUINTGO_BACKEND` gone (validate read only it, so CI's typescript step
+  never reached validate). `qenv.Current` stays: unlike `qrun.Current` it
+  is a simulation task's context only, which woven sync needs.
 - **W6. The `fault.` prefix out** of everything users type or read; it
   stays in the Chooser protocol.
 - **W7. Crashes per virtual time, CrashWindow on**, by default on every

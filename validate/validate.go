@@ -24,7 +24,7 @@ import (
 // Options configures a validation run.
 type Options struct {
 	Quint   string // quint binary; default "quint"
-	Backend string // quint test --backend; default $QUINTGO_BACKEND, else "rust"
+	Backend string // quint test --backend; default $QUINT_BACKEND, else "rust"
 	Dir     string // where generated modules and ITF go; default a temp dir
 	// NoITF skips writing the ITF of conforming runs (Result.ITF stays
 	// empty). The ITF holds the model's full state at every step, which for
@@ -132,7 +132,7 @@ func (opt Options) resolve() (Options, error) {
 		opt.Quint = "quint"
 	}
 	if opt.Backend == "" {
-		opt.Backend = os.Getenv("QUINTGO_BACKEND")
+		opt.Backend = os.Getenv("QUINT_BACKEND")
 	}
 	if opt.Backend == "" {
 		opt.Backend = "rust"

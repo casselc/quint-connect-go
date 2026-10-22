@@ -79,7 +79,7 @@ It is not a bug under PostgreSQL's default, READ COMMITTED.
   more than one way.
 - **Hegel cost.** A run makes about 850 choices. Drawing each one from
   Hegel put most of a shrinking test's 300 s into Hegel calls.
-  `quinthegel.Chooser` now draws entropy in 512-byte chunks, where a zero byte is
+  `quinthegel.Choices` now draws entropy in 512-byte chunks, where a zero byte is
   the nominal option. Hegel shrinks the bytes toward zeros, which means
   fewer faults and the canonical schedule. The same test takes 16 s.
 

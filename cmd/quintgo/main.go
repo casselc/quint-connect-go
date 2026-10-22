@@ -341,7 +341,7 @@ func runValidate(args []string) (int, error) {
 	fset := flag.NewFlagSet("validate", flag.ExitOnError)
 	bpath := fset.String("binding", "", "binding file (optional for ITF written by quintgo)")
 	dir := fset.String("dir", "", "where to write generated modules and ITF (default: a temp dir)")
-	backend := fset.String("backend", "", "quint test backend (default $QUINTGO_BACKEND or rust)")
+	backend := fset.String("backend", "", "quint test backend (default $QUINT_BACKEND or rust)")
 	quint := fset.String("quint", "quint", "quint binary")
 	format := fset.String("format", "auto", "input format: auto, otlp, steps (native step log) or itf")
 	spec := fset.String("spec", "", "ITF input: the model, if neither the trace nor a binding names it")

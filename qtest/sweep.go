@@ -8,13 +8,13 @@ import (
 	"github.com/casselc/quint-connect-go/qsweep"
 )
 
-// A Sweep explores a parameter space by covering rows (qsweep.Cover):
+// A SweepConfig explores a parameter space by covering rows (qsweep.Cover):
 // every combination of Strength factors' values (default 2, pairwise) is
 // in some row, each row explored with its own seeds. Make fault kinds
 // factors (qsweep.Bool, then qenv.Without for the kinds a row turns off)
 // and the sweep is swarm testing with a guarantee: every pair of kinds
 // runs together, and alone, with no other kind masking it.
-type Sweep struct {
+type SweepConfig struct {
 	Factors  []qsweep.Factor
 	Strength int
 	// Allow rules rows out (nil: all allowed); combinations only ruled-out
@@ -31,14 +31,14 @@ type Sweep struct {
 	Expect func(qsweep.Row) []Claim
 }
 
-// Swept is a sweep's rows and their explorations.
-type Swept struct {
+// SweepResult is a sweep's rows and their explorations.
+type SweepResult struct {
 	Rows []qsweep.Row
 	Runs []*Exploration
 }
 
-// Coverage is the fault coverage over every row's runs.
-func (s *Swept) Coverage() *qenv.Coverage {
+// faultCoverage is the fault coverage over every row's runs.
+func (s *SweepResult) faultCoverage() *qenv.Coverage {
 	var runs [][]qenv.Choice
 	for _, x := range s.Runs {
 		for _, r := range x.Runs {
@@ -53,9 +53,9 @@ var rowKey = qrun.NewKey[qsweep.Row]("sweep.row")
 // RowOf is the sweep row a run's chooser was made for (System.Sweep): a
 // System's Run configures itself from it (sizes, mutations); the row's
 // fault kinds that are off are off in the chooser already.
-func RowOf(c qenv.Chooser) (qsweep.Row, bool) { return qrun.In(qenv.ContextOf(c), rowKey) }
+func RowOf(c qenv.Chooser) (qsweep.Row, bool) { return qrun.InContext(qenv.ContextOf(c), rowKey) }
 
-func sweep(t *testing.T, bindingPath string, sw Sweep, scenario func(c qenv.Chooser) error) *Swept {
+func sweep(t *testing.T, bindingPath string, sw SweepConfig, scenario func(c qenv.Chooser) error) *SweepResult {
 	t.Helper()
 	strength := sw.Strength
 	if strength == 0 {
@@ -65,7 +65,7 @@ func sweep(t *testing.T, bindingPath string, sw Sweep, scenario func(c qenv.Choo
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := &Swept{Rows: rows, Runs: make([]*Exploration, len(rows))}
+	s := &SweepResult{Rows: rows, Runs: make([]*Exploration, len(rows))}
 	t.Logf("qtest: %d rows cover every %d-way combination of %d factors", len(rows), strength, len(sw.Factors))
 	for i, row := range rows {
 		t.Run(row.String(), func(t *testing.T) {

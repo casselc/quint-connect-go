@@ -169,7 +169,7 @@ type nemesisChooser interface{ ChooseNemesis(enabled []string) int }
 func nemesisOf(c Chooser) func(enabled []string) int {
 	for c != nil {
 		switch x := c.(type) {
-		case *Recorder: // records the choice it passes on
+		case *ChoiceLog: // records the choice it passes on
 			by := nemesisOf(x.C)
 			if by == nil {
 				return nil

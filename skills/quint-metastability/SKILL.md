@@ -45,7 +45,7 @@ c.SVG(w, 10, 12)                                     // the field: where the dyn
 ## 2. Confirm: the simulation (`qload`)
 
 ```go
-cfg := qload.Config{
+cfg := qload.SimConfig{
 	Server: qload.ServerConfig{Name: "api", Workers: 4, ServiceRate: 5, QueueCap: 100},
 	Client: qload.ClientConfig{Name: "c", Rate: qload.Constant(9), Timeout: 9 * time.Second, Retries: 3,
 		Retrier: func(rnd *rand.Rand) qload.Retrier { return myPolicy(rnd) }}, // the library under test
@@ -79,12 +79,12 @@ application into an Experiment.
 ```go
 sys := qload.OfSimulation(cfg, base, 5*time.Minute) // or qload.Of(experiment, goodput, within)
 r := quinthegel.FindTrigger(t, sys, qload.TriggerSpace{MaxExtraRate: 10, MaxSlowdown: 4,
-	MaxDuration: 5 * time.Minute, Start: 10 * time.Minute}, hegel.WithTestCases(30)).Expect(t, true)
+	MaxDuration: 5 * time.Minute, Start: 10 * time.Minute}, hegel.WithTestCases(30)).Expect(t, qload.SomeTrigger())
 // r.Trigger is shrunk toward none
 ```
 
-`Expect(t, true)` for a design that should be shown fragile,
-`Expect(t, false)` for the mitigation (no trigger in the space breaks it). If it returns the empty trigger, the system
+`Expect(t, qload.SomeTrigger())` for a design that should be shown fragile,
+`Expect(t, qload.NoTrigger())` for the mitigation (no trigger in the space breaks it). If it returns the empty trigger, the system
 collapses on noise alone: look for a design bound, such as more
 concurrency than capacity × timeout. Each case runs `Seeds` (default 3)
 simulations, so keep it out of `-short`.

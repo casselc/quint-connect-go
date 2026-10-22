@@ -39,15 +39,15 @@ func Traces(t testing.TB, c connect.Config) []*itf.Trace {
 
 var traceCache sync.Map
 
-// ReplayOptions configure Replay.
-type ReplayOptions struct {
+// VaryOptions configure Replay.
+type VaryOptions struct {
 	connect.ReplayOptions
 	// Prefix lets Hegel choose how many steps of the trace to replay, so a
 	// failure shrinks to the shortest failing prefix as well.
 	Prefix bool
 }
 
-// Replay is one Hegel test case of model-driven testing: Hegel draws one of
+// VaryTraces is one Hegel test case of model-driven testing: Hegel draws one of
 // traces (and, with Prefix, a prefix of it), and the trace is replayed on
 // the driver newDriver returns. newDriver gets the test case, so handlers
 // can hegel.Draw the concrete details the model leaves abstract; Hegel then
@@ -56,9 +56,9 @@ type ReplayOptions struct {
 //
 //	traces := quinthegel.Traces(t, connect.Config{Spec: "bank.qnt", MaxSamples: 50, MaxSteps: 20})
 //	hegel.Test(t, func(ht *hegel.T) {
-//		quinthegel.Replay(ht, traces, func(tc hegel.TestCase) connect.Driver { return newDriver(tc) }, quinthegel.ReplayOptions{Prefix: true})
+//		quinthegel.VaryTraces(ht, traces, func(tc hegel.TestCase) connect.Driver { return newDriver(tc) }, quinthegel.VaryOptions{Prefix: true})
 //	})
-func Replay(tc hegel.TestCase, traces []*itf.Trace, newDriver func(tc hegel.TestCase) connect.Driver, opt ReplayOptions) {
+func VaryTraces(tc hegel.TestCase, traces []*itf.Trace, newDriver func(tc hegel.TestCase) connect.Driver, opt VaryOptions) {
 	if len(traces) == 0 {
 		tc.Errorf("quinthegel: no traces to replay")
 	}

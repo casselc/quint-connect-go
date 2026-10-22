@@ -104,7 +104,7 @@ func TestNoDedupeSweep(t *testing.T) {
 		_, err := grpcledger.Run(c, grpcledger.Config{Mutation: ledger.NoDedupe, NoCrashes: !row.On("crash")})
 		return err
 	}}
-	sw := sys.Sweep(t, qtest.Sweep{Factors: space,
+	sw := sys.Sweep(t, qtest.SweepConfig{Factors: space,
 		Explore: qtest.ExploreConfig{Seeds: 30, Rates: qenv.Rates{Default: 0.1, Kinds: map[string]float64{"fault.nemesis": 0.02}}},
 		Expect: func(row qsweep.Row) []qtest.Claim {
 			if row.On("rpc.ledger.request") || row.On("rpc.ledger.response") {
@@ -124,7 +124,7 @@ func TestShrinkDoubleApply(t *testing.T) {
 	}
 	v := quinthegel.Shrink(t, system(grpcledger.Config{Mutation: ledger.NoDedupe}), crashy, hegel.WithTestCases(200))
 	v.Expect(t, reapplied)
-	t.Logf("shrunk: %d steps, faults %v\n%s", len(v.Steps), (&qenv.Recorder{Choices: v.Choices}).Faults(), v.Summary)
+	t.Logf("shrunk: %d steps, faults %v\n%s", len(v.Steps), (&qenv.ChoiceLog{Choices: v.Choices}).Faults(), v.Summary)
 }
 
 // A server that dies after committing a transfer and before answering:

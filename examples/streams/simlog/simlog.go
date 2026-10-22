@@ -36,9 +36,9 @@ import (
 )
 
 var (
-	produceFault = qenv.Faults("log.produce", "lost", "lostAck")
-	commitFault  = qenv.Faults("log.commit", "lost", "lostAck")
-	fetchFault   = qenv.Faults("log.fetch", "rewind")
+	produceFault = qenv.DeclareFaults("log.produce", "lost", "lostAck")
+	commitFault  = qenv.DeclareFaults("log.commit", "lost", "lostAck")
+	fetchFault   = qenv.DeclareFaults("log.fetch", "rewind")
 )
 
 var (

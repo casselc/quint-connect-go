@@ -66,13 +66,13 @@ func TestFindTrigger(t *testing.T) {
 	}
 	space := qload.TriggerSpace{MaxExtraRate: 10, MaxDuration: 5 * time.Minute}
 	for _, c := range []struct {
-		p     Policy
-		lam   float64
-		found bool
-	}{{Policies[0], 9, true}, {Policies[1], 8, true}, {Policies[2], 9, false}, {Policies[3], 9, false}} {
+		p    Policy
+		lam  float64
+		want qload.TriggerClaim
+	}{{Policies[0], 9, qload.SomeTrigger()}, {Policies[1], 8, qload.SomeTrigger()}, {Policies[2], 9, qload.NoTrigger()}, {Policies[3], 9, qload.NoTrigger()}} {
 		t.Run(c.p.Name, func(t *testing.T) {
 			sys := qload.OfSimulation(c.p.Config(c.lam), c.lam, 5*time.Minute)
-			quinthegel.FindTrigger(t, sys, space, hegel.WithTestCases(30), hegel.WithSeed(1)).Expect(t, c.found)
+			quinthegel.FindTrigger(t, sys, space, hegel.WithTestCases(30), hegel.WithSeed(1)).Expect(t, c.want)
 		})
 	}
 }

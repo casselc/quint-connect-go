@@ -118,14 +118,14 @@ func TestIsolationAnomalies(t *testing.T) {
 func TestDeterministicAndReplayable(t *testing.T) {
 	var runs [][]qenv.Choice
 	for i := 0; i < 2; i++ {
-		rec := &qenv.Recorder{C: qenv.NewSeeded(42)}
+		rec := &qenv.ChoiceLog{C: qenv.NewSeeded(42)}
 		run(t, rec, qenv.ReadCommitted, func(s *qenv.Sim, st *qenv.Store) { increments(s, st, false) })
 		runs = append(runs, rec.Choices)
 	}
 	if fmt.Sprint(runs[0]) != fmt.Sprint(runs[1]) {
 		t.Fatalf("same seed, different choices:\n%v\n%v", runs[0], runs[1])
 	}
-	rec := &qenv.Recorder{C: qenv.Replay(runs[0])}
+	rec := &qenv.ChoiceLog{C: qenv.Replay(runs[0])}
 	run(t, rec, qenv.ReadCommitted, func(s *qenv.Sim, st *qenv.Store) { increments(s, st, false) })
 	if fmt.Sprint(rec.Choices) != fmt.Sprint(runs[0]) {
 		t.Fatalf("replay differs:\n%v\n%v", rec.Choices, runs[0])
@@ -201,7 +201,7 @@ func (f *forced) Choose(kind string, n int) int { return f.faults[kind] }
 func TestHegelFindsLostUpdate(t *testing.T) {
 	check := func(forUpdate bool) error {
 		return hegel.Run(func(tc hegel.TestCase) {
-			st := run(t, quinthegel.Chooser(tc), qenv.ReadCommitted, func(s *qenv.Sim, st *qenv.Store) { increments(s, st, forUpdate) })
+			st := run(t, quinthegel.Choices(tc), qenv.ReadCommitted, func(s *qenv.Sim, st *qenv.Store) { increments(s, st, forUpdate) })
 			if lostUpdate(st) {
 				tc.Errorf("lost update")
 			}
@@ -422,7 +422,7 @@ func TestSchedulerSemantics(t *testing.T) {
 					d: time.Duration(hegel.Draw(ht, hegel.Integers(0, 5))) * time.Second})
 			}
 		}
-		rec := &qenv.Recorder{C: quinthegel.Chooser(ht)}
+		rec := &qenv.ChoiceLog{C: quinthegel.Choices(ht)}
 		got, notifies := run(rec, progs)
 		for _, prog := range got {
 			for _, o := range prog {

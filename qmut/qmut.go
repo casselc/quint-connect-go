@@ -82,7 +82,7 @@ func WithReach(ctx context.Context, r *Reach) context.Context { return qrun.With
 // notes that its code was reached.
 func On(id int) bool {
 	rc, _ := qrun.Current()
-	if r, ok := qrun.In(rc, reach); ok && r != nil {
+	if r, ok := qrun.InContext(rc, reach); ok && r != nil {
 		r.mu.Lock()
 		if r.ids == nil {
 			r.ids = map[int]bool{}
@@ -90,7 +90,7 @@ func On(id int) bool {
 		r.ids[id] = true
 		r.mu.Unlock()
 	}
-	v, _ := qrun.In(rc, active)
+	v, _ := qrun.InContext(rc, active)
 	return v == id+1
 }
 

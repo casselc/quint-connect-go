@@ -73,7 +73,7 @@ func TestFaultScriptDrivesProgram(t *testing.T) {
 	qtest.RequireQuint(t)
 	x := journalSystem(false).FollowTraces(t, journalTraces, journalFaults)
 	x.Expect(t, qtest.Conforms())
-	cov := x.Coverage()
+	cov := x.Evidence().Faults
 	if w, r := cov.Point("journal.write"), cov.Point("nemesis"); w == nil || w.Faulted() == 0 || r == nil || r.Faulted() == 0 {
 		t.Fatalf("the traces lack a failed write or a restart:\n%s", cov)
 	}

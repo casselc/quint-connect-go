@@ -91,8 +91,8 @@ func TestHegelShrinksNoRotationLock(t *testing.T) {
 	if testing.Short() {
 		t.Skip("shrinking against the model")
 	}
-	v := quinthegel.FindViolation(t, quinthegel.Config{Binding: binding}, func(tc hegel.TestCase, rec *quinthegel.Recorder) {
-		c := rec.Env(quinthegel.Chooser(tc))
+	v := quinthegel.FindViolation(t, quinthegel.Config{Binding: binding}, func(tc hegel.TestCase, rec *quinthegel.Case) {
+		c := rec.Env(quinthegel.Choices(tc))
 		if err := sim.Run(c, sim.Config{Mutation: publisher.NoRotationLock, NoCrashes: true, NoAmbiguous: true, Requests: 4}); err != nil {
 			tc.Errorf("%v", err)
 		}

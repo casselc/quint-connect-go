@@ -86,7 +86,7 @@ func As[T any](c Chooser) (T, bool) {
 func (c ctxChooser) Unwrap() Chooser { return c.Chooser }
 
 // Unwrap implements Wrapper.
-func (r *Recorder) Unwrap() Chooser { return r.C }
+func (r *ChoiceLog) Unwrap() Chooser { return r.C }
 
 // Unwrap implements Wrapper.
 func (s *swarm) Unwrap() Chooser { return s.c }
@@ -140,7 +140,7 @@ type Entropy interface {
 func EntropyOf(c Chooser) func(n int) []byte {
 	for c != nil {
 		switch x := c.(type) {
-		case *Recorder: // records the chunks it passes on
+		case *ChoiceLog: // records the chunks it passes on
 			e := EntropyOf(x.C)
 			if e == nil {
 				return nil
@@ -249,8 +249,8 @@ func (s *Seeded) Entropy(n int) []byte {
 	return b
 }
 
-// Recorder records the choices of the Chooser it wraps, to replay a run.
-type Recorder struct {
+// ChoiceLog records the choices of the Chooser it wraps, to replay a run.
+type ChoiceLog struct {
 	C       Chooser
 	Choices []Choice
 
@@ -258,7 +258,7 @@ type Recorder struct {
 }
 
 // Choose implements Chooser.
-func (r *Recorder) Choose(kind string, n int) int {
+func (r *ChoiceLog) Choose(kind string, n int) int {
 	v := r.C.Choose(kind, n)
 	c := Choice{Kind: kind, N: n, Value: v, Step: r.progress()}
 	if IsFault(kind) && v > 0 {
@@ -270,7 +270,7 @@ func (r *Recorder) Choose(kind string, n int) int {
 
 // Name names the last choice recorded (the nemesis the simulation chose:
 // its options are the nemeses enabled then, which no declaration names).
-func (r *Recorder) Name(name string) {
+func (r *ChoiceLog) Name(name string) {
 	if len(r.Choices) > 0 {
 		r.Choices[len(r.Choices)-1].Name = name
 	}
@@ -278,7 +278,7 @@ func (r *Recorder) Name(name string) {
 
 // progress is the run's step count: its recorder is the one the calling
 // goroutine's run records into (qrun), the same for every choice of a run.
-func (r *Recorder) progress() int {
+func (r *ChoiceLog) progress() int {
 	if r.steps == nil {
 		r.steps = qobs.From(nil)
 	}
@@ -289,7 +289,7 @@ func (r *Recorder) progress() int {
 }
 
 // Faults returns the recorded fault choices that were not nominal.
-func (r *Recorder) Faults() []Choice {
+func (r *ChoiceLog) Faults() []Choice {
 	var out []Choice
 	for _, c := range r.Choices {
 		if IsFault(c.Kind) && c.Value != 0 {

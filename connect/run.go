@@ -58,7 +58,7 @@ type Config struct {
 //	QUINT_VERBOSE      Verbose
 //	QUINT_MAX_SAMPLES  MaxSamples
 //	QUINT_MAX_STEPS    MaxSteps
-//	QUINT_BACKEND      Backend (also QUINTGO_BACKEND)
+//	QUINT_BACKEND      Backend
 //	QUINT_BIN          Quint
 func (c Config) FromEnv() Config {
 	if c.Seed == "" {
@@ -76,9 +76,6 @@ func (c Config) FromEnv() Config {
 	envInt(&c.MaxSteps, "QUINT_MAX_STEPS")
 	if c.Backend == "" {
 		c.Backend = os.Getenv("QUINT_BACKEND")
-	}
-	if c.Backend == "" {
-		c.Backend = os.Getenv("QUINTGO_BACKEND")
 	}
 	if c.Quint == "" {
 		c.Quint = os.Getenv("QUINT_BIN")

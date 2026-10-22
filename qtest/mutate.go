@@ -30,7 +30,7 @@ type MutationReport struct {
 // Evidence is the baseline's evidence with the mutants' verdicts: the
 // report a mutation run leaves.
 func (r *MutationReport) Evidence() *Evidence {
-	e := &Evidence{Failing: map[string]int{}}
+	e := &Evidence{FailingBy: map[string]int{}}
 	if r.Baseline != nil {
 		e = r.Baseline.Evidence()
 	}

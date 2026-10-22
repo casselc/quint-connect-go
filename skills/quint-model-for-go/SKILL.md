@@ -121,7 +121,7 @@ quintgo scaffold -spec model.qnt -module M                  # binding skeleton; 
 ```
 
 Backends: `--backend rust` (default, fast) or `--backend typescript`.
-quint-connect-go reads `QUINT_BACKEND` (or `QUINTGO_BACKEND`).
+quint-connect-go reads `QUINT_BACKEND`.
 
 ## Common errors
 

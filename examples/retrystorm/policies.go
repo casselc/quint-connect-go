@@ -60,11 +60,11 @@ func (p Policy) New(rnd *rand.Rand, m retry.Mutation) *retry.Policy {
 
 // Config is the simulated system with clients using the policy at rate
 // lambda.
-func (p Policy) Config(lambda float64) qload.Config { return p.ConfigWith(lambda, retry.Faithful) }
+func (p Policy) Config(lambda float64) qload.SimConfig { return p.ConfigWith(lambda, retry.Faithful) }
 
 // ConfigWith is Config with a mutated budget.
-func (p Policy) ConfigWith(lambda float64, m retry.Mutation) qload.Config {
-	return qload.Config{
+func (p Policy) ConfigWith(lambda float64, m retry.Mutation) qload.SimConfig {
+	return qload.SimConfig{
 		Server: qload.ServerConfig{Name: "server", ServiceRate: ServiceRate, QueueCap: QueueCap},
 		Client: qload.ClientConfig{Name: "client", Rate: qload.Constant(lambda), Timeout: Timeout, Retries: MaxRetries,
 			Retrier: func(rnd *rand.Rand) qload.Retrier { return p.New(rnd, m) }},

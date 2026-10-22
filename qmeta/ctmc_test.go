@@ -30,8 +30,8 @@ func TestRecoveryTimes(t *testing.T) {
 	}
 }
 
-func sim(lambda float64) qload.Config {
-	return qload.Config{
+func sim(lambda float64) qload.SimConfig {
+	return qload.SimConfig{
 		Server: qload.ServerConfig{Name: "server", ServiceRate: 10, QueueCap: 100},
 		Client: qload.ClientConfig{Name: "client", Rate: qload.Constant(lambda), Timeout: 9 * time.Second, Retries: 3},
 	}
@@ -78,8 +78,8 @@ func TestFindTrigger(t *testing.T) {
 		t.Logf("%.1f req/s, no trigger: recovers in most runs: %v", base, ok)
 	}
 	t0 := time.Now()
-	quinthegel.FindTrigger(t, qload.OfSimulation(sim(9.5), 9.5, 300*time.Second), space, hegel.WithTestCases(40), hegel.WithSeed(1)).Expect(t, true)
+	quinthegel.FindTrigger(t, qload.OfSimulation(sim(9.5), 9.5, 300*time.Second), space, hegel.WithTestCases(40), hegel.WithSeed(1)).Expect(t, qload.SomeTrigger())
 	t.Logf("searched in %v", time.Since(t0))
 	// at 8 req/s the system always recovers
-	quinthegel.FindTrigger(t, qload.OfSimulation(sim(8), 8, 15*time.Minute), space, hegel.WithTestCases(30), hegel.WithSeed(1)).Expect(t, false)
+	quinthegel.FindTrigger(t, qload.OfSimulation(sim(8), 8, 15*time.Minute), space, hegel.WithTestCases(30), hegel.WithSeed(1)).Expect(t, qload.NoTrigger())
 }

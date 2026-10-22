@@ -67,7 +67,7 @@ type call struct {
 // own that never crashes).
 func NewServer(s *qenv.Sim, name string, p *qenv.Process) *Server {
 	srv := &Server{Name: name, sim: s, methods: map[string]method{},
-		conn: qenv.Faults("grpc."+name+".conn", "unavailable")}
+		conn: qenv.DeclareFaults("grpc."+name+".conn", "unavailable")}
 	srv.svc = qenv.NewService(s, name, p, srv.handle)
 	return srv
 }

@@ -33,7 +33,7 @@ import (
 // settings are what the Options set, for every workflow (Record, Validate,
 // a System's).
 type settings struct {
-	Options     validate.Options // quint binary, backend (default $QUINTGO_BACKEND, else rust)
+	Options     validate.Options // quint binary, backend (default $QUINT_BACKEND, else rust)
 	Dir         string           // artifacts; default $QUINTGO_KEEP/<test> or t.TempDir()
 	Recorder    []qobs.Option    // e.g. qobs.WithActor("acct-1")
 	SkipIfEmpty bool             // skip (not fail) when nothing was recorded, e.g. an unwoven build
@@ -137,7 +137,7 @@ type Run struct {
 }
 
 // Faults are the run's fault choices that were not nominal.
-func (r *Run) Faults() []qenv.Choice { return (&qenv.Recorder{Choices: r.Choices}).Faults() }
+func (r *Run) Faults() []qenv.Choice { return (&qenv.ChoiceLog{Choices: r.Choices}).Faults() }
 
 // OK reports whether every actor conformed and satisfied the invariants.
 func (r *Run) OK() bool { return r.Report != nil && r.Report.OK() }

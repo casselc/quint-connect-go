@@ -59,8 +59,8 @@ func TestHegelShrinksInMemoryProgress(t *testing.T) {
 	if testing.Short() {
 		t.Skip("shrinking against the model")
 	}
-	quinthegel.FindViolation(t, quinthegel.Config{Binding: binding, Opts: []qtest.Option{qtest.Global()}}, func(tc hegel.TestCase, _ *quinthegel.Recorder) {
-		c := quinthegel.Chooser(tc)
+	quinthegel.FindViolation(t, quinthegel.Config{Binding: binding, Opts: []qtest.Option{qtest.Global()}}, func(tc hegel.TestCase, _ *quinthegel.Case) {
+		c := quinthegel.Choices(tc)
 		c.Rates.Kinds = map[string]float64{"fault.nemesis": 0.05}
 		if _, err := fleetrollout.Run(c, fleetrollout.Config{Mutation: rollout.InMemoryProgress}); err != nil {
 			tc.Errorf("%v", err)

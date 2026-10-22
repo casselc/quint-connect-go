@@ -24,7 +24,7 @@ type Factor struct {
 	Values []string
 	// Model, if set, is the model constant the factor's value is (a Quint
 	// expression: an integer, a quoted string): a row's runs are checked
-	// against the model with it (qtest.Sweep), so a size given to the
+	// against the model with it (qtest.SweepConfig), so a size given to the
 	// system and to the model is written once and cannot disagree.
 	Model string
 	// Fault, if set, makes the factor a fault kind's switch (FaultKind):

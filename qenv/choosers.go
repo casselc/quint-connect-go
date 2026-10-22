@@ -46,8 +46,8 @@ type (
 	// fault choices at their Rates.
 	Seeded = choice.Seeded
 
-	// Recorder records the choices of the Chooser it wraps, to replay a run.
-	Recorder = choice.Recorder
+	// ChoiceLog records the choices of the Chooser it wraps, to replay a run.
+	ChoiceLog = choice.ChoiceLog
 
 	// Bytes makes choices from a stream of bytes, by one rule shared by every
 	// byte-driven chooser (Hegel's, Go fuzzing's, a corpus entry):
@@ -68,18 +68,18 @@ type (
 	// (Err), which an exploration reports as the run's error.
 	Replayer = choice.Replayer
 
-	// A Profile is where a simulation's virtual time goes: each wait at a seam
+	// A TimeProfile is where a simulation's virtual time goes: each wait at a seam
 	// (Sleep, Wait, a Signal, a call's response, a lock) is a sample with its
 	// stack, weighted by the virtual time the task stayed there. A CPU profile
 	// of a simulation shows the scheduler; this shows the system's latency:
-	// which call a storm's requests wait on, and from where. Set Sim.Profile
+	// which call a storm's requests wait on, and from where. Set Sim.TimeProfile
 	// before Run; write it with WriteTo and read it with `go tool pprof`. It
 	// is kept by qenv's own scheduler (qenv.New), not the native runtime's.
-	Profile = profile.Profile
+	TimeProfile = profile.Profile
 )
 
-// NewProfile is profile.New.
-func NewProfile() *Profile { return profile.New() }
+// NewTimeProfile returns an empty profile, for Sim.Profile.
+func NewTimeProfile() *TimeProfile { return profile.New() }
 
 var (
 	// DefaultRates inject a fault at one fault choice in twenty, except a

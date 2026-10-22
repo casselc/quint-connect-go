@@ -30,7 +30,7 @@ type SimClient struct {
 }
 
 // throttle is the cloud refusing a request for its rate limit.
-var throttle = qenv.Faults("dbaas.throttle", "throttled")
+var throttle = qenv.DeclareFaults("dbaas.throttle", "throttled")
 
 // NewSim serves cloud in s, on the virtual clock, and returns its client.
 func NewSim(s *qenv.Sim, cloud *Cloud) *SimClient {

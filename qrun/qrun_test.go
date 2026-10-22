@@ -29,7 +29,7 @@ func TestGet(t *testing.T) {
 		if v, _ := qrun.Get(qrun.With(context.TODO(), name, "mine"), name); v != "mine" {
 			t.Errorf("the context first: %q", v)
 		}
-		if task, ok := qrun.In(ctx, qrun.Task); !ok || task == nil {
+		if task, ok := qrun.InContext(ctx, qrun.Task); !ok || task == nil {
 			t.Error("a task's context names its task")
 		}
 	})

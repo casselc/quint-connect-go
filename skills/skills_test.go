@@ -90,6 +90,17 @@ func TestSkillsAvoidDeprecated(t *testing.T) {
 		{"Explored", "qtest.Run"},
 		{"qtest.Expect(", "Run.Expect (qtest.Validate(...).Expect)"},
 		{"DurableFileSink", "qobs.FileSink (durable)"},
+		{"qenv.Recorder", "qenv.ChoiceLog"},
+		{"quinthegel.Recorder", "quinthegel.Case"},
+		{"quinthegel.Chooser", "quinthegel.Choices"},
+		{"quinthegel.Replay", "quinthegel.VaryTraces"},
+		{"qenv.Faults(", "qenv.DeclareFaults("},
+		{"qload.System", "qload.Target"},
+		{"Chain.Expect", "Chain.Mean"},
+		{".Expect(t, true)", "a named claim (qload.SomeTrigger, qload.Recovered)"},
+		{".Expect(t, false)", "a named claim (qload.NoTrigger, qload.StaysDegraded)"},
+		{"x.Coverage()", "x.Evidence().Faults"},
+		{"x.CodeCoverage()", "x.Evidence().Code"},
 		{"step [", `"step N" (reports number steps from 1)`},
 	}
 	_ = fs.WalkDir(FS(), ".", func(p string, d fs.DirEntry, err error) error {

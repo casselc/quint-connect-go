@@ -61,7 +61,7 @@ func TestHegelBudgetConforms(t *testing.T) {
 	qtest.RequireQuint(t)
 	cfg := hegelCfg()
 	cfg.Mode = quinthegel.After
-	quinthegel.Test(t, cfg, func(ht *hegel.T, _ *quinthegel.Recorder) {
+	quinthegel.Test(t, cfg, func(ht *hegel.T, _ *quinthegel.Case) {
 		hegel.RunStateful(ht, &machine{b: budget(retry.Faithful)}, hegel.WithStatefulStepCount(6))
 	}, hegel.WithTestCases(20), hegel.WithDatabase(""))
 }
@@ -73,7 +73,7 @@ func TestHegelCatchesUncapped(t *testing.T) {
 	if testing.Short() {
 		t.Skip("shrinking against the model runs quint ~100 times")
 	}
-	v := quinthegel.FindViolation(t, hegelCfg(), func(tc hegel.TestCase, _ *quinthegel.Recorder) {
+	v := quinthegel.FindViolation(t, hegelCfg(), func(tc hegel.TestCase, _ *quinthegel.Case) {
 		hegel.RunStateful(tc, &machine{b: budget(retry.Uncapped)}, hegel.WithStatefulStepCount(6))
 	}, hegel.WithTestCases(50))
 	if last := v.Last(); last.Action != "request" {

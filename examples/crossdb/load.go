@@ -80,8 +80,8 @@ const retries = 50
 func (c ControlPlane) Lambda() float64 { return float64(c.Resources) / c.PollInterval.Seconds() }
 
 // Config is the control plane as a qload system.
-func (c ControlPlane) Config() qload.Config {
-	return qload.Config{
+func (c ControlPlane) Config() qload.SimConfig {
+	return qload.SimConfig{
 		Server: qload.ServerConfig{Name: "dbaas", Workers: c.Workers, ServiceRate: c.Rate, QueueCap: c.Queue},
 		Client: qload.ClientConfig{Name: "provider", Population: c.Resources, Think: c.PollInterval, Timeout: c.Timeout, Retries: retries,
 			Retrier: func(*rand.Rand) qload.Retrier { return newRequeuer(c.Requeue) }},

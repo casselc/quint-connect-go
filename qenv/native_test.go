@@ -154,7 +154,7 @@ func TestContextOf(t *testing.T) {
 // Entropy reaches through the wrappers: a Recorder records each chunk and
 // Replay hands the same chunks back, between the ordinary choices.
 func TestEntropyRecordsAndReplays(t *testing.T) {
-	rec := &qenv.Recorder{C: qenv.NewSeeded(5)}
+	rec := &qenv.ChoiceLog{C: qenv.NewSeeded(5)}
 	c := qenv.WithContext(rec, context.Background())
 	e := qenv.EntropyOf(c)
 	if e == nil {

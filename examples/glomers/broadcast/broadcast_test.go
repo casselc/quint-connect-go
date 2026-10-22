@@ -114,7 +114,7 @@ func scenario(tc hegel.TestCase, mut Mutation, steps int) {
 func TestHegelSchedulesConverge(t *testing.T) {
 	qtest.RequireQuint(t)
 	quinthegel.Test(t, quinthegel.Config{Binding: "broadcast.binding.yaml", Mode: quinthegel.Batched, Opts: []qtest.Option{qtest.Global()}, Rounds: 2},
-		func(ht *hegel.T, _ *quinthegel.Recorder) { scenario(ht, Faithful, 30) },
+		func(ht *hegel.T, _ *quinthegel.Case) { scenario(ht, Faithful, 30) },
 		hegel.WithTestCases(25), hegel.WithDatabase(""))
 }
 
@@ -125,7 +125,7 @@ func TestHegelShrinksNoRetry(t *testing.T) {
 	if testing.Short() {
 		t.Skip("shrinking against the model")
 	}
-	v := quinthegel.FindViolation(t, quinthegel.Config{Binding: "broadcast.binding.yaml", Opts: []qtest.Option{qtest.Global()}}, func(tc hegel.TestCase, _ *quinthegel.Recorder) {
+	v := quinthegel.FindViolation(t, quinthegel.Config{Binding: "broadcast.binding.yaml", Opts: []qtest.Option{qtest.Global()}}, func(tc hegel.TestCase, _ *quinthegel.Case) {
 		scenario(tc, NoRetry, 20)
 	}, hegel.WithTestCases(40), hegel.WithSeed(2))
 	v.Expect(t, qtest.Violates("convergedWhenSettled"))

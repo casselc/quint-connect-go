@@ -19,7 +19,7 @@ func fastCache(ctx context.Context)   { qenv.Sleep(ctx, 100*time.Millisecond) }
 // pprof reads it, and the slow call dominates.
 func TestProfileWeighsVirtualTime(t *testing.T) {
 	s := qenv.New(qenv.Nominal{})
-	s.Profile = qenv.NewProfile()
+	s.Profile = qenv.NewTimeProfile()
 	for i := 0; i < 3; i++ {
 		s.Spawn("client", func(ctx context.Context) {
 			fastCache(ctx)

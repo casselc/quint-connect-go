@@ -6,13 +6,13 @@
 #   steps.jsonl   native step log (no OTel)           -> reconstructed, replayed
 #   itf/*.json    model-level ITF, binding applied in-process -> replayed directly
 #   OUT=dir            where binaries, traces and generated modules go (default: a temp dir)
-#   QUINTGO_BACKEND    quint test backend: rust (default) or typescript
+#   QUINT_BACKEND      quint test backend: rust (default) or typescript
 #   VERBOSE=1          print the full reports, not just the verdicts
 set -uo pipefail
 cd "$(dirname "$0")"
 OUT=${OUT:-$(mktemp -d)}
 mkdir -p "$OUT"
-export QUINTGO_BACKEND=${QUINTGO_BACKEND:-rust}
+export QUINT_BACKEND=${QUINT_BACKEND:-rust}
 echo "# output in $OUT"
 (cd ../.. && go build -o "$OUT/quintgo" ./cmd/quintgo) || exit 2
 go run github.com/DataDog/orchestrion go build -o "$OUT/demo" ./cmd/demo || exit 2

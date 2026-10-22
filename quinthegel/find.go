@@ -18,7 +18,7 @@ import (
 // smallest failing test case and the model's verdict on them. Its Run is
 // an exploration's run's record: Report is its full verdict, for Expect
 // (checked once more, since cached verdicts keep only their summary), and
-// Choices, if it ran on Recorder.Env, replay it outside Hegel
+// Choices, if it ran on Case.Env, replay it outside Hegel
 // (qenv.Replay(v.Choices): a regression test, a run on gosim, a fuzz
 // seed).
 type Violation struct {
@@ -39,7 +39,7 @@ type Violation struct {
 // the shrunk run for the test to assert on:
 //
 //	v := quinthegel.FindViolation(t, quinthegel.Config{Binding: "bank.binding.yaml"},
-//		func(tc hegel.TestCase, rec *quinthegel.Recorder) {
+//		func(tc hegel.TestCase, rec *quinthegel.Case) {
 //			hegel.RunStateful(tc, &machine{bank: New(accounts, WithMutation(SelfTransfer))})
 //		}, hegel.WithTestCases(50), hegel.WithSeed(3))
 //
@@ -54,7 +54,7 @@ type Violation struct {
 // Hegel runs quiet, without the reproduction blob of the failure it is
 // expected to find (QUINTGO_VERBOSE=1 shows both); the shrunk run is
 // logged.
-func FindViolation(t testing.TB, cfg Config, body func(tc hegel.TestCase, rec *Recorder), opts ...hegel.Option) *Violation {
+func FindViolation(t testing.TB, cfg Config, body func(tc hegel.TestCase, rec *Case), opts ...hegel.Option) *Violation {
 	t.Helper()
 	set := qtest.Resolve(t, cfg.Opts...)
 	c := set.Checker(t, cfg.Binding)
@@ -172,9 +172,9 @@ func (v *Violation) Last() qtrace.Step {
 
 // Shrink runs Hegel against the system, expecting the model to reject
 // some test case, and shrinks it (FindViolation): every choice of the
-// system's environment is Hegel's (Chooser) at rates (zero rates:
+// system's environment is Hegel's (Choices) at rates (zero rates:
 // qenv.DefaultRates; give it the exploration's to shrink what it found),
-// recorded with the run's steps (Recorder.Env), so the shrunk Violation
+// recorded with the run's steps (Case.Env), so the shrunk Violation
 // replays outside Hegel. The system's Opts apply, as in its explorations.
 //
 //	quinthegel.Shrink(t, sys, rates, hegel.WithTestCases(50)).Expect(t, qtest.Rejects("ship"))
@@ -183,8 +183,8 @@ func Shrink(t testing.TB, sys qtest.System, rates qenv.Rates, opts ...hegel.Opti
 	if rates.Default == 0 && rates.Kinds == nil {
 		rates = qenv.DefaultRates
 	}
-	return FindViolation(t, Config{Binding: sys.Binding, Opts: sys.Opts}, func(tc hegel.TestCase, rec *Recorder) {
-		c := Chooser(tc)
+	return FindViolation(t, Config{Binding: sys.Binding, Opts: sys.Opts}, func(tc hegel.TestCase, rec *Case) {
+		c := Choices(tc)
 		c.Rates = rates
 		if err := sys.Run(rec.Env(c)); err != nil {
 			tc.Errorf("quinthegel: the system did not run: %v", err)

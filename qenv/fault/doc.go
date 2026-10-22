@@ -12,7 +12,7 @@
 // package) with zero values for the other results, and, with crash:true,
 // crashing the process there. A function with no error result can only
 // crash. Outside a simulation the call returns nil. Each woven function
-// also declares its point at init (qenv.DeclareFault), so
+// also declares its point at init (qenv.DeclareFaultSite), so
 // qenv.CoverageOf (qtest.Exploration.Coverage) names the points no run
 // reached.
 package fault

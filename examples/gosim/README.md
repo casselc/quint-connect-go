@@ -55,9 +55,9 @@ module of its own that runs on gosim's runtime. Hegel cannot run in there
 | test | chooser | mutation | expected verdict |
 |---|---|---|---|
 | `broadcast.TestSeededRunsConform` | `qenv.NewSeeded`, partitions at 30% | none | conforms, both invariants hold |
-| `broadcast.TestReplayIsDeterministic` | `qenv.Recorder`, then `qenv.Replay` | none | identical steps from the same ~5500 choices |
+| `broadcast.TestReplayIsDeterministic` | `qenv.ChoiceLog`, then `qenv.Replay` | none | identical steps from the same ~5500 choices |
 | `broadcast.TestReadOwnOnlyRejected` | `qenv.NewSeeded` | `ReadOwnOnly` | `qtest.Mismatch("read")` |
-| `broadcast.TestHegelFindsNoRetry` (not `-short`) | `quinthegel.Chooser` | `NoRetry` | `quinthegel.FindViolation`: `convergedWhenSettled`, shrunk to gossip lost to an isolated node |
+| `broadcast.TestHegelFindsNoRetry` (not `-short`) | `quinthegel.Choices` | `NoRetry` | `quinthegel.FindViolation`: `convergedWhenSettled`, shrunk to gossip lost to an isolated node |
 | `edgepublish.TestExploredRunsConformOnGosim` | `qtest.Explore`, crashes of the exporter's machine | none | conforms |
 | `edgepublish.TestInvariantsHoldWithoutAmbiguousWritesOnGosim` | `qtest.Explore` | none, no ambiguous writes | conforms, invariants hold |
 | `edgepublish.TestMutantsOnGosim` | `qtest.Explore`, no crashes | `ManifestBeforeTable` | `qtest.Rejects("writeManifest")` |
@@ -85,7 +85,7 @@ module of its own that runs on gosim's runtime. Hegel cannot run in there
   finds nothing under the mutant's per-attempt key, so the order stays
   paid. qenv's scheduler finds the double charge first.
 - The host hands the simulation entropy in 512-byte chunks, for every
-  choice but faults (`qenv.EntropyOf`), as `quinthegel.Chooser` draws it.
+  choice but faults (`qenv.EntropyOf`), as `quinthegel.Choices` draws it.
   A broadcast run takes 48 ms that way. One round trip per choice took
   438 ms, and gosim's own seed takes 60 ms. A Recorder records the
   chunks, so `qenv.Replay` still repeats a run exactly.

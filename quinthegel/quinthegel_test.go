@@ -43,7 +43,7 @@ var accounts = []string{"alice", "bob"}
 // the model step it performed, with the balances it observed afterwards.
 type bankMachine struct {
 	b   *bank
-	rec *quinthegel.Recorder
+	rec *quinthegel.Case
 }
 
 func (m *bankMachine) obs() []any {
@@ -83,8 +83,8 @@ func needQuint(t *testing.T) {
 	}
 }
 
-func run(buggy bool) func(ht *hegel.T, rec *quinthegel.Recorder) {
-	return func(ht *hegel.T, rec *quinthegel.Recorder) {
+func run(buggy bool) func(ht *hegel.T, rec *quinthegel.Case) {
+	return func(ht *hegel.T, rec *quinthegel.Case) {
 		m := &bankMachine{b: &bank{bal: map[string]int{"alice": 0, "bob": 0}, buggy: buggy}, rec: rec}
 		hegel.RunStateful(ht, m, hegel.WithStatefulStepCount(8))
 	}
@@ -110,7 +110,7 @@ func TestStateMachineBugShrinks(t *testing.T) {
 	if testing.Short() {
 		t.Skip("shrinking against the model runs quint ~130 times (~1.5 min)")
 	}
-	v := quinthegel.FindViolation(t, quinthegel.Config{Binding: "testdata/bank.yaml"}, func(tc hegel.TestCase, rec *quinthegel.Recorder) {
+	v := quinthegel.FindViolation(t, quinthegel.Config{Binding: "testdata/bank.yaml"}, func(tc hegel.TestCase, rec *quinthegel.Case) {
 		m := &bankMachine{b: &bank{bal: map[string]int{"alice": 0, "bob": 0}, buggy: true}, rec: rec}
 		hegel.RunStateful(tc, m, hegel.WithStatefulStepCount(8))
 	}, hegel.WithTestCases(40), hegel.WithSeed(7))
@@ -125,7 +125,7 @@ func TestReplayTraces(t *testing.T) {
 	needQuint(t)
 	traces := quinthegel.Traces(t, connect.Config{Spec: "../connect/testdata/bank.qnt", MaxSamples: 20, MaxSteps: 10, Seed: "0x2a"})
 	hegel.Test(t, func(ht *hegel.T) {
-		quinthegel.Replay(ht, traces, func(tc hegel.TestCase) connect.Driver {
+		quinthegel.VaryTraces(ht, traces, func(tc hegel.TestCase) connect.Driver {
 			b := &bank{bal: map[string]int{"alice": 0, "bob": 0}}
 			return connect.Switch{
 				"init": connect.Skip,
@@ -140,6 +140,6 @@ func TestReplayTraces(t *testing.T) {
 					return b.transfer(connect.MustPick[string](s, "src"), connect.MustPick[string](s, "dst"), connect.MustPick[int](s, "amount"))
 				},
 			}
-		}, quinthegel.ReplayOptions{Prefix: true})
+		}, quinthegel.VaryOptions{Prefix: true})
 	}, hegel.WithTestCases(30), hegel.WithDatabase(""))
 }

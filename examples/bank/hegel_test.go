@@ -47,8 +47,8 @@ func cfg(mode quinthegel.Mode) quinthegel.Config {
 	return quinthegel.Config{Binding: "bank.binding.yaml", Mode: mode, Opts: []qtest.Option{qtest.Global()}, AllowEmpty: true}
 }
 
-func runMachine(m Mutation) func(*hegel.T, *quinthegel.Recorder) {
-	return func(ht *hegel.T, _ *quinthegel.Recorder) {
+func runMachine(m Mutation) func(*hegel.T, *quinthegel.Case) {
+	return func(ht *hegel.T, _ *quinthegel.Case) {
 		hegel.RunStateful(ht, &machine{bank: New(accounts, WithMutation(m))}, hegel.WithStatefulStepCount(12))
 	}
 }
@@ -70,7 +70,7 @@ func TestHegelCatchesSelfTransfer(t *testing.T) {
 	if testing.Short() {
 		t.Skip("shrinking against the model runs quint ~100 times")
 	}
-	v := quinthegel.FindViolation(t, quinthegel.Config{Binding: "bank.binding.yaml", Opts: []qtest.Option{qtest.Global()}}, func(tc hegel.TestCase, _ *quinthegel.Recorder) {
+	v := quinthegel.FindViolation(t, quinthegel.Config{Binding: "bank.binding.yaml", Opts: []qtest.Option{qtest.Global()}}, func(tc hegel.TestCase, _ *quinthegel.Case) {
 		hegel.RunStateful(tc, &machine{bank: New(accounts, WithMutation(SelfTransfer))}, hegel.WithStatefulStepCount(12))
 	}, hegel.WithTestCases(50), hegel.WithSeed(3))
 	var self bool
@@ -91,10 +91,10 @@ func TestHegelVariesModelTraces(t *testing.T) {
 	qtest.RequireQuint(t)
 	traces := quinthegel.Traces(t, connect.Config{Spec: "model/bank.qnt", Main: "bankDesign", MaxSamples: 30, MaxSteps: 20, Seed: "0xb4"})
 	hegel.Test(t, func(ht *hegel.T) {
-		quinthegel.Replay(ht, traces, func(tc hegel.TestCase) connect.Driver {
+		quinthegel.VaryTraces(ht, traces, func(tc hegel.TestCase) connect.Driver {
 			d := &driver{}
 			return &noisyDriver{driver: d, tc: tc}
-		}, quinthegel.ReplayOptions{Prefix: true})
+		}, quinthegel.VaryOptions{Prefix: true})
 	}, hegel.WithTestCases(50), hegel.WithDatabase(""))
 }
 

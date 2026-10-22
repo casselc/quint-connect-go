@@ -85,7 +85,7 @@ func TestDeadAndUntriedErrorPaths(t *testing.T) {
 	if !m.Callers[fix+".(Shop).charge"][fix+".(Shop).Place"] {
 		t.Errorf("callers of charge: %v", m.Callers[fix+".(Shop).charge"])
 	}
-	qenv.DeclareFault("pay", "charge")
+	qenv.DeclareFaultSite("pay", "charge")
 	cov := qenv.CoverageOf([][]qenv.Choice{{{Kind: "fault.pay", N: 2, Value: 0}}})
 	s := &qcover.Summary{Runs: 1, Hit: map[int]int{0: 1}, Blocks: []qcover.Block{
 		{Func: fix + ".(Shop).Place", Line: 22, ID: 0},

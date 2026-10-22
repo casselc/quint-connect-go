@@ -29,12 +29,12 @@ On either kind:
   `//go:build !sim` when they share a package;
 - keep Hegel and anything native out of the simulated package's imports
   (gosim translates them all). qenv, qobs, qload and qmeta have none:
-  Hegel adapters live in quinthegel (`quinthegel.Chooser`,
+  Hegel adapters live in quinthegel (`quinthegel.Choices`,
   `quinthegel.FindTrigger`). Do the same with your own: Hegel code in a
   package the simulation does not import;
 - drive it from the host with `qgosim.Run(t, pkg, test, chooser,
   env...)`, which returns the steps. The chooser can be
-  `qenv.NewSeeded`, `quinthegel.Chooser(tc)`, a `qenv.Recorder` or `qenv.Replay`.
+  `qenv.NewSeeded`, `quinthegel.Choices(tc)`, a `qenv.ChoiceLog` or `qenv.Replay`.
   Or make it a System, `qtest.System{Binding: binding, Run:
   qgosim.Scenario(t, pkg, test)}`: `Explore` runs seeds in parallel, one
   test binary each, and `quinthegel.Shrink` and `Sweep` take it as any

@@ -141,7 +141,7 @@ func TestFaultFixtureRuns(t *testing.T) {
 		`func (s *Store) Get(ctx context.Context, k string) (__qw_res0 string, __qw_res1 error) {`,
 		`quintqenv.FaultPoint(ctx, "store.get", false, ErrUnavailable)`,
 		`quintqenv.FaultPoint(ctx, "store.put", true)`,
-		`func init() { quintqenv.DeclareFault("store.flush", "Flush") }`,
+		`func init() { quintqenv.DeclareFaultSite("store.flush", "Flush") }`,
 	} {
 		if !strings.Contains(src, want) {
 			t.Errorf("woven store.go lacks %s:\n%s", want, src)

@@ -22,7 +22,7 @@ import (
 func TestScenarios(t *testing.T) {
 	conforms := map[string]bool{"happy": true, "rotation-race": true, "ambiguous-seal": true, "manifest-first": false, "no-lock": false}
 	invariantsHold := map[string]bool{"happy": true, "rotation-race": true}
-	opt := validate.Options{Backend: os.Getenv("QUINTGO_BACKEND")}
+	opt := validate.Options{Backend: os.Getenv("QUINT_BACKEND")}
 	for _, name := range Names {
 		t.Run(name, func(t *testing.T) {
 			r := qtest.Record(t, "../binding.yaml", func(*qobs.Recorder) { Run(name, io.Discard) },

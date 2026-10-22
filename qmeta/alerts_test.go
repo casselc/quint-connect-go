@@ -103,9 +103,9 @@ func TestRegionAndRules(t *testing.T) {
 func TestExpectAll(t *testing.T) {
 	c := qmeta.New(qmeta.Params{Lambda: 9.5, Mu: 10, Timeout: 9, Retries: 3, Queue: 30, Orbit: 30})
 	times := []float64{0, 5, 20}
-	all := c.ExpectAll(times)
+	all := c.MeanAll(times)
 	for _, s := range []qmeta.State{{U: 0, V: 0}, {U: 30, V: 20}, {U: 12, V: 3}} {
-		one := c.Expect(s, times)
+		one := c.Mean(s, times)
 		for i := range times {
 			a := all[i][c.Index(s)]
 			if d := max(a.U-one[i].U, one[i].U-a.U, a.V-one[i].V, one[i].V-a.V); d > 1e-6 {

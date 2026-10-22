@@ -41,19 +41,52 @@ type TB interface {
 	Fatalf(format string, args ...any)
 }
 
-// Expect fails t unless the run recovered as wanted (recovered false: a
-// metastable failure, expected), naming the trigger and the goodputs.
-func (r Recovery) Expect(t TB, recovered bool) {
+// A RecoveryClaim is what a run with a trigger must show: Recovered or
+// StaysDegraded.
+type RecoveryClaim struct{ recovers bool }
+
+// Recovered claims the system is back to its healthy goodput within the
+// bound after the trigger ends.
+func Recovered() RecoveryClaim { return RecoveryClaim{recovers: true} }
+
+// StaysDegraded claims the system does not recover: a metastable failure,
+// expected of a design shown fragile.
+func StaysDegraded() RecoveryClaim { return RecoveryClaim{} }
+
+func (c RecoveryClaim) String() string {
+	if c.recovers {
+		return "recovery"
+	}
+	return "no recovery (a metastable failure)"
+}
+
+// Expect fails t unless the run shows what c claims, naming the trigger
+// and the goodputs:
+//
+//	qload.Assess(x, "markPaid", spike, time.Minute, 1).Expect(t, qload.Recovered())
+func (r Recovery) Expect(t TB, c RecoveryClaim) {
 	t.Helper()
 	switch {
 	case r.Err != nil:
 		t.Fatalf("qload: %v", r.Err)
-	case r.Recovered != recovered && recovered:
-		t.Fatalf("qload: want recovery, got %v", r)
-	case r.Recovered != recovered:
-		t.Fatalf("qload: want no recovery (a metastable failure), got %v", r)
+	case r.Recovered != c.recovers:
+		t.Fatalf("qload: want %v, got %v", c, r)
 	}
 }
+
+// A TriggerClaim is what a trigger search must find: SomeTrigger or
+// NoTrigger (quinthegel.FindTrigger).
+type TriggerClaim struct{ some bool }
+
+// SomeTrigger claims some trigger in the space leaves the system degraded:
+// a design shown fragile.
+func SomeTrigger() TriggerClaim { return TriggerClaim{some: true} }
+
+// NoTrigger claims no trigger in the space does: a mitigation.
+func NoTrigger() TriggerClaim { return TriggerClaim{} }
+
+// WantsTrigger reports whether the claim is SomeTrigger.
+func (c TriggerClaim) WantsTrigger() bool { return c.some }
 
 func (r Recovery) String() string {
 	if r.Err != nil {
@@ -89,7 +122,7 @@ func (r Recovery) Warning() string {
 // stressor ends, goodput is back to at least 90% of the offered rate base
 // (the healthy goodput of an open loop below capacity). A metastable system
 // fails it: the stressor is gone, the degradation is not.
-func Recovers(cfg Config, base float64, tr Trigger, within time.Duration) Recovery {
+func Recovers(cfg SimConfig, base float64, tr Trigger, within time.Duration) Recovery {
 	if tr.Start == 0 {
 		tr.Start = 100 * time.Second
 	}
@@ -148,7 +181,7 @@ func Assess(x Experiment, goodput string, tr Trigger, within time.Duration, seed
 }
 
 // Of is an experiment as a System, for Mostly and Search.
-func Of(x Experiment, goodput string, within time.Duration) System {
+func Of(x Experiment, goodput string, within time.Duration) Target {
 	return func(tr Trigger, seed uint64) Recovery { return Assess(x, goodput, tr, within, seed) }
 }
 
@@ -166,13 +199,13 @@ type TriggerSpace struct {
 	Seeds int
 }
 
-// A System runs a trigger against a system with a seed and judges its
+// A Target runs a trigger against a system with a seed and judges its
 // recovery: a qload simulation (OfSimulation), an application's
 // experiment (Of), or anything else.
-type System func(tr Trigger, seed uint64) Recovery
+type Target func(tr Trigger, seed uint64) Recovery
 
 // OfSimulation is a qload simulation as a System: Recovers with the seed.
-func OfSimulation(cfg Config, base float64, within time.Duration) System {
+func OfSimulation(cfg SimConfig, base float64, within time.Duration) Target {
 	return func(tr Trigger, seed uint64) Recovery {
 		cfg.Seed = seed
 		return Recovers(cfg, base, tr, within)
@@ -182,7 +215,7 @@ func OfSimulation(cfg Config, base float64, within time.Duration) System {
 // Runs runs the trigger with seeds 1..n, in parallel, and returns the
 // runs in seed order. sys must be safe to call concurrently: a qenv
 // simulation is, if it records through its own context (qenv.WithContext).
-func Runs(sys System, tr Trigger, n int) []Recovery {
+func Runs(sys Target, tr Trigger, n int) []Recovery {
 	rs := make([]Recovery, n)
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, runtime.GOMAXPROCS(0))
@@ -199,7 +232,7 @@ func Runs(sys System, tr Trigger, n int) []Recovery {
 }
 
 // Count is how many of seeds 1..n recover from the trigger.
-func Count(sys System, tr Trigger, n int) int {
+func Count(sys Target, tr Trigger, n int) int {
 	ok := 0
 	for _, r := range Runs(sys, tr, n) {
 		if r.Recovered {
@@ -214,7 +247,7 @@ func Count(sys System, tr Trigger, n int) int {
 // mostly fail), with the lowest-seeded run that did not (if any). A run
 // that could not be judged (Recovery.Err) did not recover: the returned
 // run then carries its error.
-func Mostly(sys System, tr Trigger, n int) (bool, Recovery) {
+func Mostly(sys Target, tr Trigger, n int) (bool, Recovery) {
 	stuck, first := 0, Recovery{}
 	for _, r := range Runs(sys, tr, n) {
 		if !r.Recovered {

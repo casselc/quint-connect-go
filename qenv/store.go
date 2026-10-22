@@ -90,8 +90,8 @@ type Store struct {
 	sim   *Sim
 	rows  map[string][]version
 	seq   int64
-	locks map[string]*Tx
-	open  map[*Tx]bool
+	locks map[string]*tx
+	open  map[*tx]bool
 	txs   int64
 }
 
@@ -103,9 +103,9 @@ type version struct {
 
 // NewStore returns an empty store in s.
 func NewStore(s *Sim, name string, iso Isolation) *Store {
-	st := &Store{Name: name, Iso: iso, sim: s, rows: map[string][]version{}, locks: map[string]*Tx{}, open: map[*Tx]bool{}}
+	st := &Store{Name: name, Iso: iso, sim: s, rows: map[string][]version{}, locks: map[string]*tx{}, open: map[*tx]bool{}}
 	s.OnCrash(func(p *Process) {
-		var txs []*Tx
+		var txs []*tx
 		for tx := range st.open {
 			if tx.proc == p {
 				txs = append(txs, tx)
@@ -119,8 +119,8 @@ func NewStore(s *Sim, name string, iso Isolation) *Store {
 	return st
 }
 
-// Tx is a transaction. It is used by one task.
-type Tx struct {
+// tx is a transaction. It is used by one task.
+type tx struct {
 	st     *Store
 	ctx    context.Context
 	proc   *Process
@@ -141,19 +141,19 @@ type Tx struct {
 func (st *Store) Begin(ctx context.Context) Txn {
 	Yield(ctx)
 	st.txs++
-	tx := &Tx{st: st, ctx: ctx, proc: ProcessOf(ctx), id: st.txs, snap: st.seq, reads: map[string]bool{}, writes: map[string]*version{}}
+	tx := &tx{st: st, ctx: ctx, proc: ProcessOf(ctx), id: st.txs, snap: st.seq, reads: map[string]bool{}, writes: map[string]*version{}}
 	st.open[tx] = true
 	return tx
 }
 
-func (tx *Tx) check() {
+func (tx *tx) check() {
 	if tx.done {
 		panic("qenv: transaction used after it ended")
 	}
 }
 
 // visible is the committed version of key a read sees.
-func (tx *Tx) visible(key string) (version, bool) {
+func (tx *tx) visible(key string) (version, bool) {
 	vs := tx.st.rows[key]
 	limit := tx.snap
 	if tx.st.Iso == ReadCommitted {
@@ -169,7 +169,7 @@ func (tx *Tx) visible(key string) (version, bool) {
 
 // Get reads a key: the transaction's own write if any, else the committed
 // value its isolation level shows.
-func (tx *Tx) Get(key string) (any, bool) {
+func (tx *tx) Get(key string) (any, bool) {
 	tx.check()
 	Yield(tx.ctx)
 	if w, ok := tx.writes[key]; ok {
@@ -184,7 +184,7 @@ func (tx *Tx) Get(key string) (any, bool) {
 // transaction's lock, then reads the latest committed value. Under
 // Serializable and SnapshotIsolation, a key changed since the snapshot
 // aborts the transaction with ErrConflict (PostgreSQL's behaviour).
-func (tx *Tx) GetForUpdate(key string) (any, bool, error) {
+func (tx *tx) GetForUpdate(key string) (any, bool, error) {
 	tx.check()
 	Yield(tx.ctx)
 	if owner := tx.st.locks[key]; owner != nil && owner != tx {
@@ -226,7 +226,7 @@ func (tx *Tx) GetForUpdate(key string) (any, bool, error) {
 }
 
 // Put writes key at commit.
-func (tx *Tx) Put(key string, val any) {
+func (tx *tx) Put(key string, val any) {
 	tx.check()
 	Yield(tx.ctx)
 	if _, ok := tx.writes[key]; !ok {
@@ -236,7 +236,7 @@ func (tx *Tx) Put(key string, val any) {
 }
 
 // Delete removes key at commit.
-func (tx *Tx) Delete(key string) {
+func (tx *tx) Delete(key string) {
 	tx.check()
 	Yield(tx.ctx)
 	if _, ok := tx.writes[key]; !ok {
@@ -254,7 +254,7 @@ type KV struct {
 // Scan returns the keys with prefix, sorted, as Get would read them.
 // Under Serializable, a later commit that writes a key with the prefix
 // aborts the transaction (no phantoms).
-func (tx *Tx) Scan(prefix string) []KV {
+func (tx *tx) Scan(prefix string) []KV {
 	tx.check()
 	Yield(tx.ctx)
 	tx.scans = append(tx.scans, prefix)
@@ -304,7 +304,7 @@ func (st *Store) latest(key string) int64 {
 // level requires. Writes to a key another transaction has locked wait for
 // that lock first. With CommitFaults, a commit may be applied and still
 // return ErrUnknownOutcome.
-func (tx *Tx) Commit() error {
+func (tx *tx) Commit() error {
 	tx.check()
 	Yield(tx.ctx)
 	st := tx.st
@@ -358,16 +358,16 @@ func (tx *Tx) Commit() error {
 }
 
 // OnCommit implements Txn.
-func (tx *Tx) OnCommit(fn func()) { tx.hooks = append(tx.hooks, fn) }
+func (tx *tx) OnCommit(fn func()) { tx.hooks = append(tx.hooks, fn) }
 
 // Rollback abandons the transaction. It is safe to call after Commit.
-func (tx *Tx) Rollback() {
+func (tx *tx) Rollback() {
 	if !tx.done {
 		tx.end()
 	}
 }
 
-func (tx *Tx) end() {
+func (tx *tx) end() {
 	tx.done = true
 	for _, k := range tx.locked {
 		if tx.st.locks[k] == tx {
@@ -425,4 +425,4 @@ func (st *Store) Load(key string, val any) {
 }
 
 // storeCommit is a commit applied whose outcome the client never learns.
-var storeCommit = Faults("store.commit", "unknownOutcome")
+var storeCommit = DeclareFaults("store.commit", "unknownOutcome")

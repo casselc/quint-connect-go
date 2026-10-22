@@ -58,7 +58,7 @@ func FaultPoint(ctx context.Context, kind string, crash bool, errs ...error) err
 	if crash {
 		names = append(names, "crash")
 	}
-	k := Faults(kind, names...)
+	k := DeclareFaults(kind, names...)
 	v := t.sim.fault(k.Name, 1+len(k.Options))
 	switch {
 	case v == 0:
@@ -74,10 +74,10 @@ func FaultPoint(ctx context.Context, kind string, crash bool, errs ...error) err
 	return nil
 }
 
-// DeclareFault registers a fault point of kind at site (a function, a
+// DeclareFaultSite registers a fault point of kind at site (a function, a
 // position): what woven code does at init, so a coverage report can name
 // the points no run reached.
-func DeclareFault(kind, site string) { choice.DeclareSite(kind, site) }
+func DeclareFaultSite(kind, site string) { choice.DeclareSite(kind, site) }
 
 // PointCoverage is what runs did at one fault kind.
 type PointCoverage struct {

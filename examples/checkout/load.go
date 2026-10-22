@@ -115,8 +115,8 @@ func Load(cfg LoadConfig, tr qload.Trigger, within time.Duration) LoadRun {
 	return run
 }
 
-// System is the experiment as a qload.System, for qload.Mostly and
+// System is the experiment as a qload.Target, for qload.Mostly and
 // qmeta.Search.
-func (cfg LoadConfig) System(within time.Duration) qload.System {
+func (cfg LoadConfig) System(within time.Duration) qload.Target {
 	return qload.Of(cfg.Experiment(nil), Goodput, within)
 }

@@ -37,7 +37,7 @@ type Sim struct {
 	Log func(string)
 	// Profile, if set, accumulates the virtual time tasks spend waiting at
 	// each seam, by stack (Profile.WriteTo: pprof's format).
-	Profile *Profile
+	Profile *TimeProfile
 	// NemesisEvery, if set, makes a nemesis (a crash) a choice once per
 	// period of virtual time, at the first step after each period ends,
 	// rather than at every scheduling step. A per-step rate means more
@@ -960,7 +960,7 @@ func (s *Sim) maybeNemesis() {
 		}
 	} else {
 		k = s.Choose("fault.nemesis", len(on)+1)
-		if r, ok := As[*Recorder](s.c); ok && k > 0 {
+		if r, ok := As[*ChoiceLog](s.c); ok && k > 0 {
 			r.Name(on[k-1].name) // which nemesis, not its index among those enabled then
 		}
 	}

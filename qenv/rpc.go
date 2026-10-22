@@ -116,8 +116,8 @@ func NewService[Req, Resp any](s *Sim, name string, p *Process, handler func(ctx
 		p = s.Process(name, false, func(context.Context) {})
 	}
 	return &Service[Req, Resp]{Name: name, Proc: p, handler: handler, sim: s,
-		request:  Faults("rpc."+name+".request", "drop", "duplicate"),
-		response: Faults("rpc."+name+".response", "lost")}
+		request:  DeclareFaults("rpc."+name+".request", "drop", "duplicate"),
+		response: DeclareFaults("rpc."+name+".response", "lost")}
 }
 
 type result[Resp any] struct {

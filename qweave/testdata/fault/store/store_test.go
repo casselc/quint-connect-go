@@ -18,7 +18,7 @@ func TestFaultPointsWoven(t *testing.T) {
 	for seed := uint64(1); seed <= 30; seed++ {
 		c := qenv.NewSeeded(seed)
 		c.Rates = qenv.Rates{Default: 0.3}
-		rec := &qenv.Recorder{C: c}
+		rec := &qenv.ChoiceLog{C: c}
 		sim := qenv.New(rec)
 		st := New()
 		p := sim.Process("app", false, func(ctx context.Context) {

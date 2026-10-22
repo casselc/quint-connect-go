@@ -15,14 +15,14 @@ var errUnavailable = errors.New("unavailable")
 // which is restarted. Coverage counts them from the recorded choices and
 // names the declared point no run reached.
 func TestFaultPoints(t *testing.T) {
-	qenv.DeclareFault("test.write", "qenv_test.write")
-	qenv.DeclareFault("test.never", "qenv_test.never")
+	qenv.DeclareFaultSite("test.write", "qenv_test.write")
+	qenv.DeclareFaultSite("test.never", "qenv_test.never")
 	var runs [][]qenv.Choice
 	var failed, crashed int
 	for seed := uint64(1); seed <= 20; seed++ {
 		seeded := qenv.NewSeeded(seed)
 		seeded.Rates = qenv.Rates{Default: 0.5}
-		rec := &qenv.Recorder{C: seeded}
+		rec := &qenv.ChoiceLog{C: seeded}
 		s := qenv.New(rec)
 		var p *qenv.Process
 		p = s.Process("writer", false, func(ctx context.Context) {

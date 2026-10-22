@@ -13,14 +13,14 @@ type Trajectory struct {
 
 // Loss is the squared distance between the chain's expected trajectories
 // and simulated ones. Trajectories with the same times share one backward
-// pass (ExpectAll), so a series' many cells cost what one does.
+// pass (MeanAll), so a series' many cells cost what one does.
 func (c *Chain) Loss(data []Trajectory) float64 {
 	loss := 0.0
 	all := map[string][][]State2{}
 	for _, tr := range data {
 		key := fmt.Sprint(tr.Times)
 		if _, ok := all[key]; !ok {
-			all[key] = c.ExpectAll(tr.Times)
+			all[key] = c.MeanAll(tr.Times)
 		}
 		i0 := c.Index(c.Clamp(tr.From))
 		exp := make([]State2, len(tr.Times))
