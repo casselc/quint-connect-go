@@ -22,7 +22,9 @@ var lossy = qenv.Rates{Default: 0.2}
 // counts once.
 func TestFaithfulConforms(t *testing.T) {
 	qtest.RequireQuint(t)
-	system(Faithful).Explore(t, qtest.ExploreConfig{Seeds: 30, Rates: lossy}).Expect(t, qtest.Conforms())
+	system(Faithful).Explore(t, qtest.ExploreConfig{Seeds: 30, Rates: lossy}).Expect(t, qtest.Conforms(),
+		// and the faults happened: a pass with no duplicates says nothing of dedupe
+		qtest.Reaches("rpc.counter.request").Faulted().InAtLeast(0.5))
 }
 
 // Without dedupe a retried request is counted again: the model has no

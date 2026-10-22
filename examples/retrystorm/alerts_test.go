@@ -20,7 +20,7 @@ func TestAlertsFromTheChain(t *testing.T) {
 		t.Skip("load runs")
 	}
 	const lam = 9
-	healthy := func(s qmeta.State) bool { return s.U <= 10 }
+	healthy := qmeta.Healthy{MaxU: 10} // the region's predicate, and the rules' description and PromQL
 	for _, c := range []struct {
 		p     Policy
 		fires bool
@@ -29,7 +29,7 @@ func TestAlertsFromTheChain(t *testing.T) {
 			x := c.p.Instrumented(lam)
 			storm := Observations(x.Run(1, Spike, 10*time.Minute))
 			params, loss := qmeta.CalibrateTimeout(c.p.Params(lam), qmeta.Trajectories(storm, []float64{5, 10, 20}, 10))
-			region := qmeta.New(params).Region(healthy, 120)
+			region := qmeta.New(params).HealthyRegion(healthy, 120)
 			t.Logf("calibrated λ=%.2f timeout=%.2fs (loss %.3g); %d bands", params.Lambda, params.Timeout, loss, len(region.Bands(10)))
 
 			in := 0
@@ -53,7 +53,7 @@ func TestAlertsFromTheChain(t *testing.T) {
 					t.Fatalf("without a spike, the alert fires at %.0fs (u=%d v=%d)", o.T, o.U, o.V)
 				}
 			}
-			rules := region.Rules(qmeta.RuleConfig{Server: "server", Service: "server"}, "u <= 10")
+			rules := region.Rules(qmeta.RuleConfig{Server: "server", Service: "server"}, "")
 			if c.fires && !strings.Contains(rules, `and on() quint_orbit{service="server"} >=`) {
 				t.Errorf("no band in the rules:\n%s", rules)
 			}

@@ -351,9 +351,9 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   weave test builds only.
 - Run qenv's tests, and tests of new doubles, with `QENV_CHECK=1`: the
   scheduler checks its invariants at every step. CI does.
-- A recovery verdict needs a healthy baseline (`Experiment.Healthy`). A
-  system already collapsed before the trigger "recovers" to its collapsed
-  goodput otherwise.
+- A recovery verdict needs a healthy baseline (`Experiment.Healthy`):
+  without one `Assess` returns `Recovery.Err`, since a system already
+  collapsed before the trigger would "recover" to its collapsed goodput.
 - Libraries that read the real clock (crossplane-runtime's create
   annotations and grace period) see no virtual time passing. Translate
   their timestamps at the seam (`Sim.ToVirtual` on write, `Sim.ToReal` on

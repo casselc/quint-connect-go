@@ -2,6 +2,7 @@ package qtest
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -22,6 +23,74 @@ type MutationReport struct {
 	// code the model does not constrain. Each is a question: is the code
 	// needed, or is the model missing what it is for?
 	Survived []qmut.Mutant
+	// Baseline is the exploration with every mutant off.
+	Baseline *Exploration `json:"-"`
+}
+
+// Evidence is the baseline's evidence with the mutants' verdicts: the
+// report a mutation run leaves.
+func (r *MutationReport) Evidence() *Evidence {
+	e := &Evidence{Failing: map[string]int{}}
+	if r.Baseline != nil {
+		e = r.Baseline.Evidence()
+	}
+	e.Mutants = r
+	return e
+}
+
+// A MutationClaim is what a test expects of a mutation run
+// (MutationReport.Expect).
+type MutationClaim struct {
+	equivalent []string
+}
+
+// NoSurvivors claims every reached mutant is killed, but those marked
+// equivalent: a mutant the environment makes harmless (a dropped ack that
+// is redelivered, a retry's boundary) survives by right. Mark one by its
+// position, "file.go:42", or by its position and operator, "file.go:42
+// drop call", as the report prints it.
+func NoSurvivors(equivalent ...string) MutationClaim { return MutationClaim{equivalent} }
+
+func (c MutationClaim) marked(m qmut.Mutant) bool {
+	pos := fmt.Sprintf("%s:%d", filepath.Base(m.File), m.Line)
+	for _, e := range c.equivalent {
+		if e == pos || e == pos+" "+m.Op {
+			return true
+		}
+	}
+	return false
+}
+
+// Expect fails t unless the mutation run meets the claim, naming each
+// surviving mutant and how to mark it, and each mark that matched no
+// survivor (stale after the code moved).
+func (r *MutationReport) Expect(t testing.TB, c MutationClaim) {
+	t.Helper()
+	var survived []string
+	used := map[string]bool{}
+	for _, m := range r.Survived {
+		if c.marked(m) {
+			for _, e := range c.equivalent {
+				if e == fmt.Sprintf("%s:%d", filepath.Base(m.File), m.Line) || e == fmt.Sprintf("%s:%d %s", filepath.Base(m.File), m.Line, m.Op) {
+					used[e] = true
+				}
+			}
+			continue
+		}
+		survived = append(survived, fmt.Sprintf("  %s (if it is equivalent, mark it: NoSurvivors(%q))", m, fmt.Sprintf("%s:%d", filepath.Base(m.File), m.Line)))
+	}
+	var stale []string
+	for _, e := range c.equivalent {
+		if !used[e] {
+			stale = append(stale, e)
+		}
+	}
+	if len(survived) > 0 {
+		t.Errorf("quintgo: %d mutants survived every run: code the model does not constrain, or a check missing:\n%s", len(survived), strings.Join(survived, "\n"))
+	}
+	if len(stale) > 0 {
+		t.Errorf("quintgo: marked equivalent but no survivor there (killed now, or the code moved): %s", strings.Join(stale, ", "))
+	}
 }
 
 // Score is the share of reached mutants killed.
@@ -65,7 +134,7 @@ func (s System) Mutate(t testing.TB, cfg ExploreConfig, keep func(qmut.Mutant) b
 		return s.Run(qenv.WithContext(c, qmut.WithReach(qenv.ContextOf(c), reach)))
 	})
 	base.Expect(t, Conforms())
-	rep := &MutationReport{}
+	rep := &MutationReport{Baseline: base}
 	for _, m := range all {
 		if keep != nil && !keep(m) {
 			continue

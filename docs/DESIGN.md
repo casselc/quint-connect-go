@@ -2686,3 +2686,15 @@ divergence as the run's error. An encoded run (a fuzz corpus entry)
 starts with the byte rule's version: a raw fuzz input has no header and
 is choices as it is, and an entry of another version is an error with
 its fix, not another run.
+
+**Evidence (V13).** A passing exploration says nothing of the faults it
+never took: `Reaches(kind).Faulted().InAtLeast(p)` is a claim about the
+runs' choices, not their verdicts, so a test can state that the fault it
+is about happened. The report names the pairs of kinds never in one run
+and the ones only ever in one order. A mutation run's report keeps its
+baseline, and `NoSurvivors(marks...)` makes survivors a failure unless
+marked equivalent by position; a mark that matches no survivor is stale
+and fails too. On the metastability side, `Assess` without a healthy
+goodput is an error, not a verdict, and `qmeta.Healthy` is one value for
+the region's predicate and the rules' description and PromQL, where a
+func and a hand-written string could drift.

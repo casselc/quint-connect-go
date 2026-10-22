@@ -114,3 +114,20 @@ func TestExpectAll(t *testing.T) {
 		}
 	}
 }
+
+// One Healthy value is the region's predicate, the rules' description and
+// the PromQL they annotate.
+func TestHealthyRegion(t *testing.T) {
+	c := qmeta.New(qmeta.Params{Lambda: 9.5, Mu: 10, Timeout: 9, Retries: 3, Queue: 30, Orbit: 30})
+	h := qmeta.Healthy{MaxU: 10}
+	r := c.HealthyRegion(h, 120)
+	if !h.Contains(qmeta.State{U: 10}) || h.Contains(qmeta.State{U: 11}) {
+		t.Error("Contains")
+	}
+	rules := r.Rules(qmeta.RuleConfig{Server: "api", Service: "api"}, "")
+	for _, want := range []string{"of u <= 10 within", `healthy: "quint_serve_inflight{name=\"api\"} <= 10"`} {
+		if !strings.Contains(rules, want) {
+			t.Errorf("rules lack %q:\n%s", want, rules)
+		}
+	}
+}

@@ -26,9 +26,12 @@ ok, first := qload.Mostly(qload.Of(x, "markPaid", 5*time.Minute), trigger, 3)   
   counted per tick (`r.Series.Rate("markPaid", from, to)`), so
   performance and correctness come from one run:
   `qtest.Validate(t, binding, mem.Steps(), qtest.Constants(...)).Expect(t, qtest.Conforms())`.
-- **Set `Healthy`.** A system that collapsed before the trigger would
-  otherwise "recover" to its collapsed goodput. With 8 consumers, the
-  checkout shop collapses on its own, and that bug was hidden this way.
+- **Set `Healthy`.** Without it `Assess` is not a verdict
+  (`Recovery.Err`): a system that collapsed before the trigger would
+  "recover" to its collapsed goodput. With 8 consumers, the checkout shop
+  collapses on its own, and that bug was hidden this way. State the
+  verdict with `r.Expect(t, true)` (or `false` for a storm you want to
+  see).
 - **The verdict allows for noise.** Recovery means goodput is back to at
   least 90% of healthy, give or take two standard errors over the
   100-second window. At a few requests per second, a plain 90% threshold

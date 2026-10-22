@@ -41,13 +41,15 @@ func (c *Client) attempt(ctx context.Context) error
   qenv.NewProfile()` in `Deploy`, then `Profile.WriteTo` a file and
   `go tool pprof -top -cum` it: each wait at a seam, by stack, weighted by
   virtual time (`-tagfocus task=<kind>` for one kind of task).
-- `region := qmeta.New(fit).Region(healthy, 120)` is the states with less
+- `region := qmeta.New(fit).HealthyRegion(qmeta.Healthy{MaxU: 10}, 120)`
+  (or `Region(func, 120)` for another set) is the states with less
   than even odds of being healthy within 2 minutes (`RecoveryWithin`). Not
   the mean hitting time: near a storm it is dominated by rare tips into
   it, and alerts on states that drain in a second.
-- `region.Rules(qmeta.RuleConfig{Server: "api", Service: "api"},
-  "u <= 10")` is a Prometheus rule group, with the chain's parameters in
-  its annotations: commit it, and a policy change shows up as its diff.
+- `region.Rules(qmeta.RuleConfig{Server: "api", Service: "api"}, "")`
+  is a Prometheus rule group, with the chain's parameters and the healthy
+  set (its description and PromQL, from the Healthy) in its annotations:
+  commit it, and a policy change shows up as its diff.
   No region (a budget): the rule cannot fire.
 - `qrole.NewMetricsSink(meter, next)` counts every `//quint:action` by
   outcome (`quint.steps`): goodput and error ratio with no instrumentation

@@ -1,7 +1,9 @@
 package qtest
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 
@@ -16,14 +18,26 @@ import (
 // unsaid: that runs conformed says nothing of the faults never tried, the
 // code never run or the code the model does not constrain.
 type Evidence struct {
-	Runs, Conform int
+	Runs    int `json:"runs"`
+	Conform int `json:"conform"`
 	// Failing counts the failing runs by reason: "violates I", "rejects a
 	// (step the model cannot take)", "mismatch after a", "issue".
-	Failing map[string]int
-	Faults  *qenv.Coverage
-	Rows    int             // a sweep's rows (0: not a sweep)
-	Code    *qcover.Summary // with ExploreConfig.Coverage (nil: not collected)
-	Mutants *MutationReport // from System.Mutate, if set
+	Failing map[string]int  `json:"failing"`
+	Faults  *qenv.Coverage  `json:"faults,omitempty"`
+	Rows    int             `json:"rows,omitempty"`    // a sweep's rows (0: not a sweep)
+	Code    *qcover.Summary `json:"code,omitempty"`    // with ExploreConfig.Coverage (nil: not collected)
+	Mutants *MutationReport `json:"mutants,omitempty"` // from System.Mutate, if set
+}
+
+// WriteJSON writes the evidence to path as JSON, for tools that read a
+// run's report (quintgo cover, actionmap). Explorations write theirs under
+// QUINTGO_KEEP (evidence.json in the test's directory).
+func (e *Evidence) WriteJSON(path string) error {
+	b, err := json.MarshalIndent(e, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, append(b, '\n'), 0o644)
 }
 
 // Evidence is the exploration's report.
@@ -131,6 +145,12 @@ func (e *Evidence) String() string {
 			fmt.Fprintf(&b, "; never faulted: %s", kinds(u))
 		}
 		b.WriteByte('\n')
+		if u := c.Untried(); len(u) > 0 {
+			fmt.Fprintf(&b, "            never together (each faulted, never in one run): %s\n", pairList(u, false))
+		}
+		if o := c.OneWay(); len(o) > 0 {
+			fmt.Fprintf(&b, "            one way (together, but always in this order): %s\n", pairList(o, true))
+		}
 	}
 	if s := e.Code; s != nil {
 		fmt.Fprintf(&b, "  code      %.1f%% of statements, %d blocks never run, %d outcome pairs ran the same code\n",
@@ -141,6 +161,27 @@ func (e *Evidence) String() string {
 			len(m.Killed)+len(m.Survived), len(m.Killed), 100*m.Score(), len(m.Survived), len(m.Unreached))
 	}
 	return b.String()
+}
+
+// pairList names pairs ("a+b"), up to eight; ordered, as the order they
+// ran in ("a, then b").
+func pairList(ps []qenv.PairCoverage, ordered bool) string {
+	var out []string
+	for i, p := range ps {
+		if i == 8 {
+			out = append(out, fmt.Sprintf("and %d more", len(ps)-8))
+			break
+		}
+		switch {
+		case !ordered:
+			out = append(out, p.A+"+"+p.B)
+		case p.BFirst == 0:
+			out = append(out, p.A+", then "+p.B)
+		default:
+			out = append(out, p.B+", then "+p.A)
+		}
+	}
+	return strings.Join(out, "; ")
 }
 
 func kinds(ps []*qenv.PointCoverage) string {

@@ -3,6 +3,8 @@ package qtest
 import (
 	"testing"
 
+	"github.com/casselc/quint-connect-go/qenv"
+
 	"github.com/casselc/quint-connect-go/qtrace"
 	"github.com/casselc/quint-connect-go/validate"
 )
@@ -38,5 +40,30 @@ func TestClaims(t *testing.T) {
 	every := Expectation{desc: "every", check: func(r *validate.Report) bool { return len(r.Issues) > 0 }, every: true}
 	if !every.judge(runs).ok {
 		t.Error("an every-run expectation alone is not judged over every run")
+	}
+}
+
+// A Reach is judged over the runs' choices: how many runs reached (or
+// faulted) the kind, against the share wanted.
+func TestReach(t *testing.T) {
+	runs := []*Run{
+		{Choices: []qenv.Choice{{Kind: "fault.rpc.x.request", N: 3, Value: 0}}},
+		{Choices: []qenv.Choice{{Kind: "fault.rpc.x.request", N: 3, Value: 2}}},
+		{Choices: []qenv.Choice{{Kind: "sched.task", N: 2}}},
+	}
+	for _, c := range []struct {
+		r  Reach
+		ok bool
+	}{
+		{Reaches("rpc.x.request"), true},
+		{Reaches("rpc.x.request").InAtLeast(0.6), true},
+		{Reaches("rpc.x.request").InAtLeast(0.8), false},
+		{Reaches("rpc.x.request").Faulted().InAtLeast(0.5), false},
+		{Reaches("fault.rpc.x.request").Faulted(), true},
+		{Reaches("rpc.y.request"), false},
+	} {
+		if msg := c.r.judgeRuns(runs); (msg == "") != c.ok {
+			t.Errorf("%v: %q", c.r, msg)
+		}
 	}
 }

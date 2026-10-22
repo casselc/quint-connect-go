@@ -63,7 +63,8 @@ go run -C path/to/qweave ./cmd/qweave -C . -mutate -coverpkg your/module/pkg go 
 
 ```go
 rep := sys.Mutate(t, qtest.ExploreConfig{Seeds: 20, Rates: crashy}, nil) // skips unwoven
-t.Log(rep) // reached, killed, survived, unreached
+t.Log(rep.Evidence()) // the baseline's verdicts and faults, with the mutants
+rep.Expect(t, qtest.NoSurvivors("pay.go:42 drop call")) // equivalent ones marked, by position (and operator)
 ```
 
 - Every mutant (a negated `if`, a moved comparison boundary, a dropped

@@ -300,7 +300,11 @@ names what it needs.
   over chance (`qtest.Reaches(kind).InAtLeast(0.8)`, `NoSurvivors()`
   with marked equivalents); `Recovery.Expect`; `qmeta.Healthy{MaxU}`
   giving the predicate and the PromQL; `Experiment.Healthy` unset an
-  error.
+  error. *Done:* the report names untried and one-way pairs; Mutate's
+  report has the baseline (`Evidence()`) and `Expect(t, NoSurvivors(...))`;
+  `evidence.json` under QUINTGO_KEEP (the readers are later work);
+  `Reaches(kind).Faulted().InAtLeast(p)`; `qload.Recovery.Expect` and
+  `Err`; `qmeta.Healthy` and `HealthyRegion`.
 - **V14. Lints that see more.** `quintgo lint -sim` includes `_test.go`
   (System `Run` closures live there); quintaction checks literal action
   names in `qobs.Record` against the binding. *Done:* lint -sim scans

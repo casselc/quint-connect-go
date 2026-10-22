@@ -92,11 +92,44 @@ func Trajectories(obs []Observation, times []float64, bucket int) []Trajectory {
 type Region struct {
 	Chain *Chain
 	Bound float64
+	// Healthy is the healthy set, if the region was made from one
+	// (HealthyRegion): Rules then states it, and its PromQL, itself.
+	Healthy *Healthy
 	// MinV[u] is the smallest v with u at which the state is in the
 	// region (-1: none at this u).
 	MinV []int
 	p    []float64
 	hit  []float64
+}
+
+// Healthy is a healthy set of states: a queue of at most MaxU requests,
+// whatever the orbit. One value gives the region its predicate
+// (Contains), the rules their description (String) and the condition a
+// dashboard or a recovery check reads off the same gauge (PromQL), so the
+// three cannot drift apart.
+type Healthy struct{ MaxU int }
+
+// Contains reports whether s is healthy.
+func (h Healthy) Contains(s State) bool { return s.U <= h.MaxU }
+
+func (h Healthy) String() string { return fmt.Sprintf("u <= %d", h.MaxU) }
+
+// PromQL is the healthy condition over cfg's queue metric (qrole's
+// quint_serve_inflight by default), for cfg's server.
+func (h Healthy) PromQL(cfg RuleConfig) string {
+	q := cfg.Queue
+	if q == "" {
+		q = "quint_serve_inflight"
+	}
+	return fmt.Sprintf("%s{name=%q} <= %d", q, cfg.Server, h.MaxU)
+}
+
+// HealthyRegion is Region of a Healthy set, which the region keeps for
+// Rules.
+func (c *Chain) HealthyRegion(h Healthy, bound float64) *Region {
+	r := c.Region(h.Contains, bound)
+	r.Healthy = &h
+	return r
 }
 
 // Region returns the states from which the probability of having been
@@ -208,8 +241,12 @@ type RuleConfig struct {
 // state is in the region: its boundary, band by band, over qrole's metrics.
 // The derivation (the chain's parameters, the healthy set, the bound) goes
 // in the annotations, so a change to the retry policy in
-// code shows up as a changed rule.
+// code shows up as a changed rule. healthy describes the healthy set; ""
+// takes the region's own (HealthyRegion), whose PromQL is annotated too.
 func (r *Region) Rules(cfg RuleConfig, healthy string) string {
+	if healthy == "" && r.Healthy != nil {
+		healthy = r.Healthy.String()
+	}
 	if cfg.Alert == "" {
 		cfg.Alert = "Metastable"
 	}
@@ -249,6 +286,9 @@ func (r *Region) Rules(cfg RuleConfig, healthy string) string {
 	fmt.Fprintf(&b, "          summary: %q\n", fmt.Sprintf("%s is in a state it is unlikely to leave by itself within %s", cfg.Server, seconds(r.Bound)))
 	fmt.Fprintf(&b, "          derivation: %q\n", fmt.Sprintf("qmeta chain: lambda=%.3g/s mu=%.3g/s workers=%d timeout=%.3gs retries=%d backoff=%.3gs budget=%.3g; region: states with less than even odds of %s within %s",
 		p.Lambda, p.Mu, max(p.Workers, 1), p.Timeout, p.Retries, p.Backoff, p.RetryBudget, healthy, seconds(r.Bound)))
+	if r.Healthy != nil {
+		fmt.Fprintf(&b, "          healthy: %q\n", r.Healthy.PromQL(cfg))
+	}
 	if cfg.Headroom != "" {
 		fmt.Fprintf(&b, "          headroom: %q\n", cfg.Headroom)
 	}

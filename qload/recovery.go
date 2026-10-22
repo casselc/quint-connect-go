@@ -27,9 +27,37 @@ type Recovery struct {
 	Offered float64
 	Metrics *Metrics // a Simulate run's
 	Series  *Series  // an Experiment's
+	// Err is why the run could not be judged: an Experiment without a
+	// Healthy goodput, whose baseline would be whatever the system did
+	// before the trigger (a collapsed system "recovers" to its collapse).
+	Err error
+}
+
+// TB is the part of testing.TB Expect uses (qload does not import testing:
+// simulations run it).
+type TB interface {
+	Helper()
+	Fatalf(format string, args ...any)
+}
+
+// Expect fails t unless the run recovered as wanted (recovered false: a
+// metastable failure, expected), naming the trigger and the goodputs.
+func (r Recovery) Expect(t TB, recovered bool) {
+	t.Helper()
+	switch {
+	case r.Err != nil:
+		t.Fatalf("qload: %v", r.Err)
+	case r.Recovered != recovered && recovered:
+		t.Fatalf("qload: want recovery, got %v", r)
+	case r.Recovered != recovered:
+		t.Fatalf("qload: want no recovery (a metastable failure), got %v", r)
+	}
 }
 
 func (r Recovery) String() string {
+	if r.Err != nil {
+		return fmt.Sprintf("%v: not judged: %v", r.Trigger, r.Err)
+	}
 	v := "recovered"
 	if !r.Recovered {
 		v = "did not recover"
@@ -82,6 +110,10 @@ func Recovers(cfg Config, base float64, tr Trigger, within time.Duration) Recove
 // (counts over a Window are roughly Poisson). Without the tolerance a
 // healthy run at a few requests per second fails one time in ten.
 func (r *Recovery) Judge() {
+	if r.Err != nil {
+		r.Recovered = false
+		return
+	}
 	base := r.Before
 	if r.Baseline > 0 {
 		base = r.Baseline
@@ -98,6 +130,11 @@ func (r *Recovery) Judge() {
 func Assess(x Experiment, goodput string, tr Trigger, within time.Duration, seed uint64) Recovery {
 	if tr.Start == 0 {
 		tr.Start = Window
+	}
+	if x.Healthy <= 0 {
+		return Recovery{Trigger: tr, Err: fmt.Errorf("Experiment.Healthy is not set: set it to the goodput (per second) of %s "+
+			"when the system is well, usually the offered rate; judged against the goodput before the trigger, a system "+
+			"already collapsed would recover to its collapse", goodput)}
 	}
 	after := tr.End() + within
 	series := x.Run(seed, tr, after+Window)

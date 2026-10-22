@@ -251,6 +251,12 @@ func explore(t testing.TB, bindingPath string, cfg ExploreConfig, scenario func(
 			}
 		}
 	}
+	if os.Getenv("QUINTGO_KEEP") != "" {
+		// the report, for tools that read a kept run (quintgo cover, actionmap)
+		if err := x.Evidence().WriteJSON(filepath.Join(c.Dir, "evidence.json")); err != nil {
+			t.Logf("quintgo: evidence.json: %v", err)
+		}
+	}
 	return x
 }
 
@@ -339,6 +345,13 @@ func (x *Exploration) Expect(t testing.TB, claims ...Claim) {
 	bad := len(x.Failing())
 	failedAny := false
 	for _, c := range claims {
+		if rc, ok := c.(runsClaim); ok {
+			if msg := rc.judgeRuns(x.Runs); msg != "" {
+				failedAny = true
+				t.Errorf("quintgo: %s", msg)
+			}
+			continue
+		}
 		j := c.judge(reps)
 		q, isQ := c.(quantified)
 		every := !isQ && c.(Expectation).every || isQ && q.kind == "all"
