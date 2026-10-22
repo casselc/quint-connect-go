@@ -1,0 +1,34 @@
+# The ledger's gRPC server spans (otelgrpc) as model steps. The server
+# stamps the span of each request that took effect with ledger.action and
+# its fields at the commit (ledger/server.go); requests that did nothing
+# (invalid, aborted) carry none and are dropped. Spans of concurrent
+# requests end in any order, so ledger.seq, the commit order, orders the
+# steps (a domain clock: docs/instrumentation.md).
+actor: =ledger
+recorder: =ledger
+rules:
+  - span: "ledger.v1.Ledger/*"
+    where: { ledger.action: transfer }
+    action: transfer
+    args: { key: attr:ledger.key, src: attr:ledger.src, dest: attr:ledger.dest, amount: attr:ledger.amount|int }
+    obs: { src_balance: attr:ledger.src_balance|int, dest_balance: attr:ledger.dest_balance|int }
+    order: { seq: attr:ledger.seq|int }
+  - span: "ledger.v1.Ledger/*"
+    where: { ledger.action: refuse }
+    action: refuse
+    args: { key: attr:ledger.key, src: attr:ledger.src, dest: attr:ledger.dest, amount: attr:ledger.amount|int }
+    obs: { src_balance: attr:ledger.src_balance|int, dest_balance: attr:ledger.dest_balance|int }
+    order: { seq: attr:ledger.seq|int }
+  - span: "ledger.v1.Ledger/*"
+    where: { ledger.action: replay }
+    action: replay
+    args: { key: attr:ledger.key, src: attr:ledger.src, dest: attr:ledger.dest, amount: attr:ledger.amount|int }
+    order: { seq: attr:ledger.seq|int }
+  - span: "ledger.v1.Ledger/*"
+    where: { ledger.action: read }
+    action: read
+    args: { account: attr:ledger.account }
+    obs: { amount: attr:ledger.amount|int }
+    order: { seq: attr:ledger.seq|int }
+  - span: "*"
+    drop: true
