@@ -41,3 +41,31 @@ func TestGet(t *testing.T) {
 		t.Error("found after the run")
 	}
 }
+
+// A run started on a goroutine (qrun.Start) is found there, not on other
+// goroutines, and a simulation created in it inherits it.
+func TestStart(t *testing.T) {
+	end := qrun.Start(qrun.With(context.Background(), name, "started"))
+	if v, _ := qrun.Get(nil, name); v != "started" {
+		t.Errorf("the started run: %q", v)
+	}
+	other := make(chan bool)
+	go func() { _, ok := qrun.Get(nil, name); other <- ok }() //qenv:ok outside the run on purpose
+	if <-other {
+		t.Error("found on another goroutine")
+	}
+	s := qenv.New(qenv.Nominal{})
+	s.Spawn("task", func(ctx context.Context) {
+		if v, _ := qrun.Get(context.TODO(), name); v != "started" {
+			t.Errorf("a simulation's task: %q", v)
+		}
+	})
+	if err := s.Run(time.Second); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	end()
+	if _, ok := qrun.Get(nil, name); ok {
+		t.Error("found after end")
+	}
+}

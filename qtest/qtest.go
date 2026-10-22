@@ -25,6 +25,7 @@ import (
 	"testing"
 
 	"github.com/casselc/quint-connect-go/qobs"
+	"github.com/casselc/quint-connect-go/qrun"
 	"github.com/casselc/quint-connect-go/qtrace"
 	"github.com/casselc/quint-connect-go/validate"
 )
@@ -150,9 +151,15 @@ func Record(t testing.TB, bindingPath string, scenario func(rec *qobs.Recorder),
 	}
 	mem := &qobs.MemorySink{}
 	rec := qobs.NewRecorder(qobs.Tee{mem, file}, c.Recorder...)
+	// The scenario's goroutine is the run's (qrun.Start), whatever global
+	// recorder a test in parallel installs; the global one is for the
+	// goroutines it starts (servers, clusters), which no run can follow:
+	// tests whose scenarios start goroutines must not run in parallel.
+	end := qrun.Start(qobs.WithRecorder(context.Background(), rec))
 	prev := qobs.Global()
 	qobs.SetGlobal(rec)
 	func() {
+		defer end()
 		defer qobs.SetGlobal(prev)
 		scenario(rec)
 	}()

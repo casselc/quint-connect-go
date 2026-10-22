@@ -89,6 +89,8 @@ type task struct {
 	queued   bool            // in runq
 	done     bool
 	killed   bool
+	daemon   bool // its waits may last forever (Daemon)
+	idle     bool // this wait may last forever (a double's receive)
 }
 
 type timer struct {
@@ -130,6 +132,8 @@ func New(c Chooser) *Sim {
 	base := context.Background()
 	if cc, ok := As[ctxChooser](c); ok { // through any wrapper
 		base = cc.ctx
+	} else if rc, ok := qrun.Current(); ok {
+		base = rc // the run it is created in (qrun.Start, an enclosing simulation)
 	}
 	s := &Sim{c: c, base: base, now: Epoch, start: Epoch, back: make(chan struct{}), MaxSteps: 100000,
 		Check: os.Getenv("QENV_CHECK") == "1", creator: goid()}
@@ -317,6 +321,7 @@ func (t *task) wait(ready func() bool, deadline time.Time) {
 	s := t.sim
 	if s.nat != nil {
 		t.waitNative(ready, deadline)
+		t.idle = false
 		return
 	}
 	var waited func()
@@ -331,6 +336,7 @@ func (t *task) wait(ready func() bool, deadline time.Time) {
 		heap.Push(&s.timers, timer{at: deadline, id: t.id, t: t, gen: t.gen})
 	}
 	t.park() // a killed task does not return: its wait is not counted
+	t.idle = false
 	if waited != nil {
 		waited()
 	}
@@ -633,6 +639,53 @@ func (s *Sim) OnSettle(h func()) { s.onSettle = append(s.onSettle, h) }
 
 // ---- running -----------------------------------------------------------------
 
+// ErrStuck is returned by Run when no task can run, no deadline is set,
+// and a task that is not a daemon waits: nothing will ever wake it. The
+// error lists the waiting tasks (Sim.Tasks).
+var ErrStuck = errors.New("qenv: stuck")
+
+// Daemon marks the calling task as one whose waits may last forever (a
+// server's accept loop, a worker waiting for work): Run does not report
+// it as stuck. Outside a simulation it does nothing. The doubles' own
+// receives (Queue.Receive) need no mark.
+func Daemon(ctx context.Context) {
+	if t := taskOf(ctx); t != nil {
+		t.daemon = true
+	}
+}
+
+// WaitIdle is Wait for a wait that may last forever: a double's receive
+// (Queue.Receive, a log's poll), whose caller has nothing to do until a
+// message comes. Run does not report a task in it as stuck.
+func WaitIdle(ctx context.Context, ready func() bool) {
+	t := taskOf(ctx)
+	if t == nil {
+		panic("qenv: Wait outside a simulation")
+	}
+	if ready() {
+		return
+	}
+	t.idle = true
+	t.wait(ready, time.Time{})
+}
+
+// stuck lists the tasks waiting with no deadline that are neither daemons
+// nor in an idle wait ("": none).
+func (s *Sim) stuck() string {
+	var lines []string
+	for _, t := range s.tasks {
+		if t.done || t.killed || !t.waiting || t.daemon || t.idle || !t.deadline.IsZero() {
+			continue
+		}
+		if t.proc != nil && t.proc.down {
+			continue
+		}
+		lines = append(lines, "  "+t.name+": waiting")
+	}
+	sort.Strings(lines)
+	return strings.Join(lines, "\n")
+}
+
 // ErrMaxSteps is returned by Run when a run takes more than MaxSteps steps.
 var ErrMaxSteps = errors.New("qenv: too many scheduling steps (livelock?)")
 
@@ -653,6 +706,11 @@ func (s *Sim) Run(d time.Duration) error {
 		n, cands := s.runnable()
 		if n == 0 {
 			next, ok := s.nextDeadline()
+			if !ok {
+				if st := s.stuck(); st != "" {
+					return fmt.Errorf("%w at %v: no task can run and no deadline is set; the tasks waiting (a missed Notify, a lost message, a lock never released; mark a task that may wait forever with qenv.Daemon):\n%s", ErrStuck, s.now.Sub(s.start), st)
+				}
+			}
 			if !ok || next.After(horizon) {
 				if s.now.Before(horizon) && ok {
 					s.now = horizon

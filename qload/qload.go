@@ -117,6 +117,7 @@ func (sv *Server) serviceTime() time.Duration {
 }
 
 func (sv *Server) worker(ctx context.Context) {
+	qenv.Daemon(ctx) // waits for work forever when there is none
 	for {
 		for len(sv.queue) == 0 {
 			sv.work.Wait(ctx, time.Time{})

@@ -197,10 +197,18 @@ names what it needs.
   `Sim.Tasks()` when tasks other than daemons wait with no deadline;
   waits that may block forever declare it (`qenv.Daemon(ctx)`, the
   doubles' receives). Explore reports it as a run error, not a verdict.
+  *Done:* `qenv.Daemon`, `qenv.WaitIdle` (Queue.Receive, simlog's Poll);
+  the scheduler only (the native runtime runs in real time).
 - **V3. Runs without a simulation: `qrun.Start`.** It registers the
   goroutine; `qtest.Record` and `quinthegel.Recorder` use it instead of
   `qobs.SetGlobal`; `qobs.Strict` becomes a run key; `qenv.New` inherits
   `qrun.Current()`, and `qenv.WithContext` is deprecated (S2's rest).
+  *Done, in part:* `qrun.Start`, used by Record and Install alongside the
+  global recorder (goroutines a scenario starts cannot be followed);
+  `qenv.New` inherits the run. Strict stays process-wide: a step that
+  finds no recorder finds no run either, so a run key could never be
+  read. WithContext stays: a chooser handed to another goroutine (or to
+  gosim) carries its run, which a goroutine registration cannot.
 - **V4. One run record** (S4's rest; needs V3). `qtest.Run{Seed, Steps,
   Choices, Faults(), Interrupted, Unscripted, Code, Err, Report}` for
   `Exploration.Runs`, `quinthegel.Violation` (embeds it) and qgosim;

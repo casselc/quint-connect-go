@@ -12,7 +12,11 @@
 package qrun
 
 import (
+	"bytes"
 	"context"
+	"runtime"
+	"strconv"
+	"sync"
 	"sync/atomic"
 )
 
@@ -61,12 +65,81 @@ var resolver atomic.Pointer[func() (context.Context, bool)]
 // simulation it created.
 func SetResolver(f func() (context.Context, bool)) { resolver.Store(&f) }
 
-// Current is the calling goroutine's run context, if it belongs to a run.
+// Current is the calling goroutine's run context, if it belongs to a run:
+// a simulation's (the resolver), else one Start began on it.
 func Current() (context.Context, bool) {
 	if f := resolver.Load(); f != nil {
-		return (*f)()
+		if ctx, ok := (*f)(); ok {
+			return ctx, true
+		}
+	}
+	if started.n.Load() == 0 {
+		return nil, false
+	}
+	started.Lock()
+	defer started.Unlock()
+	if st := started.m[GoroutineID()]; len(st) > 0 {
+		return st[len(st)-1], true
 	}
 	return nil, false
+}
+
+// started holds the runs Start began, a stack per goroutine.
+var started struct {
+	sync.Mutex
+	m map[int64][]context.Context
+	n atomic.Int64 // with none, Current costs no goroutine lookup
+}
+
+// Start makes ctx the calling goroutine's run until end is called: code on
+// this goroutine that finds its state through Get (qobs.Record with
+// context.Background(), woven //quint:action) finds ctx's, and a simulation
+// created here (qenv.New) inherits it. A run without a simulation (a test
+// recording a library's steps) needs it to stay apart from runs in
+// parallel. Goroutines the run starts are not in it: they have only the
+// contexts they are given.
+func Start(ctx context.Context) (end func()) {
+	id := GoroutineID()
+	started.Lock()
+	if started.m == nil {
+		started.m = map[int64][]context.Context{}
+	}
+	started.m[id] = append(started.m[id], ctx)
+	started.n.Add(1)
+	started.Unlock()
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			started.Lock()
+			defer started.Unlock()
+			st := started.m[id]
+			for i := len(st) - 1; i >= 0; i-- {
+				if st[i] == ctx {
+					st = append(st[:i], st[i+1:]...)
+					break
+				}
+			}
+			if len(st) == 0 {
+				delete(started.m, id)
+			} else {
+				started.m[id] = st
+			}
+			started.n.Add(-1)
+		})
+	}
+}
+
+// GoroutineID is the calling goroutine's id, from the runtime's stack
+// header ("goroutine 123 [running]:"): Go has no goroutine-local storage.
+func GoroutineID() int64 {
+	var buf [32]byte
+	b := buf[:runtime.Stack(buf[:], false)]
+	b = bytes.TrimPrefix(b, []byte("goroutine "))
+	if i := bytes.IndexByte(b, ' '); i > 0 {
+		b = b[:i]
+	}
+	id, _ := strconv.ParseInt(string(b), 10, 64)
+	return id
 }
 
 // Task identifies the simulation task a context belongs to (qenv sets it

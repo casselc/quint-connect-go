@@ -39,6 +39,7 @@ import (
 
 	"github.com/casselc/quint-connect-go/qenv"
 	"github.com/casselc/quint-connect-go/qobs"
+	"github.com/casselc/quint-connect-go/qrun"
 	"github.com/casselc/quint-connect-go/qtrace"
 	"github.com/casselc/quint-connect-go/validate"
 	"hegel.dev/go/hegel"
@@ -109,14 +110,17 @@ func (r *Recorder) Choices() []qenv.Choice {
 	return append([]qenv.Choice(nil), r.env.Choices...)
 }
 
-// Install makes r the global qobs recorder until the returned function is
-// called, so code woven with Orchestrion (//quint:action) records into it.
-// Hegel runs test cases one at a time, so one global recorder per case is
-// safe; with hegel.WithConcurrency the rules of one case share it.
+// Install makes r the calling goroutine's run (qrun.Start) and the global
+// qobs recorder until the returned function is called, so code woven with
+// Orchestrion (//quint:action) records into it: on this goroutine whatever
+// other tests run in parallel, on goroutines it starts through the global
+// one. Hegel runs test cases one at a time, so one global recorder per case
+// is safe; with hegel.WithConcurrency the rules of one case share it.
 func (r *Recorder) Install() (restore func()) {
+	end := qrun.Start(r.Context(context.Background()))
 	prev := qobs.Global()
 	qobs.SetGlobal(r.Recorder)
-	return func() { qobs.SetGlobal(prev) }
+	return func() { qobs.SetGlobal(prev); end() }
 }
 
 // Context returns ctx carrying r (qobs.WithRecorder): code recording

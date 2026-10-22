@@ -1,15 +1,12 @@
 package qenv
 
 import (
-	"bytes"
 	"context"
-	"github.com/casselc/quint-connect-go/qrun"
-	"runtime"
-	"strconv"
 	"sync"
 	"sync/atomic"
 
 	"github.com/casselc/quint-connect-go/qobs"
+	"github.com/casselc/quint-connect-go/qrun"
 )
 
 // Which simulation each goroutine belongs to: its tasks' goroutines (qenv
@@ -71,17 +68,8 @@ func Current() (context.Context, bool) {
 	return o.t.ctx, true
 }
 
-// goid is the calling goroutine's id ("goroutine 123 [running]:").
-func goid() int64 {
-	var buf [32]byte
-	b := buf[:runtime.Stack(buf[:], false)]
-	b = bytes.TrimPrefix(b, []byte("goroutine "))
-	if i := bytes.IndexByte(b, ' '); i > 0 {
-		b = b[:i]
-	}
-	id, _ := strconv.ParseInt(string(b), 10, 64)
-	return id
-}
+// goid is the calling goroutine's id.
+func goid() int64 { return qrun.GoroutineID() }
 
 func own(id int64, s *Sim, t *task) {
 	owners.Lock()

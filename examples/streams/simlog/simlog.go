@@ -164,6 +164,7 @@ func (p *Producer) Flush(ctx context.Context) {
 // in order; those that failed are retried, still in order.
 func (p *Producer) send(ctx context.Context) {
 	sim := p.log.sim
+	qenv.Daemon(ctx) // the producer's sender waits for records forever
 	for {
 		qenv.Wait(ctx, func() bool { return p.outstanding > 0 })
 		parts := make([]int, 0, len(p.unsent))
@@ -281,7 +282,7 @@ func (m *Member) ready() bool {
 // partition is revoked and assigned again).
 func (m *Member) Poll(ctx context.Context) ([]pipeline.Record, error) {
 	l := m.log
-	qenv.Wait(ctx, m.ready)
+	qenv.WaitIdle(ctx, m.ready)
 	if !m.in {
 		l.join(m)
 	}

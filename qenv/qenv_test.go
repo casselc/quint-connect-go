@@ -252,8 +252,9 @@ func TestPredicateWaitersRecheck(t *testing.T) {
 		qenv.Sleep(ctx, time.Second)
 		held = false
 	})
-	if err := s.Run(time.Minute); err != nil {
-		t.Fatal(err)
+	// the other waits forever: the run is stuck, and says so
+	if err := s.Run(time.Minute); !errors.Is(err, qenv.ErrStuck) {
+		t.Fatalf("got %v, want ErrStuck", err)
 	}
 	if inside != 1 {
 		t.Fatalf("%d waiters got the lock, want 1", inside)

@@ -74,6 +74,11 @@ qobs.Record(s.Context(), "settle", nil)
 - **Restarts:** a process's start function runs on boot and after every
   restart. It must rebuild from durable doubles only; in-memory state is
   lost, which is the point.
+- **Stuck runs:** `Run` and `Settle` return `qenv.ErrStuck`, naming the
+  tasks, when a task waits with nothing left to wake it (a lost message, a
+  missed Notify). Return the error from your `Run`; a task that may wait
+  forever by design (a server loop) calls `qenv.Daemon(ctx)`, and a
+  double's own receive waits with `qenv.WaitIdle`.
 - **Workload choices** (cancel or not, when) are schedule choices:
   `s.Choose("sched.client.cancel", 10)`.
 - **Write a `Run(chooser, Config)`** for the whole deployment, so tests,

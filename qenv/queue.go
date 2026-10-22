@@ -86,7 +86,7 @@ func (q *Queue) Publish(ctx context.Context, body any) {
 
 // Receive waits for a message and takes it.
 func (q *Queue) Receive(ctx context.Context) *Delivery {
-	Wait(ctx, func() bool { return len(q.pending) > 0 })
+	WaitIdle(ctx, func() bool { return len(q.pending) > 0 })
 	i := 0
 	if !q.Ordered {
 		i = q.sim.Choose("sched.queue."+q.Name, len(q.pending))

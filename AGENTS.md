@@ -206,6 +206,15 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
 - `qenv.Wait` and `Signal.Wait` panic outside a simulation. A seam whose
   completion callbacks run on a real client's goroutines (kgo's promises)
   needs its wait in the seam (`Writer.Flush`), not in the application.
+- `Sim.Run` returns `ErrStuck` (naming the tasks) when nothing can run, no
+  deadline is set and a task still waits: a stalled run once looked
+  quiet. A task that may wait forever (a server's loop, a sender waiting
+  for records) calls `qenv.Daemon(ctx)`; a double's receive uses
+  `qenv.WaitIdle`. The native runtime runs in real time and cannot tell.
+- `qrun.Start(ctx)` makes ctx the goroutine's run without a simulation
+  (`qtest.Record`, `quinthegel.Recorder.Install`), and `qenv.New` inherits
+  it. Goroutines the run starts are not in it: Record still installs the
+  global recorder for them, so such scenarios must not run in parallel.
 - A model that learns a log from its reads checks Kafka, Kinesis and a
   simulated log with one binding (examples/streams): the consumer is the
   one place every tier can record.
