@@ -429,7 +429,137 @@ recorder opt-in.
   skill list, with a glossary and a first-hour path; qweave's install;
   scaffold fixes; report wording; skills corrected; the examples' own
   hand-written assertions as claims; `quintgo validate` writes no ITF by
-  default.
+  default. Extended after the fourth review (below).
+
+## The move, and what the fourth review adds (M, W9, R)
+
+After W7, the architect and design agents reviewed the progress again and
+a planner reconciled their findings with this roadmap. Their verdict: the
+W and X plans hold. Two things change the order:
+- The move to gotogether and the gosim repo comes before W8, so the docs
+  are written once, under the new names.
+- Release readiness comes before X, because X1, X2 and X8 write paths,
+  environment variable names and workflows.
+
+Every commit leaves every module building and its tests green. Order:
+M0 → M1 → M2 → M3 → M4 → M5a → M5b → M6 → W9 → R0 → W8 → R1 → R4 →
+X. R5 happens when the maintainer says.
+
+- **M0. Hygiene.**
+  - Remove the stale agent worktrees and their branches.
+  - Summarize W in REVIEW.md, whose third-review tables were left empty.
+- **M1. The gosim repo's history.** chucklehead-dev/gosim's main
+  fast-forwards from upstream ffd3a61 to the fork's tip (ac6b9b2).
+- **M2. The fork, a module of its own.**
+  - One scripted top commit sets the module path to
+    `github.com/chucklehead-dev/gosim`. It also changes
+    `internal/gosimtool`'s `Module`, which is written into translated
+    code. The script lives in FORK.md, so a rebase re-runs it.
+  - Translation checks the Go version and names the supported range.
+  - The MIT license and attribution stay.
+  - Minimal CI.
+  - Required by pseudo-version until R5.
+- **M3. History to chucklehead-dev/gotogether.** Push main only:
+  gosim-fork lives in its own repo now. `origin` is repointed.
+- **M4. qgosim on the gosim module.**
+  - Remove fetch-gosim.sh, its `REF`, the `.gosim-fork` replace, CI's
+    fork checkout, and the "fetch first" notes.
+  - simdeps fails if anything but qgosim and examples/gosim imports gosim.
+- **M5a. The module path.** `github.com/casselc/quint-connect-go` becomes
+  `github.com/chucklehead-dev/gotogether`, by script.
+- **M5b. Every other name.**
+  - The CLI (`cmd/gotogether`).
+  - `QUINTGO_*` → `GOTOGETHER_*`.
+  - Wire names: `#meta.quintgo`, `"source"`, `quintgo::expect`, the OTel
+    tracer name and the golangci plugin. Error prefixes, temp-dir
+    prefixes, skills and their symlinks; `skills install` removes old
+    `quint-*` dirs.
+  - Prose.
+  - Kept: `quint.step`/`quint.action`, `//quint:*`, `QuintOutcome`,
+    `QUINT_*` variables whose value goes to quint, the quint-connect
+    mentions (the Rust crate), and the analyzers' `quint*` names (they
+    check `//quint:` directives).
+  - The old names join TestSkillsAvoidDeprecated.
+- **M6. The old repository.** A final README commit pointing to
+  gotogether; the maintainer archives it. Its gosim-fork branch goes once
+  M4 is green.
+- **W9. API leftovers.**
+  - quinthegel:
+    - `NewRecorder` → `NewCase`; `Case.Choices()` → `Recorded()`.
+    - FindViolation gets a config without the Mode and Rounds it
+      ignores.
+    - `Case.Add` stops re-teeing (REVIEW S6).
+  - Claims:
+    - `Expect` is variadic everywhere.
+    - `Recovery.Judge` is unexported.
+    - `qload.TB` gives way to `testing.TB`.
+  - Configuration:
+    - One of `System.Opts`/`ExploreConfig.Opts`.
+    - `Settings`/`Resolve` become internal.
+    - One spelling for installing the global recorder.
+    - `qtest.Global` and `qobs.Global` no longer share a name.
+    - One of `AllowEmpty`/`SkipIfEmpty`.
+  - Rates in one place across Explore, Fuzz and Shrink.
+  - `QENV_CHECK` and glomers' `QUINT_STEPS_DIR` → `GOTOGETHER_*`. The
+    rule: `QUINT_*` only where the value goes to quint.
+  - crossdb's grace check keeps sub-second precision through the kube
+    interceptor, or a test pins the boundary.
+  - `Store.CommitFaults`' default, which W6 left to W7 and W7 did not
+    decide.
+  - `Sweep` keeps `*testing.T` (it needs `t.Run`), documented.
+- **R0. Trim the docs.** The done sections (A–D, U, Status, V, R3, W1–W7)
+  and REVIEW.md move to docs/HISTORY.md. ROADMAP keeps what is open, and
+  DESIGN's superseded sections become pointers.
+- **W8, extended.**
+  - README's Packages table regenerated from `go doc -short`.
+  - The hello snippets in README and the start skill copied from
+    hello_test.go, with a test that they match.
+  - One environment-variable table.
+  - Stale strings: `Sweep.Expect`, the free `qtest.Explore`,
+    emitting.md's `SetGlobal`.
+  - A quickstart first and one install block.
+  - The ASCII diagram fixed.
+  - Scaffold:
+    - It writes to files.
+    - It uses a typed `Mutation`.
+    - An empty run is a named Explore error.
+  - `-noitf` becomes `-itf`.
+  - `ShrunkTo(n)` comes here from X8 for hello_test's hand count.
+  - The status line reworded.
+  - A stale-docs gate: the deprecated-identifier test also reads
+    README.md, AGENTS.md and the examples' READMEs.
+  - Done when a fresh clone's quickstart passes as written.
+- **R1, reworked: modules that can be consumed.**
+  - A go.work for development, and no `replace` in published modules:
+    `go install …@version` refuses them, and a dependency's replace is
+    ignored.
+  - A `GOWORK=off` CI job per published module.
+  - Skills say `go install …@version`, and golangci's custom-gcl builds
+    the plugin.
+  - The supported Go range is documented.
+  - Examples stay untagged.
+- **R4. Readiness.**
+  - A root LICENSE (there is none; gosim's MIT needs one beside it).
+  - A CHANGELOG.
+  - An API review per package and an apidiff baseline.
+  - The tag order: gosim, root, qweave, qanalysis, qgosim.
+- **R5. Tags**, when the maintainer says.
+
+The X track follows, unchanged except:
+- X1's corpus records the gosim module version next to `BytesVersion`.
+- X2 adds the readers of `evidence.json`: `cover -sim` and actionmap
+  (V13's "later work").
+- X5 runs under `GOTOGETHER_CHECK=1`.
+- `ShrunkTo` leaves X8.
+
+Dropped on purpose:
+- REVIEW S2's embeddable `qenv.Layer`: `qenv.As` and Wrapper cover the
+  chain.
+- REVIEW P2's `Together` and `quinthegel.Want`: `Violation.Expect`
+  superseded them.
+- Renaming the CLI's subcommands.
+- Rewriting history to drop a5cc809's 15 MB test binary: .git is 26 MB,
+  and the docs cite commit hashes.
 
 ## What a green suite proves (X)
 
