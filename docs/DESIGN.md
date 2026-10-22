@@ -1456,7 +1456,7 @@ Chooser built from the trace, while the schedule stays nominal.
 | 0 | the fork in a repository of its own, with CI; choices in chunks from the host (§14's cost) (done, §15.7: a branch for now) | a repository |
 | 1 | the runtime interface, the native runtime and the gosim adapter; checkout's tests on qenv and on gosim (done, §15.6) | — |
 | 2 | the pass framework in the translator; `//quint:action` as a pass, so the edgepublish publisher runs in gosim without Orchestrion (done, §15.8) | 0 |
-| 3 | the `-toolexec` front end; Orchestrion aspect files; method values, promoted calls and channels woven | 2 |
+| 3 | the `-toolexec` front end; Orchestrion aspect files; method values, promoted calls and channels woven (done as an overlay front end, §15.9; channels left to gosim) | 2 |
 | 4 | load roles and action metrics; calibration from production; alerting rules from the chain | 3 |
 | 5 | fault points and fault coverage; a Quint trace as a Chooser | 2 |
 
@@ -1591,4 +1591,56 @@ lock across the code under test. Three failures led there:
   to a per-machine global under gosim, so deadlines passed between
   machines compared wrongly. The native clock now drops the monotonic
   reading.
+
+### 15.9 Phase 3 as built
+
+**An overlay, not `-toolexec`.** The go command already takes
+`-overlay`: a map from source files to the files that replace them. It
+computes the build, imports included, from the replacements. So woven
+code that imports qobs or qenv/weave, which the original did not, builds
+and links with nothing else to do. Orchestrion gets this from
+`-toolexec`, by editing each compile's import configuration and building
+what is missing. `qweave go test ./...` weaves the module's package
+graph, writes the woven files and the overlay, and runs the go command
+with it. gosim takes the same overlay through `GOSIM_OVERLAY`. The fork's
+own weaver was removed, so qweave is the only weaving engine, and the
+fork's change is generic: any tool's overlay.
+
+**qweave** lives in a module of its own, because it needs `x/tools`.
+- It reads Orchestrion's aspect files, from the packages a tool file
+  imports.
+- It supports what our aspects use:
+  - join points: `function-body`, `method-call`, `function-call`,
+    `function`, `directive`, `package-filter: root`, and the
+    combinators;
+  - advice: `prepend-statements` and `wrap-expression`, with
+    Orchestrion's template data.
+- It weaves on typed packages and edits the original text. Nested
+  matches compose: each template is rendered from the woven text of the
+  spans inside it.
+
+**What types add.** Orchestrion matches syntax. qweave matches types,
+so it weaves what Orchestrion missed in §13:
+- **method values.** `return s.mu.RUnlock` becomes a literal that binds
+  the receiver when the value is made, then makes the advised call;
+- **promoted calls.** A call through an embedded `sync.Mutex` is advised
+  on the field, `(c).Mutex`.
+
+A fixture uses all three escapes Orchestrion misses: an embedded lock, a
+method-value unlock and a `//qenv:go` goroutine. Woven, it runs in a
+qenv simulation in 16 ms. Unwoven, it hangs the scheduler.
+edgepublish's woven tests (sim, mbt and scenarios) pass under qweave as
+under Orchestrion. CI now runs the simulation with qweave, and mbt and
+scenarios with Orchestrion, to check compatibility.
+
+**Channels were not woven.** gosim simulates channels and `select`
+natively. On qenv's scheduler, a simulated channel would need `select`
+over simulated and real channels, and the runtime's own channels such as
+`ctx.Done()` and timers. Code with channels belongs on gosim, which
+phase 1 made a runtime for the same deployment.
+
+**Found on the way.** A woven goroutine that captured another task's
+context slept and waited as that task, and lost increments. Code in a
+woven goroutine must record and sleep through `context.Background()`,
+which qenv resolves to the goroutine's own task. The skill says so.
 

@@ -65,12 +65,28 @@ jobs:
         run: go test -count=1 -timeout 30m ./...
       - name: test (woven with Orchestrion)
         run: go run github.com/DataDog/orchestrion go test -timeout 30m -count=1 ./mbt/ ./scenarios/
-      - name: the publisher in a simulation (woven by qenv/weave)
-        run: go run github.com/DataDog/orchestrion go test -short -timeout 20m -count=1 ./sim/
+      - name: the publisher in a simulation (qenv/weave's aspects, woven by qweave)
+        run: go run -C ../../qweave ./cmd/qweave -C "$PWD" go test -short -timeout 20m -count=1 ./sim/
       - name: what weaving cannot rewrite
         run: (cd ../.. && go run ./cmd/quintgo lint -weave examples/edgepublish/publisher)
       - name: demo
         run: OUT=$RUNNER_TEMP/demo ./run-demo.sh
+
+  qweave:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: qweave
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: qweave/go.mod
+          cache-dependency-path: qweave/go.sum
+      - name: vet
+        run: go vet ./...
+      - name: test (aspects woven, the woven fixture run in qenv)
+        run: go test -count=1 ./...
 
   gosim:
     runs-on: ubuntu-latest

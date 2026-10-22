@@ -35,6 +35,7 @@ binding/ validate/ qtest/              binding YAML, quint-test-based validator,
 qenv/         deterministic simulation: scheduler, virtual time, processes, choosers; Store, Queue, Service doubles
 qenv/weave/   Orchestrion aspects: sync locks, wait groups and //qenv:go goroutines simulated inside qenv, real outside
 qgosim/       separate module: qenv and whole programs in gosim (the fork: branch gosim-fork, ./fetch-gosim.sh)
+qweave/       separate module: weaves Orchestrion aspects with types into a go -overlay (cmd/qweave); also gosim's
 qload/ qmeta/ load simulation (open/closed-loop clients, servers, triggers); CTMC, recovery property, Hegel trigger search
 cmd/quintgo/  CLI
 skills/       agent skills, the source of truth (embedded by package skills;
@@ -250,12 +251,15 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   them) hand gosim bytes in chunks for every choice but faults. A chooser
   without it (a plain wrapper) falls back to one round trip per choice,
   about 9 times slower.
-- gosim weaves Orchestrion aspects itself (the fork's `weave`): the
-  translated module's `gosim.tool.go` (else `orchestrion.tool.go`) names
-  the packages whose `orchestrion.yml` apply. List qobs for
-  `//quint:action`, never qenv/weave (gosim simulates sync itself).
-  Supported: function-body join points with a directive, prepend-statements
-  advice; others are skipped (debug log). On the native runtime with a
+- Weaving is qweave's (its own module, x/tools): `qweave go test ./...`
+  weaves the package graph with the aspects of the packages the tool file
+  imports and runs the go command with `-overlay`; qgosim hands gosim the
+  same overlay (`GOSIM_OVERLAY`). For gosim, the module's `gosim.tool.go`
+  (else `orchestrion.tool.go`) names them: list qobs for `//quint:action`,
+  never qenv/weave (gosim simulates sync itself). qweave weaves method
+  values and promoted calls that Orchestrion misses; `quintgo lint -weave`
+  is about Orchestrion builds. A new join point or advice goes in
+  `qweave/weave.go`, with a fixture test. On the native runtime with a
   Platform, qenv takes no lock across user code (gosim is cooperative):
   never put a real lock or a multi-send loop where a crash or a goroutine
   switch could strand it (DESIGN §15.8), and compare times without

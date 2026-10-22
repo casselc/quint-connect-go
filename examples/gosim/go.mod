@@ -10,6 +10,8 @@ require (
 	hegel.dev/go/hegel v0.9.27
 )
 
+require github.com/casselc/quint-connect-go/qweave v0.0.0 // indirect
+
 require (
 	dario.cat/mergo v1.0.1 // indirect
 	github.com/Ladicle/tabwriter v1.0.0 // indirect
@@ -74,6 +76,7 @@ replace (
 	github.com/casselc/quint-connect-go => ../..
 	github.com/casselc/quint-connect-go/examples/edgepublish => ../edgepublish
 	github.com/casselc/quint-connect-go/qgosim => ../../qgosim
+	github.com/casselc/quint-connect-go/qweave => ../../qweave
 	// The fork: ../../qgosim/fetch-gosim.sh puts it there.
 	github.com/jellevandenhooff/gosim => ../../qgosim/.gosim-fork
 )

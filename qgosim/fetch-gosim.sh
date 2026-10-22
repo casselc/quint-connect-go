@@ -7,7 +7,7 @@
 #   GOSIM_REPO   where to clone from (default: this repository's origin)
 set -euo pipefail
 cd "$(dirname "$0")"
-REF=39e67e46b069e1f79bb37cfb79a45732146ae4e6
+REF=ac6b9b24a4b5f88cf32a709201700eb1dbf96113
 if [ -d .gosim-fork ]; then
   # already there (CI checks the branch out itself): move it to REF
   if [ "$(git -C .gosim-fork rev-parse HEAD 2>/dev/null)" != "$REF" ] &&

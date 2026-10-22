@@ -23,7 +23,7 @@ then works through the following stages:
 | Way | Code | When |
 |---|---|---|
 | Explicit | `qobs.Record(ctx, "deposit", err, "account", a, "amount", n, "obs.balance", bal)` | anywhere; ~20 ns when no recorder is installed |
-| Annotation | `//quint:action action:deposit account:acct amount:n obs.balance:b.bal` on a function, built with `go run github.com/DataDog/orchestrion go build` | function-shaped steps, no code change in plain builds |
+| Annotation | `//quint:action action:deposit account:acct amount:n obs.balance:b.bal` on a function, built woven: `qweave go build` (this repository's weaver, an overlay), `go run github.com/DataDog/orchestrion go build`, or in gosim (a `gosim.tool.go` naming qobs) | function-shaped steps, no code change in plain builds |
 | Existing OTel spans | a `convert` rule file mapping span names and attributes to actions | code you cannot change, or telemetry you already have |
 
 Keys in `Record` and annotations:

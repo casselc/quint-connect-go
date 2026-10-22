@@ -5,6 +5,10 @@ package qgosim
 import (
 	"bytes"
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -13,7 +17,51 @@ import (
 	"github.com/casselc/quint-connect-go/qenv"
 	"github.com/casselc/quint-connect-go/qobs"
 	"github.com/casselc/quint-connect-go/qtrace"
+	"github.com/casselc/quint-connect-go/qweave"
 )
+
+var weaving struct {
+	sync.Once
+	err error
+}
+
+// weave weaves the module once per test process, before the first test
+// binary is built: qweave applies the aspects the module's gosim.tool.go
+// (else orchestrion.tool.go) names, and the translator reads the woven
+// files from GOSIM_OVERLAY. A GOSIM_OVERLAY already set is used as is.
+func weave() error {
+	weaving.Do(func() {
+		if os.Getenv("GOSIM_OVERLAY") != "" {
+			return
+		}
+		out, err := exec.Command("go", "env", "GOMOD").Output()
+		if err != nil {
+			weaving.err = err
+			return
+		}
+		dir := filepath.Dir(strings.TrimSpace(string(out)))
+		r, err := qweave.Weave(qweave.Config{Dir: dir, GOSIM: true, Tags: []string{"sim", "purego"}})
+		if err != nil {
+			weaving.err = fmt.Errorf("qgosim: weaving %s: %w", dir, err)
+			return
+		}
+		if len(r.Files) == 0 {
+			return
+		}
+		tmp, err := os.MkdirTemp("", "qgosim-weave")
+		if err != nil {
+			weaving.err = err
+			return
+		}
+		path, err := r.WriteOverlay(tmp)
+		if err != nil {
+			weaving.err = err
+			return
+		}
+		os.Setenv("GOSIM_OVERLAY", path)
+	})
+	return weaving.err
+}
 
 // pool keeps idle test binaries by package, so that parallel runs
 // (qtest.Explore) each have one.
@@ -23,6 +71,9 @@ var pool struct {
 }
 
 func get(t *testing.T, pkg string) (*metatesting.MetaT, error) {
+	if err := weave(); err != nil {
+		return nil, err
+	}
 	pool.Lock()
 	for n := len(pool.idle[pkg]); n > 0; n-- {
 		mt := pool.idle[pkg][n-1]

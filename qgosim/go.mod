@@ -4,6 +4,7 @@ go 1.26.1
 
 require (
 	github.com/casselc/quint-connect-go v0.0.0
+	github.com/casselc/quint-connect-go/qweave v0.0.0
 	github.com/jellevandenhooff/gosim v0.0.0
 )
 
@@ -21,7 +22,6 @@ require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dlclark/regexp2 v1.11.4 // indirect
 	github.com/dominikbraun/graph v0.23.0 // indirect
-	github.com/ebitengine/purego v0.12.0-alpha.1.0.20261015130536-d456b1bb95e8 // indirect
 	github.com/emirpasic/gods v1.18.1 // indirect
 	github.com/fatih/color v1.18.0 // indirect
 	github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 // indirect
@@ -63,13 +63,13 @@ require (
 	golang.org/x/tools v0.51.0 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	hegel.dev/go/hegel v0.9.27 // indirect
 	mvdan.cc/gofumpt v0.7.0 // indirect
 	mvdan.cc/sh/v3 v3.10.0 // indirect
 )
 
 replace (
 	github.com/casselc/quint-connect-go => ../
+	github.com/casselc/quint-connect-go/qweave => ../qweave
 	// The fork: ./fetch-gosim.sh puts it there.
 	github.com/jellevandenhooff/gosim => ./.gosim-fork
 )

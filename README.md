@@ -252,10 +252,14 @@ with `qenv.WithContext(quinthegel.Chooser(tc), rec.Context(ctx))`.
 Code you cannot rewrite against seams (plain `sync.Mutex`,
 `sync.RWMutex`, `sync.WaitGroup`, `go` statements) can be woven in at
 build time. Import `qenv/weave` in the project's `orchestrion.tool.go`
-and build with `orchestrion go test`. The root module's lock and wait group
-calls then become simulated ones inside a simulation and the real ones
-outside it, and a `go` statement marked `//qenv:go` starts a simulation
-task. `quintgo lint -weave DIR` finds what weaving cannot rewrite.
+and build with [qweave](qweave) (`qweave go test ./...`), this
+repository's weaver, or with `orchestrion go test`. The root module's lock
+and wait group calls then become simulated ones inside a simulation and
+the real ones outside it, and a `go` statement marked `//qenv:go` starts a
+simulation task. qweave reads the same aspect files as Orchestrion, with
+types. It also weaves what Orchestrion misses: method values
+(`return mu.RUnlock`) and calls promoted through an embedded lock.
+`quintgo lint -weave DIR` lists what Orchestrion would miss.
 [examples/edgepublish](examples/edgepublish) runs its publisher this way.
 
 A whole program, standard library and network included, can run in
