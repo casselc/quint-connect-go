@@ -149,7 +149,7 @@ jobs:
       - name: Install quint and gnuplot
         run: |
           ci/install-quint.sh
-          sudo apt-get install -y gnuplot-nox
+          sudo apt-get update -q && sudo apt-get install -y gnuplot-nox
       - name: Gossip Glomers under Maelstrom, step logs checked by quintgo
         run: OUT=$RUNNER_TEMP/maelstrom examples/glomers/maelstrom.sh
 
