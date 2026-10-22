@@ -35,6 +35,11 @@ func (i Isolation) String() string {
 // isolation level: retry it.
 var ErrConflict = errors.New("qenv: transaction conflict (serialization failure); retry")
 
+// ErrDeadlock is a transaction aborted because its lock wait would close
+// a cycle of waits (PostgreSQL's deadlock_detected). It is an ErrConflict:
+// Retry retries it. Locking rows in one order avoids it.
+var ErrDeadlock = fmt.Errorf("%w: deadlock (lock waits form a cycle); lock rows in one order", ErrConflict)
+
 // ErrUnknownOutcome is returned by Commit when the connection is lost
 // during commit (fault "fault.store.commit"): the transaction may or may
 // not have committed, and the caller cannot tell.
@@ -128,6 +133,8 @@ type Tx struct {
 	locked []string
 	hooks  []func()
 	done   bool
+	// waiting is the key whose lock the transaction waits for ("": none)
+	waiting string
 }
 
 // Begin starts a transaction.
@@ -181,7 +188,20 @@ func (tx *Tx) GetForUpdate(key string) (any, bool, error) {
 	tx.check()
 	Yield(tx.ctx)
 	if owner := tx.st.locks[key]; owner != nil && owner != tx {
+		// the owner waits for a lock whose owner waits ...: if the chain
+		// comes back to tx, waiting would never end
+		for o, n := owner, 0; o != nil && n <= len(tx.st.open); o, n = tx.st.locks[o.waiting], n+1 {
+			if o == tx {
+				tx.Rollback()
+				return nil, false, ErrDeadlock
+			}
+			if o.waiting == "" {
+				break
+			}
+		}
+		tx.waiting = key
 		Wait(tx.ctx, func() bool { return tx.st.locks[key] == nil })
+		tx.waiting = ""
 	}
 	if tx.done {
 		return nil, false, ErrConflict

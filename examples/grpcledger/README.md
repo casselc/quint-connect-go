@@ -47,6 +47,7 @@ client on return. A transfer whose response was lost still happened.
 | `TestFaithfulConforms` | simulated | 60 seeds with crashes and every network fault conform; `Evidence` lists the 4 fault kinds faulted and every pair together |
 | `TestMutants` | simulated | the table above: `NoDedupe` conforms without faults and is caught with them; the others need none |
 | `TestNoDedupeSweep` | simulated | pairwise over {conn, request, response, crash}: the bug shows exactly in rows with duplicated requests or lost responses |
+| `TestCrashAfterCommit` | simulated, crashes only | with a crash window after the commit, crashes alone expose `NoDedupe`; the faithful ledger conforms |
 | `TestShrinkDoubleApply` | simulated, Hegel | shrinks `NoDedupe` to one duplicated request (`quinthegel.Shrink`), replayable from its choices |
 | `TestRealSpansConform` | real | a concurrent load with refused calls and lost responses: the otelgrpc spans conform |
 | `TestRealMutants` | real | `NoDedupe` (lost responses) and `NoFundsCheck` caught from spans |
@@ -62,11 +63,16 @@ ledger for real and validates its spans with `quintgo validate -convert`
   so a→b and b→a could each hold one lock and wait forever. Every later
   request then stalled behind them. The run recorded no step at all, and
   Explore failed it as not conforming (a report with no actors). The
-  server now locks accounts in name order.
-- **A crash cannot lose a committed response.** `qenv.Service` delivers a
-  response in the same scheduling step as the handler's commit and
-  return. In the simulation, then, only the lost-response fault stands for
-  "the server died after committing". The sweep's expectations say so.
+  server now locks accounts in name order. qenv's store now detects the
+  cycle and aborts one side with `qenv.ErrDeadlock`, as a real database
+  does, so the same bug would show as retries instead of a silent stall.
+- **A crash could not lose a committed response.** `qenv.Service`
+  delivered a response in the handler's scheduling step, so only the
+  lost-response fault stood for "the server died after committing" (the
+  sweep's expectations, whose crash rows run without it, still say so).
+  `qenv.Service.CrashWindow` (here `Config.CrashAfterCommit`) opens that
+  window: `TestCrashAfterCommit` shows crashes alone exposing the missing
+  dedupe.
 
 ## Regenerating the protobuf code
 

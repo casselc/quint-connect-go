@@ -443,6 +443,9 @@ func describeAll(es []Expectation) string {
 func (x *Exploration) describe(t testing.TB, r *Explored) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "seed %d, faults %v\n%s", r.Seed, r.Faults(), r.Report.Summary())
+	if len(r.Steps) == 0 {
+		fmt.Fprintf(&b, "  the run recorded no steps: its tasks never reached a step (a deadlock, a wait no one ends: print Sim.Tasks() before Close), or it records into another recorder\n")
+	}
 	if len(r.Unscripted) > 0 {
 		fmt.Fprintf(&b, "  scripted faults that never happened: %v\n", r.Unscripted)
 	}

@@ -2592,3 +2592,25 @@ is a subset (no idempotence, no groups), so it could serve that too.
   with DynamoDB, and out of scope.
 - Kinesis needed a fake endpoint (four calls of the JSON 1.1 protocol),
   not a Docker image (none needed: in process, like kfake).
+
+## 40. What the examples asked of the core
+
+The gRPC and streams examples found four things the core got wrong or
+could not say; each is fixed where it belongs:
+- **A step argument named like a step field** (`seq`) was shadowed in
+  templates by the recorder's sequence number: `apply(seq=1)` replayed as
+  `apply(4)`, and the error said only "not a transition". Arguments now
+  win, and the step's own are `.step.seq` and `.step.action`.
+- **Deadlocks were silent.** Two transactions taking row locks in
+  opposite orders waited forever, the run recorded nothing, and Explore
+  failed it with an empty report. `qenv.Store` now walks the lock-wait
+  chain at each `GetForUpdate` and aborts the transaction that would close
+  a cycle (`ErrDeadlock`, an `ErrConflict`), as PostgreSQL does; and a run
+  with no steps says so in its report.
+- **No crash between commit and response.** `qenv.Service` delivered the
+  response in the handler's scheduling step. `CrashWindow` adds a
+  scheduling point there; opt-in, since it changes the choices of runs
+  recorded before it. grpcledger's `TestCrashAfterCommit` shows crashes
+  alone exposing a missing dedupe with it.
+- **Long failing runs are slow to validate** (17 to 30 s for 160 to 500
+  steps, the streams example measured): open; see §41 if profiled.

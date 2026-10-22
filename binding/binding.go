@@ -172,10 +172,11 @@ func (a Action) Fields(ps ...Param) []string {
 		}
 	}
 	collectFields(a.Expect, set)
+	// the step's own identity, not fields it records; seq and action may be
+	// arguments (they win over the step's own), so they stay
 	delete(set, "outcome")
 	delete(set, "process")
-	delete(set, "action")
-	delete(set, "seq")
+	delete(set, "step")
 	return sortedKeys(set)
 }
 
@@ -286,9 +287,14 @@ func (q qlit) String() string { return string(q) }
 //	.process  the actor's incarnation, 1-based
 //	.outcome  the outcome, mapped through the outcome table
 //	.obs.X    an observed projection
-//	.action   .seq
+//	.action   .seq   unless the step has an argument of that name, which
+//	                 wins: a parameter named seq is the argument seq. The
+//	                 step's own are always .step.action and .step.seq.
 func stepData(s *qtrace.Step, args map[string]any, process int, outcome string) map[string]any {
 	d := map[string]any{}
+	d["action"] = s.Action
+	d["seq"] = s.Seq
+	d["step"] = map[string]any{"action": s.Action, "seq": s.Seq}
 	for k, v := range args {
 		d[k] = qlit(quintLit(v))
 	}
@@ -299,8 +305,6 @@ func stepData(s *qtrace.Step, args map[string]any, process int, outcome string) 
 	d["obs"] = obs
 	d["process"] = qlit(strconv.Itoa(process))
 	d["outcome"] = qlit(outcome)
-	d["action"] = s.Action
-	d["seq"] = s.Seq
 	return d
 }
 

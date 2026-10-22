@@ -25,8 +25,12 @@ client := ledgerpb.NewLedgerClient(srv.Dial())           // a grpc.ClientConnInt
 - Record steps in the handler at the commit (`Txn.OnCommit`). For the real
   tier, also set them as span attributes and convert the otelgrpc spans
   (`ledger.convert.yaml`, a commit-order attribute as `order:`).
-- Lock rows in one order: `qenv.Store` does not detect deadlocks, and a
-  deadlocked run records nothing.
+- Lock rows in one order. `qenv.Store` detects a cycle of lock waits and
+  aborts the transaction closing it (`qenv.ErrDeadlock`, an ErrConflict
+  that `qenv.Retry` retries), as a real database does.
+- `simgrpc.Server.CrashAfterCommit(true)` (`qenv.Service.CrashWindow`)
+  lets a crash fall between a handler's commit and its response; without
+  it only the lost-response fault stands for that.
 
 ## Streams: Kafka and Kinesis (examples/streams)
 

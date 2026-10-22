@@ -180,6 +180,15 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   that calls back (qenv's commit hooks) is one call-graph node for every
   closure handed to it, and going through it made cancel "reach"
   PlaceOrder.
+- `qenv.Store` detects lock-wait cycles: the transaction whose
+  `GetForUpdate` would close one aborts with `ErrDeadlock` (an
+  ErrConflict). `qenv.Service` delivers a response in the handler's
+  scheduling step unless `CrashWindow` is set, which lets a crash fall
+  after the effect; it adds a scheduling point, so recorded choices of
+  older runs do not replay with it on.
+- A binding template's `.seq` and `.action` are the step's own unless the
+  step has an argument of that name, which wins; the step's are always
+  `.step.seq`, `.step.action`.
 - A step's observed values may be negative (an overdraft's balance): never
   use -1 as "not observed". Pass the observation or nothing.
 - `quint` reserves `to` (and other built-in names): a parameter named `to`

@@ -130,3 +130,22 @@ func TestShrinkDoubleApply(t *testing.T) {
 	v.Expect(t, reapplied)
 	t.Logf("shrunk: %d steps, faults %v\n%s", len(v.Steps), (&qenv.Recorder{Choices: v.Choices}).Faults(), v.Summary)
 }
+
+// A server that dies after committing a transfer and before answering:
+// with qenv.Service's crash window, crashes alone, with no network fault,
+// expose the missing dedupe (the client retries a transfer that was
+// applied), and the faithful ledger still conforms.
+func TestCrashAfterCommit(t *testing.T) {
+	qtest.RequireQuint(t)
+	net := []string{"fault.grpc.ledger.conn", "fault.rpc.ledger.request", "fault.rpc.ledger.response"}
+	crashes := qtest.ExploreConfig{Seeds: 30, Rates: qenv.Rates{Kinds: map[string]float64{"fault.nemesis": 0.05}}}
+	run := func(m ledger.Mutation) qtest.System {
+		cfg := grpcledger.Config{Mutation: m, CrashAfterCommit: true}
+		return qtest.System{Binding: binding, Run: func(c qenv.Chooser) error {
+			_, err := grpcledger.Run(qenv.Without(c, net...), cfg)
+			return err
+		}}
+	}
+	run(ledger.Faithful).Explore(t, crashes).Expect(t, qtest.Conforms())
+	run(ledger.NoDedupe).Explore(t, crashes).Expect(t, reapplied)
+}
