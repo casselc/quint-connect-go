@@ -814,7 +814,9 @@ func (s *Sim) selfCheck() {
 		if t.waiting && !t.done && !t.killed && !t.deadline.IsZero() && !timers[t] {
 			fail("task %s waits until %v with no live timer", t.name, t.deadline.Sub(s.start))
 		}
-		if t.waiting && !t.deadline.IsZero() && t.deadline.Before(s.now) && !t.queued {
+		// a task killed by a crash keeps the deadline it was waiting for, and
+		// rightly never runs again
+		if t.waiting && !t.done && !t.killed && !t.deadline.IsZero() && t.deadline.Before(s.now) && !t.queued {
 			fail("task %s is past its deadline (%v) and not runnable", t.name, t.deadline.Sub(s.start))
 		}
 	}

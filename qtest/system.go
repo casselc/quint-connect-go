@@ -97,3 +97,25 @@ func (s System) Sweep(t *testing.T, sw Sweep, run func(row qsweep.Row, c qenv.Ch
 	sw.Explore.Opts = s.opts(sw.Explore.Opts...)
 	return sweep(t, s.Binding, sw, run)
 }
+
+// Fuzz explores the system with Go's coverage-guided fuzzer: each input is
+// one run, its bytes the run's choices (qenv.FromBytes at rates: schedules,
+// faults), the model the oracle. Without -fuzz, go test runs the seeds and
+// the corpus in testdata/fuzz as regression tests. Seed it with runs worth
+// keeping: a shrunk Hegel failure, once fixed, is
+// qenv.EncodeChoices(v.Choices, rates). The empty input, every choice
+// nominal, is always a seed.
+//
+//	func FuzzShop(f *testing.F) { sys.Fuzz(f, rates) }
+func (s System) Fuzz(f *testing.F, rates qenv.Rates, seeds ...[]byte) {
+	f.Helper()
+	f.Add([]byte{})
+	for _, sd := range seeds {
+		f.Add(sd)
+	}
+	verdicts := &VerdictCache{} // per fuzzing worker: inputs that repeat a run's steps skip quint
+	f.Fuzz(func(t *testing.T, data []byte) {
+		s.Explore(t, ExploreConfig{Seeds: 1, Parallel: 1, Verdicts: verdicts,
+			Chooser: func(uint64) qenv.Chooser { return qenv.FromBytes(data, rates) }}).Expect(t, Conforms())
+	})
+}

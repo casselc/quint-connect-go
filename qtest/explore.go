@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -105,6 +106,8 @@ type ExploreConfig struct {
 	// Chooser, if set, makes each seed's chooser instead of a seeded one
 	// at Rates: a Script per seed, a Replay of a recorded run, a swarm.
 	Chooser func(seed uint64) qenv.Chooser
+	// Verdicts, if set, reuses the verdicts of runs with the same steps.
+	Verdicts *VerdictCache
 }
 
 // Explore runs scenario once per seed, each time with a seeded qenv chooser
@@ -183,14 +186,106 @@ func explore(t testing.TB, bindingPath string, cfg ExploreConfig, scenario func(
 	ch := checkerFor(t, bindingPath, o, c)
 	cc := *ch
 	cc.Options = o
-	reps, errs := cc.CheckBatch(context.Background(), runs, 0)
-	for i, r := range x.Runs {
-		if errs[i] != nil {
-			t.Fatalf("quintgo: seed %d: %v", r.Seed, errs[i])
+	// runs already judged (same steps) take their verdict from the cache,
+	// and runs of the batch with the same steps are checked once
+	keys := make([]string, len(runs))
+	var todo [][]qtrace.Step
+	first := map[string]int{} // key -> index in todo
+	at := map[int]int{}       // run -> index in todo
+	for i, steps := range runs {
+		if cfg.Verdicts != nil {
+			keys[i] = stepsKey(steps)
+			if rep, ok := cfg.Verdicts.get(keys[i]); ok {
+				x.Runs[i].Report = rep
+				continue
+			}
+			if j, ok := first[keys[i]]; ok {
+				at[i] = j
+				cfg.Verdicts.hit()
+				continue
+			}
+			first[keys[i]] = len(todo)
 		}
-		r.Report = reps[i]
+		at[i] = len(todo)
+		todo = append(todo, steps)
+	}
+	if len(todo) > 0 {
+		reps, errs := cc.CheckBatch(context.Background(), todo, 0)
+		for i, j := range at {
+			if errs[j] != nil {
+				t.Fatalf("quintgo: seed %d: %v", x.Runs[i].Seed, errs[j])
+			}
+			x.Runs[i].Report = reps[j]
+			if cfg.Verdicts != nil {
+				cfg.Verdicts.put(keys[i], reps[j])
+			}
+		}
 	}
 	return x
+}
+
+// A VerdictCache keeps the model's verdicts by the runs' steps: a run whose
+// steps were already judged is not checked again. Fuzzing needs it (most
+// inputs repeat a run's model-level steps, and quint takes a second), as
+// does any exploration whose seeds repeat runs.
+type VerdictCache struct {
+	mu   sync.Mutex
+	m    map[string]*validate.Report
+	hits int
+}
+
+// Hits counts the runs judged from the cache.
+func (v *VerdictCache) Hits() int { v.mu.Lock(); defer v.mu.Unlock(); return v.hits }
+
+func (v *VerdictCache) get(k string) (*validate.Report, bool) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	r, ok := v.m[k]
+	if ok {
+		v.hits++
+	}
+	return r, ok
+}
+
+func (v *VerdictCache) hit() { v.mu.Lock(); v.hits++; v.mu.Unlock() }
+
+func (v *VerdictCache) put(k string, r *validate.Report) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if v.m == nil {
+		v.m = map[string]*validate.Report{}
+	}
+	v.m[k] = r
+}
+
+// stepsKey is a run's steps as the model sees them: actions, outcomes,
+// arguments, observations and order keys, with recorder, process and
+// thread ids renumbered by first appearance (they are random per run) and
+// times left out.
+func stepsKey(steps []qtrace.Step) string {
+	ids := map[string]int{}
+	id := func(s string) int {
+		if n, ok := ids[s]; ok {
+			return n
+		}
+		ids[s] = len(ids)
+		return ids[s]
+	}
+	var b strings.Builder
+	for _, s := range steps {
+		fmt.Fprintf(&b, "%s|%s|%d|%d|%d|%s|%v|%v|%v\n", s.Action, s.Outcome, id("r:"+s.Recorder), id("p:"+s.Process), id("t:"+s.Thread),
+			s.Actor, sortedKV(s.Args), sortedKV(s.Obs), sortedKV(s.Order))
+	}
+	return b.String()
+}
+
+func sortedKV[V any](m map[string]V) []string {
+	out := make([]string, 0, len(m))
+	for k, v := range m {
+		out = append(out, fmt.Sprintf("%s=%v", k, v))
+	}
+	sort.Strings(out)
+	return out
 }
 
 // Expect states what the exploration must show, claim by claim: Some,

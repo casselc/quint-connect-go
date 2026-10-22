@@ -2059,3 +2059,39 @@ recovers in 6 of 6.
 The chain, being exponential, predicts the recovery. The measurement's CV
 of 0 is the warning. I had expected the opposite: that regular service
 would time out less.
+
+## 23. Fuzzing over the Chooser (A3)
+
+**One byte rule (`qenv.Bytes`).** A schedule choice is a byte modulo n.
+A fault is nominal when its byte is below 256 × (1 − rate), and otherwise
+1 plus a byte modulo n − 1. Past the end of the stream every choice is
+nominal. The rule lived in quinthegel's chooser and, in another form, in
+the gosim fork. It is now qenv's: Hegel's chooser is the rule over Hegel's
+draws, and `FromBytes` is the rule over a fixed input. `EncodeChoices`
+inverts it: a recorded run, or a shrunk Hegel failure's choices, becomes
+the bytes that make it again. A test turns checkout's shrunk write skew
+into an 834-byte corpus entry that replays to the same steps and the same
+rejection.
+
+**`System.Fuzz(f, rates, seeds...)`.** Each fuzz input is one run on
+`FromBytes(input)`, judged by the model. `go test` runs the corpus and the
+seeds; `go test -fuzz` explores, guided by coverage of the code under
+test. Seeds and Hegel are random and shrinking respectively; neither is
+guided by coverage.
+
+**Verdicts by steps.** With quint judging every input, the fuzzer made 16
+runs in 90 s. Most mutations change bytes that the run's model-level
+steps do not show (a schedule choice between equivalent tasks, a byte
+past the faults that matter). `qtest.VerdictCache` keys verdicts by the
+steps, with recorder, process and thread ids renumbered by first
+appearance and times left out. With it, the same 90 s made 14,633 runs
+and found 30 inputs reaching new code. The cache also deduplicates
+identical runs within one exploration. CI fuzzes the faithful shop for 60
+s.
+
+**Found on the way.** The scheduler's self-check (`QENV_CHECK=1`) failed
+on a test with frequent crashes: "task is past its deadline and not
+runnable". A task killed while it waits keeps its deadline and rightly
+never runs again. The check excluded killed tasks in its timer clause but
+not in the deadline clause. The fix is to the check, not the scheduler;
+`TestSelfCheckUnderCrashes` keeps it.

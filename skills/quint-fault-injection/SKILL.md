@@ -137,6 +137,23 @@ quinthegel.Shrink(t, sys, hegel.WithTestCases(50)).Expect(t, qtest.Violates("cha
   on. For each mutant, a row per isolation level (or store, or broker
   mode) says where the bug is real (see examples/checkout's table).
 
+## 4. bis Fuzzing: Go's fuzzer drives the simulation
+
+```go
+func FuzzShop(f *testing.F) { sys.Fuzz(f, rates) }   // sys is a qtest.System
+```
+
+- Each fuzz input is one run: its bytes are the run's choices
+  (`qenv.FromBytes`, the same byte rule as Hegel's chooser), and the model
+  judges it. `go test` runs the corpus as regression tests; `go test
+  -fuzz FuzzShop -fuzztime 60s` explores, guided by coverage of the code
+  under test.
+- Verdicts are cached by the run's steps (`qtest.VerdictCache`): most
+  inputs repeat a run's model-level steps. On checkout, that took the
+  fuzzer from 16 runs in 90 s to 14,633.
+- Keep a shrunk Hegel failure, once fixed, as a seed:
+  `sys.Fuzz(f, rates, must(qenv.EncodeChoices(v.Choices, qenv.DefaultRates)))`.
+
 ## 4a. Fault points in your own code, and fault coverage
 
 A double fails the way its kind of component fails. A fault specific to

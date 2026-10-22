@@ -93,3 +93,19 @@ func TestConstants(t *testing.T) {
 		t.Errorf("a misspelt constant: %v, want an error naming the model's constants", err)
 	}
 }
+
+// Runs with the same steps share one verdict: ten seeds of a run that
+// makes no choices are checked once, though each has its own recorder ids.
+func TestVerdictCache(t *testing.T) {
+	RequireQuint(t)
+	cache := &VerdictCache{}
+	x := Explore(t, "../validate/testdata/account.yaml", ExploreConfig{Seeds: 10, Verdicts: cache}, func(c qenv.Chooser) {
+		s := qenv.New(c)
+		defer s.Close()
+		qobs.Record(s.Context(), "deposit", nil, "amount", 10, "obs.balance", 10)
+	})
+	x.Expect(t, Conforms())
+	if cache.Hits() != 9 {
+		t.Errorf("%d of 10 runs judged from the cache, want 9", cache.Hits())
+	}
+}

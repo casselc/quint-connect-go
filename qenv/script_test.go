@@ -3,7 +3,9 @@ package qenv_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -85,5 +87,47 @@ func TestChoicesAlignToSteps(t *testing.T) {
 	}
 	if want := []int{0, 1, 2, 3}; !reflect.DeepEqual(at, want) {
 		t.Errorf("the write choices came after %v steps, want %v", at, want)
+	}
+}
+
+// A recorded run's choices encode to bytes from which the byte rule makes
+// the same choices: a run becomes a fuzz corpus entry.
+func TestEncodeChoices(t *testing.T) {
+	rates := qenv.Rates{Default: 0.3}
+	run := func(c qenv.Chooser) ([]qenv.Choice, []string) {
+		rec := &qenv.Recorder{C: c}
+		s := qenv.New(rec)
+		var log []string
+		for _, name := range []string{"a", "b", "c"} {
+			s.Process(name, true, func(ctx context.Context) {
+				for i := range 5 {
+					if qenv.FaultPoint(ctx, "test.write", false, errUnavailable) != nil {
+						log = append(log, fmt.Sprintf("%s%d!", name, i))
+					} else {
+						log = append(log, fmt.Sprintf("%s%d", name, i))
+					}
+					qenv.Sleep(ctx, time.Duration(s.Choose("sched.wait", 300))*time.Millisecond)
+				}
+			})
+		}
+		if err := s.Run(time.Minute); err != nil {
+			t.Fatal(err)
+		}
+		s.Close()
+		return rec.Choices, log
+	}
+	seeded := qenv.NewSeeded(7)
+	seeded.Rates = rates
+	choices, want := run(seeded)
+	data, err := qenv.EncodeChoices(choices, rates)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, got := run(qenv.FromBytes(data, rates)); !reflect.DeepEqual(got, want) {
+		t.Errorf("replayed from bytes:\n%v\nwant\n%v", got, want)
+	}
+	// past the end, every choice is nominal: no faults
+	if _, got := run(qenv.FromBytes(nil, rates)); strings.Contains(strings.Join(got, " "), "!") {
+		t.Errorf("faults from no bytes: %v", got)
 	}
 }

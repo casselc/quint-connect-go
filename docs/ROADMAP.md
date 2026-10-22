@@ -133,3 +133,5 @@ the rest, each after the U items it depends on.
   model's `scale` for other writers).
 - B1–B2: done (DESIGN §22): pprof labels by role; `qmeta.Measure`, with a
   verdict that changes with the service-time shape.
+- A3: done (DESIGN §23): `qenv.Bytes`/`FromBytes`/`EncodeChoices`,
+  `System.Fuzz`, `VerdictCache`; CI fuzzes checkout for 60 s.
