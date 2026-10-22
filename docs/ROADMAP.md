@@ -191,6 +191,8 @@ names what it needs.
 - **V1. Binding template namespaces.** Arguments also under `.args.X`;
   `process`, `outcome`, `obs`, `step` as argument names a lint error with
   the fix (they overwrite a same-named argument). Before any new example.
+  *Done:* instead of a lint error, a parameter of a reserved name defaults
+  to `.args.X` (the argument), so no binding needs a template for it.
 - **V2. Stalls are errors.** `Sim.Run` returns `ErrStuck` with
   `Sim.Tasks()` when tasks other than daemons wait with no deadline;
   waits that may block forever declare it (`qenv.Daemon(ctx)`, the

@@ -192,7 +192,9 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   (binding, constants, invariants), not per steps alone.
 - A binding template's `.seq` and `.action` are the step's own unless the
   step has an argument of that name, which wins; the step's are always
-  `.step.seq`, `.step.action`.
+  `.step.seq`, `.step.action`. `.process`, `.outcome`, `.obs`, `.step` and
+  `.args` are always the step's: every argument is also `.args.X`, and a
+  parameter of a reserved name defaults to it (`{{.args.process}}`).
 - A step's observed values may be negative (an overdraft's balance): never
   use -1 as "not observed". Pass the observation or nothing.
 - `quint` reserves `to` (and other built-in names): a parameter named `to`

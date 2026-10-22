@@ -177,6 +177,12 @@ func (a Action) Fields(ps ...Param) []string {
 	delete(set, "outcome")
 	delete(set, "process")
 	delete(set, "step")
+	for f := range set {
+		if a, ok := strings.CutPrefix(f, "args."); ok {
+			delete(set, f)
+			set[a] = true
+		}
+	}
 	return sortedKeys(set)
 }
 
@@ -290,14 +296,22 @@ func (q qlit) String() string { return string(q) }
 //	.action   .seq   unless the step has an argument of that name, which
 //	                 wins: a parameter named seq is the argument seq. The
 //	                 step's own are always .step.action and .step.seq.
+//	.args.X   every argument, whatever its name: an argument named
+//	          process, outcome, obs, step or args is reached only here
+//	          (a parameter of that name defaults to it)
 func stepData(s *qtrace.Step, args map[string]any, process int, outcome string) map[string]any {
 	d := map[string]any{}
 	d["action"] = s.Action
 	d["seq"] = s.Seq
-	d["step"] = map[string]any{"action": s.Action, "seq": s.Seq}
+	as := map[string]any{}
 	for k, v := range args {
 		d[k] = qlit(quintLit(v))
+		as[k] = d[k]
 	}
+	// set after the arguments: these names are the step's, and an argument
+	// of the same name is reached through .args
+	d["args"] = as
+	d["step"] = map[string]any{"action": s.Action, "seq": s.Seq}
 	obs := map[string]any{}
 	for k, v := range s.Obs {
 		obs[k] = qlit(quintLit(v))

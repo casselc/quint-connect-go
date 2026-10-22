@@ -28,18 +28,28 @@ type Param struct{ Name, Type, Shape string }
 
 // DefaultTemplate is the template of a parameter the binding does not
 // give: the step field of the same name, converted from its recorded JSON
-// form when the parameter is a set, list or map.
+// form when the parameter is a set, list or map. A parameter named like
+// one of the step's own fields (process, outcome, obs, step, args) is the
+// argument, through .args: {{.process}} is the actor's incarnation.
 func (p Param) DefaultTemplate() string {
+	f := "." + p.Name
+	if reserved[p.Name] {
+		f = ".args." + p.Name
+	}
 	switch p.Shape {
 	case "set":
-		return "{{ toSet ." + p.Name + " }}"
+		return "{{ toSet " + f + " }}"
 	case "list":
-		return "{{ toList ." + p.Name + " }}"
+		return "{{ toList " + f + " }}"
 	case "map":
-		return "{{ toMap ." + p.Name + " }}"
+		return "{{ toMap " + f + " }}"
 	}
-	return "{{." + p.Name + "}}"
+	return "{{" + f + "}}"
 }
+
+// reserved are the template names that are the step's, whatever its
+// arguments (StepData); seq and action are not: an argument wins there.
+var reserved = map[string]bool{"process": true, "outcome": true, "obs": true, "step": true, "args": true}
 
 // Signature renders an action as `name(p: T, ...)`.
 func (m *Model) Signature(action string) string {
