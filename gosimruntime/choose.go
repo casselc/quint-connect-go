@@ -3,6 +3,7 @@ package gosimruntime
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 )
 
@@ -56,9 +57,10 @@ func (s *scheduler) choose(kind string, n uint32) uint32 {
 // a run with Remote set, the binary sends childMsg lines on stdout and reads
 // a choiceReply after each Choose; the run ends with a Result.
 type childMsg struct {
-	Choose *choiceReq `json:",omitempty"`
-	Emit   *string    `json:",omitempty"`
-	Result *runResult `json:",omitempty"`
+	Choose  *choiceReq `json:",omitempty"`
+	Entropy int        `json:",omitempty"` // bytes wanted (Entropy mode)
+	Emit    *string    `json:",omitempty"`
+	Result  *runResult `json:",omitempty"`
 }
 
 type choiceReq struct {
@@ -68,17 +70,52 @@ type choiceReq struct {
 
 type choiceReply struct {
 	Value int
+	Bytes []byte `json:",omitempty"` // reply to an Entropy request
 }
+
+// entropyChunk is how many bytes an Entropy request asks for.
+const entropyChunk = 512
 
 type remoteChooser struct {
 	mu  sync.Mutex
 	in  *json.Decoder
 	out *json.Encoder
+	// entropy: the runner hands out bytes, and choices other than faults
+	// are made from them here, as quinthegel's Hegel chooser makes them (a
+	// byte, two above 256 options, modulo n), not one round trip each.
+	entropy bool
+	buf     []byte
+}
+
+func (c *remoteChooser) byte() int {
+	if len(c.buf) == 0 {
+		if err := c.out.Encode(childMsg{Entropy: entropyChunk}); err != nil {
+			panic(err)
+		}
+		var reply choiceReply
+		if err := c.in.Decode(&reply); err != nil {
+			panic(err)
+		}
+		if len(reply.Bytes) == 0 {
+			panic("gosim: the runner sent no entropy")
+		}
+		c.buf = reply.Bytes
+	}
+	b := c.buf[0]
+	c.buf = c.buf[1:]
+	return int(b)
 }
 
 func (c *remoteChooser) Choose(kind string, n int) int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.entropy && !strings.HasPrefix(kind, "fault.") {
+		v := c.byte()
+		if n > 256 {
+			v = v<<8 | c.byte()
+		}
+		return v % n
+	}
 	if err := c.out.Encode(childMsg{Choose: &choiceReq{Kind: kind, N: n}}); err != nil {
 		panic(err)
 	}

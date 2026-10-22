@@ -39,8 +39,10 @@ type runConfig struct {
 	Seed     int64
 	ExtraEnv []string
 	Simtrace string
-	// Remote makes the runner the chooser of this run (choose.go).
-	Remote bool
+	// Remote makes the runner the chooser of this run (choose.go), and
+	// Entropy has it hand out bytes for the choices other than faults.
+	Remote  bool
+	Entropy bool
 }
 
 // Copied in metatesting.RunResult. Keep in sync.
@@ -222,7 +224,7 @@ func TestMain(rt Runtime) {
 
 		var chooser Chooser
 		if req.Remote {
-			chooser = &remoteChooser{in: in, out: out}
+			chooser = &remoteChooser{in: in, out: out, entropy: req.Entropy}
 		}
 		result := runWith(func() {
 			// TODO: add an entrypoint that takes a single test?

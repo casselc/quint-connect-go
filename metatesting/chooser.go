@@ -16,10 +16,22 @@ type Chooser interface {
 	Choose(kind string, n int) int
 }
 
+// An EntropySource is a Chooser that can also hand out bytes, from which
+// the test binary makes the choices other than faults itself (a byte, two
+// above 256 options, modulo the number of options), asking for more bytes
+// only when it runs out: one round trip per chunk instead of per choice.
+// Fault choices still come from Choose. quinthegel's Hegel chooser and
+// qenv's seeded one are sources (qenv.EntropyOf).
+type EntropySource interface {
+	Chooser
+	Entropy(n int) []byte
+}
+
 // The protocol messages, copied from gosimruntime (choose.go). Keep in sync.
 type remoteConfig struct {
 	RunConfig
-	Remote bool
+	Remote  bool
+	Entropy bool
 }
 
 type childMsg struct {
@@ -27,15 +39,18 @@ type childMsg struct {
 		Kind string
 		N    int
 	}
-	Emit   *string
-	Result *RunResult
+	Entropy int
+	Emit    *string
+	Result  *RunResult
 }
 
 type choiceReply struct {
 	Value int
+	Bytes []byte `json:",omitempty"`
 }
 
-// RunWith runs a test with chooser making its choices, in this goroutine,
+// RunWith runs a test with chooser making its choices (with the bytes of an
+// EntropySource for those other than faults), in this goroutine,
 // and calls emit with each line the test passes to gosimruntime.Emit.
 // config.Seed is ignored: the seed for unbounded randomness is a choice too.
 //
@@ -50,7 +65,8 @@ func (r *MetaT) RunWith(t testing.TB, config *RunConfig, chooser Chooser, emit f
 		}
 	}()
 
-	if err := r.w.Encode(remoteConfig{RunConfig: *config, Remote: true}); err != nil {
+	src, entropy := chooser.(EntropySource)
+	if err := r.w.Encode(remoteConfig{RunConfig: *config, Remote: true, Entropy: entropy}); err != nil {
 		return nil, err
 	}
 	for {
@@ -63,6 +79,10 @@ func (r *MetaT) RunWith(t testing.TB, config *RunConfig, chooser Chooser, emit f
 		case msg.Choose != nil:
 			v := chooser.Choose(msg.Choose.Kind, msg.Choose.N)
 			if err := r.w.Encode(choiceReply{Value: v}); err != nil {
+				return nil, err
+			}
+		case msg.Entropy > 0 && entropy:
+			if err := r.w.Encode(choiceReply{Bytes: src.Entropy(msg.Entropy)}); err != nil {
 				return nil, err
 			}
 		case msg.Emit != nil:
