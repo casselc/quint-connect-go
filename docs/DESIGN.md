@@ -1970,7 +1970,8 @@ not a verdict.
 - `sys.Explore(t, cfg)` explores seeds. `ExploreConfig.Chooser` gives
   each seed its own chooser instead of a seeded one.
 - `sys.Sweep(t, sw, run)` sweeps covering rows, the row deciding how to
-  run.
+  run; with `run` nil the System's own Run reads the row from its chooser
+  (`qtest.RowOf`, V4).
 - `sys.FollowTraces(t, trace, faults)` generates the model's traces,
   scripts each one's faults, runs the system on each script, and fails a
   run whose script did not complete (`Remaining`), the P6 message.
@@ -2241,7 +2242,7 @@ and 134 (`TestTwoOrbits`). So:
 **S6, duplicates.** The simulation lint moved from qenv to
 `internal/lint` (then `qlint`, §31): gosim translates everything a simulated package imports,
 and qenv pulled go/ast, go/parser and go/token into every translation.
-`Explored.Faults` reuses `Recorder.Faults`. Kept: qload's step counter,
+`Run.Faults` (then `Explored.Faults`) reuses `Recorder.Faults`. Kept: qload's step counter,
 which samples per tick inside the simulation (merging it with
 `qrole.MetricsSink` would make qload depend on OTel metrics), and the
 simdeps list, which a derivation could only replace with a deny-list of

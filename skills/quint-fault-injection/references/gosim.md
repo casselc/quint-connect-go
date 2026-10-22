@@ -35,8 +35,11 @@ On either kind:
 - drive it from the host with `qgosim.Run(t, pkg, test, chooser,
   env...)`, which returns the steps. The chooser can be
   `qenv.NewSeeded`, `quinthegel.Chooser(tc)`, a `qenv.Recorder` or `qenv.Replay`.
-  Or use `qtest.Explore(t, binding, x, qgosim.Scenario(t, pkg, test))`,
-  which runs seeds in parallel, one test binary each;
+  Or make it a System, `qtest.System{Binding: binding, Run:
+  qgosim.Scenario(t, pkg, test)}`: `Explore` runs seeds in parallel, one
+  test binary each, and `quinthegel.Shrink` and `Sweep` take it as any
+  other System; a failed simulated test is the run's error, named with
+  its seed;
 - check the steps with `qtest.Check` or `qtest.Validate`, or add them
   with `rec.Add(steps...)` inside `quinthegel.FindViolation`.
 

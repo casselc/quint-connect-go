@@ -17,7 +17,8 @@
 //	}
 //
 //	// checkout/host_test.go
-//	qtest.Explore(t, binding, x, qgosim.Scenario(t, pkg, "TestCheckout"))
+//	sys := qtest.System{Binding: binding, Run: qgosim.Scenario(t, pkg, "TestCheckout")}
+//	sys.Explore(t, x).Expect(t, qtest.Conforms())
 //
 // The package lives in a module of its own because it depends on gosim.
 package qgosim

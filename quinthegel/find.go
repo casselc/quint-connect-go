@@ -6,25 +6,21 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/casselc/quint-connect-go/qenv"
 	"github.com/casselc/quint-connect-go/qtest"
 	"github.com/casselc/quint-connect-go/qtrace"
-	"github.com/casselc/quint-connect-go/validate"
 	"hegel.dev/go/hegel"
 )
 
 // A Violation is the run FindViolation found, shrunk: the steps of the
-// smallest failing test case and the model's verdict on them.
+// smallest failing test case and the model's verdict on them. Its Run is
+// an exploration's run's record: Report is its full verdict, for Expect
+// (checked once more, since cached verdicts keep only their summary), and
+// Choices, if it ran on Recorder.Env, replay it outside Hegel
+// (qenv.Replay(v.Choices): a regression test, a run on gosim, a fuzz
+// seed).
 type Violation struct {
-	Steps   []qtrace.Step
+	qtest.Run
 	Summary string // the validator's report on Steps
-	// Report is the shrunk run's full verdict, for Expect: it is checked
-	// once more, since cached verdicts keep only their summary.
-	Report *validate.Report
-	// Choices are the shrunk run's choices, if it ran on Recorder.Env:
-	// qenv.Replay(v.Choices) repeats it outside Hegel (a regression test,
-	// a run on gosim, a fuzz seed).
-	Choices []qenv.Choice
 	// QuintRuns and CacheHits count the cases checked with quint and those
 	// decided from earlier verdicts (see CaseChecker).
 	QuintRuns, CacheHits int64
@@ -77,7 +73,7 @@ func FindViolation(t testing.TB, cfg Config, body func(tc hegel.TestCase, rec *R
 		if !v.OK {
 			// Hegel replays the shrunk case last, so the last failure is it
 			mu.Lock()
-			found = &Violation{Steps: steps, Summary: v.Summary, Choices: rec.Choices()}
+			found = &Violation{Run: qtest.Run{Steps: steps, Choices: rec.Choices()}, Summary: v.Summary}
 			mu.Unlock()
 			tc.Errorf("quinthegel: the run does not satisfy the model:\n%s", v.Summary)
 		}

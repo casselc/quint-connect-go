@@ -24,6 +24,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/casselc/quint-connect-go/qcover"
+	"github.com/casselc/quint-connect-go/qenv"
 	"github.com/casselc/quint-connect-go/qobs"
 	"github.com/casselc/quint-connect-go/qrun"
 	"github.com/casselc/quint-connect-go/qtrace"
@@ -92,13 +94,33 @@ func checkerFor(t testing.TB, bindingPath string, o validate.Options, c Config) 
 	return ch
 }
 
-// Run is the outcome of a recorded run.
+// Run is one checked run, whichever workflow made it: Record's, one seed of
+// an Exploration, a Hegel Violation (embedded). A field a workflow has no
+// value for is zero (Record makes no choices; an exploration writes no
+// step log).
 type Run struct {
+	Seed    uint64 // an exploration's seed
 	Steps   []qtrace.Step
-	StepLog string            // native step log (JSONL)
-	ITF     map[string]string // actor -> model-level ITF written in-process
+	Choices []qenv.Choice // every choice of the run: qenv.Replay(Choices) repeats it
+	// Interrupted are steps of work a crash or the end of the run cut off
+	// (qobs.Recorder.Interrupted): not in Steps, not checked; reported with
+	// a failing run.
+	Interrupted []qtrace.Step
+	// Unscripted are the faults of a Script chooser the run never came to
+	// (qenv.Script.Remaining): it did not follow its script.
+	Unscripted []qenv.Scripted
+	// Code is the run's code coverage, with ExploreConfig.Coverage.
+	Code *qcover.Counts
+	// Err is the scenario's error: the run did not run to its end
+	// (System.Run's error).
+	Err     error
 	Report  *validate.Report
+	StepLog string            // Record's native step log (JSONL)
+	ITF     map[string]string // Record's: actor -> model-level ITF written in-process
 }
+
+// Faults are the run's fault choices that were not nominal.
+func (r *Run) Faults() []qenv.Choice { return (&qenv.Recorder{Choices: r.Choices}).Faults() }
 
 // OK reports whether every actor conformed and satisfied the invariants.
 func (r *Run) OK() bool { return r.Report != nil && r.Report.OK() }

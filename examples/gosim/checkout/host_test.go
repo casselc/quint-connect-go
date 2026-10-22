@@ -24,8 +24,9 @@ const (
 )
 
 func explore(t *testing.T, iso qenv.Isolation, m shop.Mutation, x qtest.ExploreConfig) *qtest.Exploration {
-	return qtest.Explore(t, binding, x, qgosim.Scenario(t, pkg, "TestCheckout",
-		fmt.Sprintf("CHECKOUT_ISOLATION=%d", iso), fmt.Sprintf("CHECKOUT_MUTATION=%d", m)))
+	sys := qtest.System{Binding: binding, Run: qgosim.Scenario(t, pkg, "TestCheckout",
+		fmt.Sprintf("CHECKOUT_ISOLATION=%d", iso), fmt.Sprintf("CHECKOUT_MUTATION=%d", m))}
+	return sys.Explore(t, x)
 }
 
 // crashy crashes a process at one nemesis choice in twenty (one every

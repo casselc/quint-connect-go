@@ -31,9 +31,10 @@ func explore(t *testing.T, c config, seeds int, opts ...qtest.Option) *qtest.Exp
 		}
 		return 0
 	}
-	return qtest.Explore(t, binding, qtest.ExploreConfig{Seeds: seeds, Opts: opts}, qgosim.Scenario(t, pkg, "TestPublisher",
+	sys := qtest.System{Binding: binding, Opts: opts, Run: qgosim.Scenario(t, pkg, "TestPublisher",
 		fmt.Sprintf("EDGE_MUTATION=%d", c.mutation), fmt.Sprintf("EDGE_NOCRASHES=%d", b(c.noCrashes)),
-		fmt.Sprintf("EDGE_NOAMBIGUOUS=%d", b(c.noAmbiguous))))
+		fmt.Sprintf("EDGE_NOAMBIGUOUS=%d", b(c.noAmbiguous)))}
+	return sys.Explore(t, qtest.ExploreConfig{Seeds: seeds})
 }
 
 // Every interleaving of pushes, rotations and background seals, with S3

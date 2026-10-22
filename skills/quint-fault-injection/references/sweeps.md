@@ -11,6 +11,9 @@ sys.Sweep(t, qtest.Sweep{Factors: space, Explore: qtest.ExploreConfig{Seeds: 20}
 	func(r qsweep.Row, c qenv.Chooser) error { return app.Run(qenv.Without(c, offKinds(r)...), cfgOf(r)) })
 ```
 
+- Pass `nil` as the run function and the System's own `Run` serves the
+  sweep: it reads the row from its chooser, `row, ok := qtest.RowOf(c)`,
+  so one Run serves Explore, Shrink and Sweep.
 - Every pair of factor values is in some row (`Strength: 3` for
   triples), in about as many rows as the two largest factors' product.
   `Allow` rules rows out, and pairs only those rows have are not

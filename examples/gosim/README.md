@@ -47,8 +47,8 @@ module of its own that runs on gosim's runtime. Hegel cannot run in there
 (it calls a native library), so each test is split:
 - the simulated side is an ordinary gosim test, built with the sim tag;
 - `host_test.go` drives it with `qgosim.Run`, or with `qgosim.Scenario`
-  for `qtest.Explore`, which runs seeds in parallel over a pool of test
-  binaries.
+  as a `qtest.System`'s Run, whose Explore runs seeds in parallel over a
+  pool of test binaries.
 
 ## Tests
 

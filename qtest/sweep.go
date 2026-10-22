@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/casselc/quint-connect-go/qenv"
+	"github.com/casselc/quint-connect-go/qrun"
 	"github.com/casselc/quint-connect-go/qsweep"
 )
 
@@ -47,6 +48,12 @@ func (s *Swept) Coverage() *qenv.Coverage {
 	return qenv.CoverageOf(runs)
 }
 
+var rowKey = qrun.NewKey[qsweep.Row]("sweep.row")
+
+// RowOf is the sweep row a run's chooser was made for (System.Sweep with
+// no run function): a System's Run configures itself from it.
+func RowOf(c qenv.Chooser) (qsweep.Row, bool) { return qrun.In(qenv.ContextOf(c), rowKey) }
+
 // SweepExplore explores each covering row of sw as a subtest named by the
 // row, checking its expectation there.
 func SweepExplore(t *testing.T, bindingPath string, sw Sweep, scenario func(row qsweep.Row, c qenv.Chooser)) *Swept {
@@ -75,7 +82,9 @@ func sweep(t *testing.T, bindingPath string, sw Sweep, scenario func(row qsweep.
 			if sw.Opts != nil {
 				xc.Opts = append(append([]Option(nil), xc.Opts...), sw.Opts(row)...)
 			}
-			x := explore(t, bindingPath, xc, func(c qenv.Chooser) error { return scenario(row, c) })
+			x := explore(t, bindingPath, xc, func(c qenv.Chooser) error {
+				return scenario(row, qenv.WithContext(c, qrun.With(qenv.ContextOf(c), rowKey, row)))
+			})
 			s.Runs[i] = x
 			want := []Claim{Conforms()}
 			if sw.Expect != nil {

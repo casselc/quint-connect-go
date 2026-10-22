@@ -58,7 +58,7 @@ func (x *Exploration) hasCode() bool {
 	return false
 }
 
-func evidenceOf(runs []*Explored) *Evidence {
+func evidenceOf(runs []*Run) *Evidence {
 	e := &Evidence{Runs: len(runs), Failing: map[string]int{}}
 	for _, r := range runs {
 		if r.Report.OK() {

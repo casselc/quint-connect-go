@@ -150,19 +150,19 @@ func Run(t *testing.T, pkg, test string, c qenv.Chooser, env ...string) ([]qtrac
 	return steps, nil
 }
 
-// Scenario is Run as a qtest.Explore scenario: the steps go to the
-// recorder in the chooser's context. A run that fails is an error of t.
-func Scenario(t *testing.T, pkg, test string, env ...string) func(qenv.Chooser) {
-	return func(c qenv.Chooser) {
-		steps, err := Run(t, pkg, test, c, env...)
-		if err != nil {
-			t.Error(err)
-		}
+// Scenario is Run as a qtest.System's Run: the steps go to the recorder in
+// the chooser's context, and a run that fails is the run's error, which
+// the exploration reports with its seed.
+//
+//	sys := qtest.System{Binding: binding, Run: qgosim.Scenario(t, pkg, "TestCheckout")}
+func Scenario(t *testing.T, pkg, test string, env ...string) func(qenv.Chooser) error {
+	return func(c qenv.Chooser) error {
 		rec := qobs.From(qenv.ContextOf(c))
 		if rec == nil {
-			t.Error("qgosim: Scenario's chooser carries no recorder (qenv.WithContext, qobs.WithRecorder)")
-			return
+			return fmt.Errorf("qgosim: Scenario's chooser carries no recorder (qenv.WithContext, qobs.WithRecorder)")
 		}
+		steps, err := Run(t, pkg, test, c, env...)
 		rec.Add(steps...)
+		return err
 	}
 }

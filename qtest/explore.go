@@ -20,32 +20,14 @@ import (
 )
 
 // Explored is one seeded run of an Exploration.
-type Explored struct {
-	Seed    uint64
-	Steps   []qtrace.Step
-	Choices []qenv.Choice // every choice of the run: qenv.Replay(Choices) repeats it
-	// Interrupted are steps of work a crash or the end of the run cut off
-	// (qobs.Recorder.Interrupted): not in Steps, not checked; reported with
-	// a failing run.
-	Interrupted []qtrace.Step
-	Report      *validate.Report
-	// Code is the run's code coverage, with ExploreConfig.Coverage.
-	Code *qcover.Counts
-	// Err is the scenario's error: the run did not run to its end
-	// (System.Run's error).
-	Err error
-	// Unscripted are the faults of a Script chooser the run never came to
-	// (qenv.Script.Remaining): it did not follow its script.
-	Unscripted []qenv.Scripted
-}
-
-// Faults are the run's fault choices that were not nominal.
-func (e *Explored) Faults() []qenv.Choice { return (&qenv.Recorder{Choices: e.Choices}).Faults() }
+//
+// Deprecated: it is Run.
+type Explored = Run
 
 // An Exploration is many seeded runs of a simulated scenario, checked
 // against the model in bulk.
 type Exploration struct {
-	Runs []*Explored
+	Runs []*Run
 
 	constants map[string]string // the instance checked against, for messages
 	test      string            // the test's name, for reproducing a seed
@@ -76,8 +58,8 @@ func (x *Exploration) CodeCoverage() *qcover.Summary {
 }
 
 // Failing returns the runs that violate the model, in seed order.
-func (x *Exploration) Failing() []*Explored {
-	var out []*Explored
+func (x *Exploration) Failing() []*Run {
+	var out []*Run
 	for _, r := range x.Runs {
 		if !r.Report.OK() {
 			out = append(out, r)
@@ -151,7 +133,7 @@ func explore(t testing.TB, bindingPath string, cfg ExploreConfig, scenario func(
 		}
 		seeds = []uint64{n}
 	}
-	x := &Exploration{Runs: make([]*Explored, len(seeds)), test: t.Name()}
+	x := &Exploration{Runs: make([]*Run, len(seeds)), test: t.Name()}
 	runs := make([][]qtrace.Step, len(seeds))
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, cfg.Parallel)
@@ -179,7 +161,7 @@ func explore(t testing.TB, bindingPath string, cfg ExploreConfig, scenario func(
 			}
 			r := qobs.NewRecorder(sink, c.Recorder...)
 			err := scenario(qenv.WithContext(rec, qobs.WithRecorder(ctx, r)))
-			x.Runs[i] = &Explored{Seed: seed, Steps: mem.Steps(), Choices: rec.Choices, Interrupted: r.Interrupted(), Code: code, Err: err}
+			x.Runs[i] = &Run{Seed: seed, Steps: mem.Steps(), Choices: rec.Choices, Interrupted: r.Interrupted(), Code: code, Err: err}
 			if sc, ok := qenv.As[*qenv.Script](ch); ok {
 				x.Runs[i].Unscripted = sc.Remaining()
 			}
@@ -474,7 +456,7 @@ func describeAll(es []Expectation) string {
 	return strings.Join(s, " and ")
 }
 
-func (x *Exploration) describe(t testing.TB, r *Explored) string {
+func (x *Exploration) describe(t testing.TB, r *Run) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "seed %d, faults %v\n%s", r.Seed, r.Faults(), r.Report.Summary())
 	if len(r.Steps) == 0 {

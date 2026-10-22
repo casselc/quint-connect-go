@@ -15,7 +15,7 @@ func TestTrapMessages(t *testing.T) {
 	failAt := func(i int) *validate.Report {
 		return &validate.Report{Actors: []*validate.Result{{Conforms: validate.Fail, Failure: &validate.Failure{Index: i}}}}
 	}
-	x := &Exploration{constants: map[string]string{"STOCK": "2"}, Runs: []*Explored{{Report: failAt(0)}, {Report: failAt(0)}}}
+	x := &Exploration{constants: map[string]string{"STOCK": "2"}, Runs: []*Run{{Report: failAt(0)}, {Report: failAt(0)}}}
 	if m := x.atStart(); !strings.Contains(m, "all 2 runs fail at step 1") || !strings.Contains(m, "STOCK=2") {
 		t.Errorf("at start: %q", m)
 	}

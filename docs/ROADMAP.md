@@ -214,7 +214,10 @@ names what it needs.
   `Exploration.Runs`, `quinthegel.Violation` (embeds it) and qgosim;
   `qgosim.Scenario` returns `func(qenv.Chooser) error`, so a gosim run is
   a `qtest.System`; `System.Sweep` takes the System's own `Run`, the row in
-  the chooser's context.
+  the chooser's context. *Done:* `qtest.Run` is every workflow's record
+  (`Explored` an alias, `Violation` embeds it); `qgosim.Scenario` is a
+  System's Run; `Sweep(t, sw, nil)` runs the System's Run with
+  `qtest.RowOf(c)`.
 - **V5. One entry point** (P3's rest; needs V4). `qtest.Check`,
   `RecordAndCheck`, `qtest.Explore(binding, …)`, `SweepExplore`
   deprecated for `Validate`/`Record` + `.Expect` and `qtest.System`;

@@ -18,7 +18,7 @@ func TestEvidence(t *testing.T) {
 	rejects := &validate.Report{Actors: []*validate.Result{{Conforms: validate.Fail,
 		Failure: &validate.Failure{Kind: "disabled", Step: &qtrace.Step{Action: "ship"}}}}}
 	both := []qenv.Choice{{Kind: "fault.a", N: 2, Value: 1}, {Kind: "fault.b", N: 2, Value: 1}}
-	x := &Exploration{Runs: []*Explored{
+	x := &Exploration{Runs: []*Run{
 		{Report: ok, Choices: both},
 		{Report: violates, Choices: []qenv.Choice{{Kind: "fault.a", N: 2, Value: 1}}},
 		{Report: rejects, Choices: []qenv.Choice{{Kind: "fault.c", N: 2}}},

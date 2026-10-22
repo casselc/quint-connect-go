@@ -91,10 +91,15 @@ func (s System) FollowTraces(t *testing.T, trace connect.Config, faults connect.
 }
 
 // Sweep explores each covering row of sw (SweepExplore), running the
-// system as run says for the row.
+// system as run says for the row. With run nil it is the System's own
+// Run, which reads the row from its chooser (RowOf): one Run for every
+// workflow.
 func (s System) Sweep(t *testing.T, sw Sweep, run func(row qsweep.Row, c qenv.Chooser) error) *Swept {
 	t.Helper()
 	sw.Explore.Opts = s.opts(sw.Explore.Opts...)
+	if run == nil {
+		run = func(_ qsweep.Row, c qenv.Chooser) error { return s.Run(c) }
+	}
 	return sweep(t, s.Binding, sw, run)
 }
 
