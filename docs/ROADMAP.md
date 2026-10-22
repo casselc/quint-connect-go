@@ -441,6 +441,15 @@ W and X plans hold. Two things change the order:
 - Release readiness comes before X, because X1, X2 and X8 write paths,
   environment variable names and workflows.
 
+Decided with the maintainer:
+- Skills are renamed with shorter suffixes: `gotogether-start`,
+  `-model`, `-patterns`, `-mbt`, `-hegel`, `-traces`, `-faults`,
+  `-metastability`, `-workflow`.
+- quinthegel becomes `qhegel` in M5b.
+- qhegel becomes a module of its own before any tag (R1), so the core
+  needs only OTel and yaml.v3.
+- The license is MIT.
+
 Every commit leaves every module building and its tests green. Order:
 M0 → M1 → M2 → M3 → M4 → M5a → M5b → M6 → W9 → R0 → W8 → R1 → R4 →
 X. R5 happens when the maintainer says.
