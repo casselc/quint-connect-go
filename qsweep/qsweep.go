@@ -27,6 +27,9 @@ type Factor struct {
 	// against the model with it (qtest.Sweep), so a size given to the
 	// system and to the model is written once and cannot disagree.
 	Model string
+	// Fault, if set, makes the factor a fault kind's switch (FaultKind):
+	// in a row where it is off, the kind's faults never happen.
+	Fault bool
 }
 
 // Constant returns f naming the model constant its value is (Model).
@@ -46,6 +49,23 @@ func (r Row) Constants() map[string]string {
 
 // Bool is a factor with values "off" and "on" (Row.On).
 func Bool(name string) Factor { return Factor{Name: name, Values: []string{"off", "on"}} }
+
+// FaultKind is a factor that turns a fault kind ("rpc.provider",
+// "nemesis") on or off: a sweep row where it is off runs with the kind's
+// faults off (qtest.System.Sweep applies qenv.Without), so the covering
+// array decides which kinds happen together.
+func FaultKind(kind string) Factor { f := Bool(kind); f.Fault = true; return f }
+
+// FaultsOff are the fault kinds of r's FaultKind factors that are off.
+func (r Row) FaultsOff() []string {
+	var off []string
+	for i, f := range r.factors {
+		if f.Fault && f.Values[r.idx[i]] == "off" {
+			off = append(off, f.Name)
+		}
+	}
+	return off
+}
 
 // Ints is a factor with integer values (Row.Int).
 func Ints(name string, values ...int) Factor {

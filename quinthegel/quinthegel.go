@@ -30,8 +30,6 @@ package quinthegel
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -40,6 +38,7 @@ import (
 	"github.com/casselc/quint-connect-go/qenv"
 	"github.com/casselc/quint-connect-go/qobs"
 	"github.com/casselc/quint-connect-go/qrun"
+	"github.com/casselc/quint-connect-go/qtest"
 	"github.com/casselc/quint-connect-go/qtrace"
 	"github.com/casselc/quint-connect-go/validate"
 	"hegel.dev/go/hegel"
@@ -184,20 +183,15 @@ type Config struct {
 	// the model's actions (see package binding).
 	Binding string
 	Mode    Mode
-	// Validate configures quint (binary, backend). Dir is ignored: see Keep.
-	Validate validate.Options
-	// Recorder options for each test case's recorder, e.g. qobs.WithActor.
-	Recorder []qobs.Option
-	// Global installs each case's recorder as the global qobs recorder
-	// too (Recorder.Install), for steps from goroutines the body starts
-	// (a server's, a cluster's). Without it only the body's goroutine and
-	// code recording through the recorder's context record into the case.
-	// Tests with it must not run in parallel.
-	Global bool
-	// Keep is where the generated Quint modules, step logs and ITF go
-	// (default $QUINTGO_KEEP/<test>, else t.TempDir()). The module of a
-	// failing run is a Quint regression test of it: `quint test` it.
-	Keep string
+	// Opts configure the checks as qtest's do: the model's constants
+	// (qtest.Constants), invariants, quint's options (qtest.Quint), each
+	// case's recorder (qtest.RecorderOptions), and qtest.Global, which
+	// installs each case's recorder globally too, for steps from
+	// goroutines the body starts (a server's, a cluster's; not in parallel
+	// tests). Artifacts (generated modules, step logs, ITF) go to
+	// $QUINTGO_KEEP/<test>, else a temporary directory: a failing run's
+	// module is a Quint regression test of it (`quint test` it).
+	Opts []qtest.Option
 	// AllowEmpty accepts test cases that record no steps.
 	AllowEmpty bool
 	// Batched mode: the number of rounds (default 1), each of the test
@@ -208,17 +202,6 @@ type Config struct {
 	// Seed of the first round (later rounds add 1 each); 0: random. The
 	// seed of a failing round is logged, to reproduce it.
 	Seed int64
-	// Constants override the binding's (validate.Checker.WithConstants).
-	Constants map[string]string
-}
-
-// checker is the binding's checker, with cfg's constants.
-func (cfg Config) checker(vo validate.Options) (*validate.Checker, error) {
-	c, err := Checker(cfg.Binding, vo)
-	if err != nil || len(cfg.Constants) == 0 {
-		return c, err
-	}
-	return c.WithConstants(cfg.Constants)
 }
 
 // Test runs a Hegel test whose cases record model steps, and checks the
@@ -235,16 +218,11 @@ func Test(t *testing.T, cfg Config, body func(ht *hegel.T, rec *Recorder), opts 
 		batched(t, cfg, body, opts)
 		return
 	}
-	keep := keepDir(t, cfg.Keep)
+	set := qtest.Resolve(t, cfg.Opts...)
 	var checker *validate.Checker
 	var cc *caseChecker
 	if cfg.Mode != Off {
-		vo := cfg.Validate
-		vo.Dir = filepath.Join(keep, "quint")
-		c, err := cfg.checker(vo)
-		if err != nil {
-			t.Fatalf("quinthegel: %v", err)
-		}
+		c := set.Checker(t, cfg.Binding)
 		checker = c
 		cc = newCaseChecker(c)
 	}
@@ -259,8 +237,8 @@ func Test(t *testing.T, cfg Config, body func(ht *hegel.T, rec *Recorder), opts 
 		opts = append([]hegel.Option{hegel.SuppressHealthCheck(hegel.TooSlow)}, opts...)
 	}
 	hegel.Test(t, func(ht *hegel.T) {
-		rec := NewRecorder(ht, cfg.Recorder...)
-		defer rec.begin(ht, cfg.Global)()
+		rec := NewRecorder(ht, set.Recorder()...)
+		defer rec.begin(ht, set.Global())()
 		body(ht, rec)
 		steps := rec.Steps()
 		if len(steps) == 0 {
@@ -327,32 +305,11 @@ func Render(steps []qtrace.Step) string {
 	return b.String()
 }
 
-// Checker returns a validate.Checker for a binding, typechecking the model
-// once per test binary and options (validate.Cached).
-func Checker(bindingPath string, o validate.Options) (*validate.Checker, error) {
-	return validate.Cached(bindingPath, o)
-}
-
-func keepDir(t testing.TB, dir string) string {
-	if dir != "" {
-		return dir
-	}
-	if k := os.Getenv("QUINTGO_KEEP"); k != "" {
-		return filepath.Join(k, strings.NewReplacer("/", "_", " ", "_").Replace(t.Name()))
-	}
-	return t.TempDir()
-}
-
 // batched is Test in Batched mode.
 func batched(t *testing.T, cfg Config, body func(ht *hegel.T, rec *Recorder), opts []hegel.Option) {
 	t.Helper()
-	keep := keepDir(t, cfg.Keep)
-	vo := cfg.Validate
-	vo.Dir = filepath.Join(keep, "quint")
-	c, err := cfg.checker(vo)
-	if err != nil {
-		t.Fatalf("quinthegel: %v", err)
-	}
+	set := qtest.Resolve(t, cfg.Opts...)
+	c := set.Checker(t, cfg.Binding)
 	cc := newCaseChecker(c)
 	rounds := cfg.Rounds
 	if rounds <= 0 {
@@ -364,8 +321,8 @@ func batched(t *testing.T, cfg Config, body func(ht *hegel.T, rec *Recorder), op
 	}
 	start := time.Now() //qenv:ok the rounds' real time budget
 	record := func(ht *hegel.T) []qtrace.Step {
-		rec := NewRecorder(ht, cfg.Recorder...)
-		defer rec.begin(ht, cfg.Global)()
+		rec := NewRecorder(ht, set.Recorder()...)
+		defer rec.begin(ht, set.Global())()
 		body(ht, rec)
 		steps := rec.Steps()
 		if len(steps) == 0 && !cfg.AllowEmpty {

@@ -14,6 +14,6 @@ import (
 // TestMutationOfTheShop ./examples/checkout/
 func TestMutationOfTheShop(t *testing.T) {
 	qtest.RequireQuint(t)
-	rep := system(checkout.Config{Isolation: qenv.SnapshotIsolation}).Mutate(t, qtest.ExploreConfig{Seeds: 20, Rates: crashy}, nil)
+	rep := system(checkout.Config{Isolation: qenv.SnapshotIsolation}).Mutate(t, qtest.ExploreConfig{Seeds: 20, Rates: crashy})
 	t.Log(rep)
 }

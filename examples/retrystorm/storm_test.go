@@ -57,7 +57,9 @@ func TestStormAfterSpike(t *testing.T) {
 
 // Hegel searches the triggers and shrinks one that tips the system into a
 // state it stays in: one exists for retrying at once (at 9 requests/s) and
-// for backoff alone (at 8), none is found with a budget.
+// for backoff alone (at 8), none is found with a budget. The search is
+// seeded: the breaking triggers are a narrow region (a small extra rate
+// held for most of MaxDuration), and 30 unseeded cases sometimes missed it.
 func TestFindTrigger(t *testing.T) {
 	if testing.Short() {
 		t.Skip("each trigger runs 3 simulations of ~10 minutes")
@@ -70,7 +72,7 @@ func TestFindTrigger(t *testing.T) {
 	}{{Policies[0], 9, true}, {Policies[1], 8, true}, {Policies[2], 9, false}, {Policies[3], 9, false}} {
 		t.Run(c.p.Name, func(t *testing.T) {
 			sys := qload.OfSimulation(c.p.Config(c.lam), c.lam, 5*time.Minute)
-			quinthegel.FindTrigger(t, sys, space, hegel.WithTestCases(30)).Expect(t, c.found)
+			quinthegel.FindTrigger(t, sys, space, hegel.WithTestCases(30), hegel.WithSeed(1)).Expect(t, c.found)
 		})
 	}
 }

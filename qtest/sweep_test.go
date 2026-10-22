@@ -28,5 +28,31 @@ func TestSweepWithTheSystemsRun(t *testing.T) {
 				return []Claim{Violates("underLimit")}
 			}
 			return []Claim{Conforms()}
-		}}, nil)
+		}})
+}
+
+// A FaultKind factor turns its kind's faults off in the rows where it is
+// off: the run's fault happens in every run of the "on" row (rate 1) and
+// in none of the "off" row.
+func TestSweepFaultKinds(t *testing.T) {
+	RequireQuint(t)
+	kind := qenv.Faults("test.sweep", "unavailable")
+	sys := System{Binding: "../validate/testdata/account.yaml", Run: func(c qenv.Chooser) error {
+		s := qenv.New(c)
+		defer s.Close()
+		balance := 10
+		if s.FaultOf(kind) != "" {
+			balance = 0 // the deposit failed but was recorded as taken: the model disagrees
+		}
+		qobs.Record(s.Context(), "deposit", nil, "amount", 10, "obs.balance", balance)
+		return nil
+	}}
+	sys.Sweep(t, Sweep{Factors: []qsweep.Factor{qsweep.FaultKind("test.sweep")},
+		Explore: ExploreConfig{Seeds: 3, Rates: qenv.Rates{Default: 1}},
+		Expect: func(row qsweep.Row) []Claim {
+			if row.On("test.sweep") {
+				return []Claim{All(Mismatch("deposit"))}
+			}
+			return []Claim{Conforms()}
+		}})
 }

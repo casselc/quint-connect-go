@@ -25,7 +25,7 @@ type Evidence struct {
 	Failing map[string]int  `json:"failing"`
 	Faults  *qenv.Coverage  `json:"faults,omitempty"`
 	Rows    int             `json:"rows,omitempty"`    // a sweep's rows (0: not a sweep)
-	Code    *qcover.Summary `json:"code,omitempty"`    // with ExploreConfig.Coverage (nil: not collected)
+	Code    *qcover.Summary `json:"code,omitempty"`    // when the code is woven with qweave -cover (nil: not)
 	Mutants *MutationReport `json:"mutants,omitempty"` // from System.Mutate, if set
 }
 

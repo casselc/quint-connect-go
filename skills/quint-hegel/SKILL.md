@@ -35,7 +35,7 @@ func (m *machine) RuleTransfer(tc hegel.TestCase) {
 func (m *machine) InvariantNoOverdraft(tc hegel.TestCase) { /* the plain PBT property, optional */ }
 
 func TestBankAgainstModel(t *testing.T) {
-	quinthegel.Test(t, quinthegel.Config{Binding: "bank.binding.yaml", Mode: quinthegel.Each, Global: true},
+	quinthegel.Test(t, quinthegel.Config{Binding: "bank.binding.yaml", Mode: quinthegel.Each, Opts: []qtest.Option{qtest.Global()}},
 		func(ht *hegel.T, rec *quinthegel.Recorder) {
 			hegel.RunStateful(ht, &machine{bank: New(accounts)}, hegel.WithStatefulStepCount(12))
 		}, hegel.WithTestCases(30))
@@ -44,7 +44,7 @@ func TestBankAgainstModel(t *testing.T) {
 
 - **Modes:** `Batched` is the usual choice (bulk checks, replayed in
   `Each` on a failure so Hegel shrinks it); `Each` checks every case;
-  `After` checks once at the end and shrinks nothing. `Global: true`
+  `After` checks once at the end and shrinks nothing. `qtest.Global()` in `Opts`
   also installs each case's recorder globally, for steps from goroutines
   the body starts (not in parallel tests). Read [references/modes.md](references/modes.md) for the
   modes' costs and options, generators and budgets.
@@ -53,7 +53,7 @@ func TestBankAgainstModel(t *testing.T) {
   cache, lets Hegel shrink, fails the test if every case passes, and
   returns the shrunk run; state how it must show with `Expect`:
   ```go
-  v := quinthegel.FindViolation(t, quinthegel.Config{Binding: "bank.binding.yaml", Global: true},
+  v := quinthegel.FindViolation(t, quinthegel.Config{Binding: "bank.binding.yaml", Opts: []qtest.Option{qtest.Global()}},
   	func(tc hegel.TestCase, _ *quinthegel.Recorder) {
   		hegel.RunStateful(tc, &machine{bank: New(accounts, WithMutation(SelfTransfer))})
   	}, hegel.WithTestCases(50), hegel.WithSeed(3))
@@ -64,7 +64,7 @@ func TestBankAgainstModel(t *testing.T) {
   runs quiet: the expected failure's replay, stack and reproduction blob
   are shown only if the outcome is not the expected one
   (`QUINTGO_VERBOSE=1` shows them always). A System shrinks the same way:
-  `quinthegel.Shrink(t, sys).Expect(t, qtest.Rejects("apply"))`, and
+  `quinthegel.Shrink(t, sys, rates).Expect(t, qtest.Rejects("apply"))`, and
   `.Expect(t, qtest.Conforms())` states that Hegel finds nothing.
 
 ## Model drives, Hegel varies

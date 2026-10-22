@@ -72,7 +72,7 @@ func TestHegelShrinksDuplicate(t *testing.T) {
 	if testing.Short() {
 		t.Skip("shrinking against the model")
 	}
-	quinthegel.FindViolation(t, quinthegel.Config{Binding: binding, Global: true}, func(tc hegel.TestCase, _ *quinthegel.Recorder) {
+	quinthegel.FindViolation(t, quinthegel.Config{Binding: binding, Opts: []qtest.Option{qtest.Global()}}, func(tc hegel.TestCase, _ *quinthegel.Recorder) {
 		if err := crossdb.Run(quinthegel.Chooser(tc), crossdb.Config{Mutation: provider.NoClientToken, NoCrashes: true, Resources: 2}); err != nil {
 			tc.Errorf("%v", err)
 		}

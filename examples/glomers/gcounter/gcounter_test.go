@@ -103,7 +103,7 @@ func (m *machine) RuleRead(tc hegel.TestCase) {
 // rounds are checked in bulk.
 func TestHegelSchedules(t *testing.T) {
 	qtest.RequireQuint(t)
-	quinthegel.Test(t, quinthegel.Config{Binding: "gcounter.binding.yaml", Mode: quinthegel.Batched, Global: true, Rounds: 2},
+	quinthegel.Test(t, quinthegel.Config{Binding: "gcounter.binding.yaml", Mode: quinthegel.Batched, Opts: []qtest.Option{qtest.Global()}, Rounds: 2},
 		func(ht *hegel.T, _ *quinthegel.Recorder) {
 			s := cluster(Faithful)
 			hegel.RunStateful(ht, &machine{Network: hegelnet.Network{Sim: s, Faults: true}}, hegel.WithStatefulStepCount(25))

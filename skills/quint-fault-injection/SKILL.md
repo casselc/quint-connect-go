@@ -95,7 +95,7 @@ qobs.Record(s.Context(), "settle", nil)
 ```go
 sys := qtest.System{Binding: "app.binding.yaml", Run: func(c qenv.Chooser) error { return app.Run(c, cfg) }}
 sys.Explore(t, qtest.ExploreConfig{Seeds: 100, Rates: rates}).Expect(t, qtest.Violates("chargedAtMostOnce")) // or Conforms(), Some/All/None(...)
-quinthegel.Shrink(t, sys, hegel.WithTestCases(50)).Expect(t, qtest.Violates("chargedAtMostOnce"))
+quinthegel.Shrink(t, sys, rates, hegel.WithTestCases(50)).Expect(t, qtest.Violates("chargedAtMostOnce"))
 ```
 
 - **One System, every workflow:** `sys.Explore` (seeds), `sys.Sweep`

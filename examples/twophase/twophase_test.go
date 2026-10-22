@@ -13,7 +13,7 @@ import (
 
 // system is the protocol as cfg deploys it, bound to the Choreo model.
 func system(cfg twophase.Config) qtest.System {
-	return qtest.System{Binding: binding, Constants: cfg.Constants(), Run: func(c qenv.Chooser) error {
+	return qtest.System{Binding: binding, Opts: []qtest.Option{qtest.Constants(cfg.Constants())}, Run: func(c qenv.Chooser) error {
 		_, err := twophase.Run(c, cfg)
 		return err
 	}}
@@ -79,7 +79,7 @@ func TestHegelShrinksImpatience(t *testing.T) {
 	if testing.Short() {
 		t.Skip("shrinks against the model")
 	}
-	v := quinthegel.Shrink(t, system(twophase.Config{Mutation: tpc.ImpatientParticipant}), hegel.WithTestCases(100))
+	v := quinthegel.Shrink(t, system(twophase.Config{Mutation: tpc.ImpatientParticipant}), crashy, hegel.WithTestCases(100))
 	v.Expect(t, qtest.Rejects("abort"))
 	t.Logf("shrunk to %d steps, faults %v", len(v.Steps), (&qenv.Recorder{Choices: v.Choices}).Faults())
 }

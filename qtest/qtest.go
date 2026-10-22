@@ -30,8 +30,9 @@ import (
 	"github.com/casselc/quint-connect-go/validate"
 )
 
-// Config of a recorded run.
-type Config struct {
+// settings are what the Options set, for every workflow (Record, Validate,
+// a System's).
+type settings struct {
 	Options     validate.Options // quint binary, backend (default $QUINTGO_BACKEND, else rust)
 	Dir         string           // artifacts; default $QUINTGO_KEEP/<test> or t.TempDir()
 	Recorder    []qobs.Option    // e.g. qobs.WithActor("acct-1")
@@ -45,14 +46,23 @@ type Config struct {
 	Global bool
 }
 
-// Option changes a Config.
-type Option func(*Config)
+// An Option configures a check: Record's, Validate's, a System's
+// workflows (System.Opts) and quinthegel's.
+type Option func(*settings)
 
-func WithOptions(o validate.Options) Option { return func(c *Config) { c.Options = o } }
+// Quint sets how quint runs: its binary and backend (the default backend
+// is $QUINT_BACKEND, else rust). Its Dir is ignored: artifacts go to
+// $QUINTGO_KEEP/<test>, else a temporary directory.
+func Quint(o validate.Options) Option { return func(c *settings) { c.Options = o } }
+
+// RecorderOptions configure the run's recorder, e.g. qobs.WithActor("acct-1").
 func RecorderOptions(opts ...qobs.Option) Option {
-	return func(c *Config) { c.Recorder = append(c.Recorder, opts...) }
+	return func(c *settings) { c.Recorder = append(c.Recorder, opts...) }
 }
-func SkipIfEmpty() Option { return func(c *Config) { c.SkipIfEmpty = true } }
+
+// SkipIfEmpty skips the test, rather than failing it, when nothing was
+// recorded: an unwoven build of code that records through //quint:action.
+func SkipIfEmpty() Option { return func(c *settings) { c.SkipIfEmpty = true } }
 
 // Global makes Record install its recorder as the global one
 // (qobs.InstallGlobal) while the scenario runs, for the steps of
@@ -60,12 +70,12 @@ func SkipIfEmpty() Option { return func(c *Config) { c.SkipIfEmpty = true } }
 // nodes), which no run can follow. Such tests must not run in parallel:
 // a second install fails. Without it only the scenario's goroutine, and
 // code recording through its recorder's context, record into the run.
-func Global() Option { return func(c *Config) { c.Global = true } }
+func Global() Option { return func(c *settings) { c.Global = true } }
 
 // Constants checks against another instance of the binding's model: these
 // constants override the binding's, e.g. Constants(map[string]string{"STOCK": "1000"}).
 func Constants(m map[string]string) Option {
-	return func(c *Config) {
+	return func(c *settings) {
 		if c.Constants == nil {
 			c.Constants = map[string]string{}
 		}
@@ -79,12 +89,12 @@ func Constants(m map[string]string) Option {
 // binding's list: none with Invariants(), for conformance alone, or a
 // design-level property the binding leaves out.
 func Invariants(names ...string) Option {
-	return func(c *Config) { c.Invariants = append([]string{}, names...) }
+	return func(c *settings) { c.Invariants = append([]string{}, names...) }
 }
 
 // checkerFor is the cached checker for a binding, with c's constants and
 // invariants.
-func checkerFor(t testing.TB, bindingPath string, o validate.Options, c Config) *validate.Checker {
+func checkerFor(t testing.TB, bindingPath string, o validate.Options, c settings) *validate.Checker {
 	t.Helper()
 	ch := checker(t, bindingPath, o)
 	var err error
@@ -116,7 +126,7 @@ type Run struct {
 	// Unscripted are the faults of a Script chooser the run never came to
 	// (qenv.Script.Remaining): it did not follow its script.
 	Unscripted []qenv.Scripted
-	// Code is the run's code coverage, with ExploreConfig.Coverage.
+	// Code is the run's code coverage, when the code is woven (qweave -cover).
 	Code *qcover.Counts
 	// Err is the scenario's error: the run did not run to its end
 	// (System.Run's error).
@@ -141,8 +151,8 @@ func checker(t testing.TB, bindingPath string, o validate.Options) *validate.Che
 	return c
 }
 
-func config(t testing.TB, opts []Option) Config {
-	var c Config
+func config(t testing.TB, opts []Option) settings {
+	var c settings
 	for _, o := range opts {
 		o(&c)
 	}
@@ -156,9 +166,10 @@ func config(t testing.TB, opts []Option) Config {
 	return c
 }
 
-// Record runs scenario with a fresh recorder (also installed as the global
-// one), then validates what it recorded. It does not fail the test on a
-// violation: inspect the returned Run. It fails on tool errors.
+// Record runs scenario with a fresh recorder (the scenario's goroutine's,
+// and the global one with Global), then validates what it recorded. State
+// the expected verdict with Run.Expect; Record itself fails the test only
+// on tool errors and steps it could not place.
 func Record(t testing.TB, bindingPath string, scenario func(rec *qobs.Recorder), opts ...Option) *Run {
 	t.Helper()
 	c := config(t, opts)
@@ -235,7 +246,7 @@ func Validate(t testing.TB, bindingPath string, steps []qtrace.Step, opts ...Opt
 	return check(t, bindingPath, run, c)
 }
 
-func check(t testing.TB, bindingPath string, run *Run, c Config) *Run {
+func check(t testing.TB, bindingPath string, run *Run, c settings) *Run {
 	t.Helper()
 	o := c.Options
 	o.Dir = filepath.Join(c.Dir, "quint")
@@ -267,4 +278,35 @@ func firstOr(msgs []string) string {
 		return "not kept"
 	}
 	return msgs[0]
+}
+
+// Settings are a list of Options resolved for a test, for packages that
+// build their checks on qtest's (quinthegel). Configure with Options;
+// Settings only read them.
+type Settings struct{ s settings }
+
+// Resolve applies opts for t: the artifacts' directory defaults to
+// $QUINTGO_KEEP/<test>, else a temporary directory.
+func Resolve(t testing.TB, opts ...Option) Settings { return Settings{config(t, opts)} }
+
+// Dir is where the check's artifacts go (generated modules, step logs).
+func (s Settings) Dir() string { return s.s.Dir }
+
+// Recorder are the recorder's options (RecorderOptions).
+func (s Settings) Recorder() []qobs.Option { return s.s.Recorder }
+
+// Global reports whether the run's recorder is installed globally (Global).
+func (s Settings) Global() bool { return s.s.Global }
+
+// Checker is the binding's checker (cached per binding) with the
+// options' constants, invariants and quint options, its modules in
+// Dir()/quint.
+func (s Settings) Checker(t testing.TB, bindingPath string) *validate.Checker {
+	t.Helper()
+	o := s.s.Options
+	o.Dir = filepath.Join(s.s.Dir, "quint")
+	ch := checkerFor(t, bindingPath, o, s.s)
+	cc := *ch
+	cc.Options = o
+	return &cc
 }

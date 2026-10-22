@@ -390,7 +390,13 @@ recorder opt-in.
   every option documented, `WithOptions` → `Quint`); `System{Binding, Run,
   Opts}`; quinthegel takes `[]qtest.Option`; `ExploreConfig.Coverage` and
   `Verdicts` automatic; `Fuzz(f, rates)`; one way to sweep (the System's
-  Run with RowOf).
+  Run with RowOf). Done: `qtest.Settings`/`Resolve` let quinthegel read the
+  options (`Config.Opts`; `Validate`, `Keep`, `Recorder`, `Global`,
+  `Constants` gone, as is `quinthegel.Checker`); `Shrink(t, sys, rates)`
+  applies the System's Opts at the exploration's rates; verdicts are
+  cached for the test binary (`Exploration.Cached`); `qsweep.FaultKind`
+  factors are turned off by the sweep. FindViolation keeps `Config`
+  (its Mode and rounds are ignored, as documented).
 - **W5. One name per concept.** The reviews' tables: `qload.System` →
   `Target`, `qenv.Recorder` → `ChoiceLog`, `qenv.Faults` → `DeclareFaults`,
   `Chain.Expect` → `Mean`, Evidence the one coverage accessor, recovery

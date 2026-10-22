@@ -98,7 +98,7 @@ func loadSpans(t *testing.T, m kv.Mutation, seed uint64) []qtrace.Step {
 
 func check(t *testing.T, steps []qtrace.Step) *validate.Report {
 	t.Helper()
-	c, err := quinthegel.Checker("kv.binding.yaml", validate.Options{Dir: t.TempDir()})
+	c, err := validate.Cached("kv.binding.yaml", validate.Options{Dir: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -205,7 +205,7 @@ func (m *machine) RuleGet(tc hegel.TestCase) {
 // each case's recorder (Global) and the runs are checked after the test.
 func TestHegelDrivesService(t *testing.T) {
 	qtest.RequireQuint(t)
-	quinthegel.Test(t, quinthegel.Config{Binding: "kv.binding.yaml", Mode: quinthegel.After, Global: true, AllowEmpty: true},
+	quinthegel.Test(t, quinthegel.Config{Binding: "kv.binding.yaml", Mode: quinthegel.After, Opts: []qtest.Option{qtest.Global()}, AllowEmpty: true},
 		func(ht *hegel.T, _ *quinthegel.Recorder) {
 			hegel.RunStateful(ht, &machine{cl: service(ht, kv.Faithful, nil), versions: hegel.NewPool[int64](ht)},
 				hegel.WithStatefulStepCount(15))
@@ -220,7 +220,7 @@ func TestHegelShrinksRevisionOnConflict(t *testing.T) {
 	if testing.Short() {
 		t.Skip("shrinking against the model runs quint dozens of times")
 	}
-	v := quinthegel.FindViolation(t, quinthegel.Config{Binding: "kv.binding.yaml", Global: true}, func(tc hegel.TestCase, _ *quinthegel.Recorder) {
+	v := quinthegel.FindViolation(t, quinthegel.Config{Binding: "kv.binding.yaml", Opts: []qtest.Option{qtest.Global()}}, func(tc hegel.TestCase, _ *quinthegel.Recorder) {
 		cl := service(t, kv.RevisionOnConflict, nil)
 		hegel.RunStateful(tc, &machine{cl: cl, versions: hegel.NewPool[int64](tc)}, hegel.WithStatefulStepCount(10))
 	}, hegel.WithTestCases(30), hegel.WithSeed(11))

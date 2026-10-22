@@ -4,11 +4,11 @@ import (
 	"context"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 
+	"github.com/casselc/quint-connect-go/qenv"
 	"github.com/casselc/quint-connect-go/qtest"
 	"github.com/casselc/quint-connect-go/qtrace"
 	"hegel.dev/go/hegel"
@@ -56,13 +56,10 @@ type Violation struct {
 // logged.
 func FindViolation(t testing.TB, cfg Config, body func(tc hegel.TestCase, rec *Recorder), opts ...hegel.Option) *Violation {
 	t.Helper()
-	vo := cfg.Validate
-	vo.Dir = filepath.Join(keepDir(t, cfg.Keep), "quint")
-	vo.NoITF = true
-	c, err := cfg.checker(vo)
-	if err != nil {
-		t.Fatalf("quinthegel: %v", err)
-	}
+	set := qtest.Resolve(t, cfg.Opts...)
+	c := set.Checker(t, cfg.Binding)
+	c.Options.NoITF = true
+	var err error
 	cc := newCaseChecker(c)
 	var (
 		mu    sync.Mutex
@@ -85,8 +82,8 @@ func FindViolation(t testing.TB, cfg Config, body func(tc hegel.TestCase, rec *R
 	func() {
 		defer func() { out = hegelOut.stop() }() // also when a case's t.Fatal ends the goroutine
 		err = hegel.Run(func(tc hegel.TestCase) {
-			rec := NewRecorder(tc, cfg.Recorder...)
-			defer rec.begin(tc, cfg.Global)()
+			rec := NewRecorder(tc, set.Recorder()...)
+			defer rec.begin(tc, set.Global())()
 			body(tc, rec)
 			steps := rec.Steps()
 			if len(steps) == 0 && cfg.AllowEmpty {
@@ -175,14 +172,21 @@ func (v *Violation) Last() qtrace.Step {
 
 // Shrink runs Hegel against the system, expecting the model to reject
 // some test case, and shrinks it (FindViolation): every choice of the
-// system's environment is Hegel's (Chooser), recorded with the run's steps
-// (Recorder.Env), so the shrunk Violation replays outside Hegel.
+// system's environment is Hegel's (Chooser) at rates (zero rates:
+// qenv.DefaultRates; give it the exploration's to shrink what it found),
+// recorded with the run's steps (Recorder.Env), so the shrunk Violation
+// replays outside Hegel. The system's Opts apply, as in its explorations.
 //
-//	quinthegel.Shrink(t, sys, hegel.WithTestCases(50)).Expect(t, qtest.Rejects("ship"))
-func Shrink(t testing.TB, sys qtest.System, opts ...hegel.Option) *Violation {
+//	quinthegel.Shrink(t, sys, rates, hegel.WithTestCases(50)).Expect(t, qtest.Rejects("ship"))
+func Shrink(t testing.TB, sys qtest.System, rates qenv.Rates, opts ...hegel.Option) *Violation {
 	t.Helper()
-	return FindViolation(t, Config{Binding: sys.Binding, Constants: sys.Constants}, func(tc hegel.TestCase, rec *Recorder) {
-		if err := sys.Run(rec.Env(Chooser(tc))); err != nil {
+	if rates.Default == 0 && rates.Kinds == nil {
+		rates = qenv.DefaultRates
+	}
+	return FindViolation(t, Config{Binding: sys.Binding, Opts: sys.Opts}, func(tc hegel.TestCase, rec *Recorder) {
+		c := Chooser(tc)
+		c.Rates = rates
+		if err := sys.Run(rec.Env(c)); err != nil {
 			tc.Errorf("quinthegel: the system did not run: %v", err)
 		}
 	}, opts...)
@@ -209,7 +213,7 @@ func captureStdout() *captured {
 		return nil
 	}
 	c := &captured{old: os.Stdout, w: w, done: make(chan string)}
-	go func() { // drains the pipe so writers never block
+	go func() { //qenv:ok drains Hegel's stdout pipe, outside any simulation, so writers never block
 		var b strings.Builder
 		_, _ = io.Copy(&b, r)
 		r.Close()

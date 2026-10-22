@@ -96,15 +96,14 @@ func TestConstants(t *testing.T) {
 // makes no choices are checked once, though each has its own recorder ids.
 func TestVerdictCache(t *testing.T) {
 	RequireQuint(t)
-	cache := &VerdictCache{}
 	x := System{Binding: "../validate/testdata/account.yaml", Run: func(c qenv.Chooser) error {
 		s := qenv.New(c)
 		defer s.Close()
 		qobs.Record(s.Context(), "deposit", nil, "amount", 10, "obs.balance", 10)
 		return nil
-	}}.Explore(t, ExploreConfig{Seeds: 10, Verdicts: cache})
+	}}.Explore(t, ExploreConfig{Seeds: 10})
 	x.Expect(t, Conforms())
-	if cache.Hits() != 9 {
-		t.Errorf("%d of 10 runs judged from the cache, want 9", cache.Hits())
+	if x.Cached < 9 { // 10 if an earlier test judged the same steps
+		t.Errorf("%d of 10 runs judged from the cache, want at least 9", x.Cached)
 	}
 }

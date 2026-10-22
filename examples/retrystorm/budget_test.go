@@ -53,7 +53,7 @@ func (m *machine) RuleRetries(tc hegel.TestCase) {
 }
 
 func hegelCfg() quinthegel.Config {
-	return quinthegel.Config{Binding: "retrystorm.binding.yaml", Global: true, AllowEmpty: true}
+	return quinthegel.Config{Binding: "retrystorm.binding.yaml", Opts: []qtest.Option{qtest.Global()}, AllowEmpty: true}
 }
 
 // Hegel drives the faithful budget; every run satisfies the model.

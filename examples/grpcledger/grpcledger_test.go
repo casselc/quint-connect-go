@@ -97,25 +97,21 @@ func TestNoDedupeSweep(t *testing.T) {
 	if testing.Short() {
 		t.Skip("sweeps hundreds of runs")
 	}
-	kinds := map[string]string{"conn": "fault.grpc.ledger.conn", "request": "fault.rpc.ledger.request", "response": "fault.rpc.ledger.response"}
-	space := []qsweep.Factor{qsweep.Bool("conn"), qsweep.Bool("request"), qsweep.Bool("response"), qsweep.Bool("crash")}
-	sw := system(grpcledger.Config{Mutation: ledger.NoDedupe}).Sweep(t, qtest.Sweep{Factors: space,
+	space := []qsweep.Factor{qsweep.FaultKind("grpc.ledger.conn"), qsweep.FaultKind("rpc.ledger.request"),
+		qsweep.FaultKind("rpc.ledger.response"), qsweep.Bool("crash")}
+	sys := qtest.System{Binding: binding, Run: func(c qenv.Chooser) error {
+		row, _ := qtest.RowOf(c) // the row's fault kinds that are off are off in c
+		_, err := grpcledger.Run(c, grpcledger.Config{Mutation: ledger.NoDedupe, NoCrashes: !row.On("crash")})
+		return err
+	}}
+	sw := sys.Sweep(t, qtest.Sweep{Factors: space,
 		Explore: qtest.ExploreConfig{Seeds: 30, Rates: qenv.Rates{Default: 0.1, Kinds: map[string]float64{"fault.nemesis": 0.02}}},
 		Expect: func(row qsweep.Row) []qtest.Claim {
-			if row.On("request") || row.On("response") {
+			if row.On("rpc.ledger.request") || row.On("rpc.ledger.response") {
 				return []qtest.Claim{reapplied}
 			}
 			return []qtest.Claim{qtest.Conforms()}
-		}}, func(row qsweep.Row, c qenv.Chooser) error {
-		var off []string
-		for f, k := range kinds {
-			if !row.On(f) {
-				off = append(off, k)
-			}
-		}
-		_, err := grpcledger.Run(qenv.Without(c, off...), grpcledger.Config{Mutation: ledger.NoDedupe, NoCrashes: !row.On("crash")})
-		return err
-	})
+		}})
 	t.Log(sw.Evidence())
 }
 
@@ -126,7 +122,7 @@ func TestShrinkDoubleApply(t *testing.T) {
 	if testing.Short() {
 		t.Skip("shrinks against the model")
 	}
-	v := quinthegel.Shrink(t, system(grpcledger.Config{Mutation: ledger.NoDedupe}), hegel.WithTestCases(200))
+	v := quinthegel.Shrink(t, system(grpcledger.Config{Mutation: ledger.NoDedupe}), crashy, hegel.WithTestCases(200))
 	v.Expect(t, reapplied)
 	t.Logf("shrunk: %d steps, faults %v\n%s", len(v.Steps), (&qenv.Recorder{Choices: v.Choices}).Faults(), v.Summary)
 }

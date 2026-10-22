@@ -41,7 +41,7 @@ seeds, not by hand.
 - recorded steps: `qtest.Validate(t, binding, steps).Expect(t, ...)`;
 - an exploration or sweep row: `x.Expect(t, claims...)`, `Sweep.Expect(row)`;
 - Hegel: `quinthegel.FindViolation(...).Expect(t, ...)`,
-  `quinthegel.Shrink(t, sys).Expect(t, ...)` (fails when nothing is found);
+  `quinthegel.Shrink(t, sys, rates).Expect(t, ...)` (fails when nothing is found);
 - a trigger search: `quinthegel.FindTrigger(t, sys, space).Expect(t, found)`;
 - connect: a replay error (`StepError`: `step`, `state`, `check`), no
   expectation type: assert `err != nil` for a mutant (examples/bank's

@@ -15,15 +15,19 @@ func overdraw(c qenv.Chooser) error {
 }
 
 // A verdict is of steps against one instance: the same steps are a
-// violation with LIMIT 100 and conform with LIMIT 200, and a cache shared
-// by the two explorations (as a sweep's rows share one) keeps them apart.
+// violation with LIMIT 100 and conform with LIMIT 200, and the verdicts
+// shared by every exploration (as a sweep's rows share them) keep them
+// apart.
 func TestVerdictCacheKeysTheInstance(t *testing.T) {
 	RequireQuint(t)
-	cache := &VerdictCache{}
-	cfg := ExploreConfig{Seeds: 1, Verdicts: cache}
+	cfg := ExploreConfig{Seeds: 1}
 	System{Binding: "../validate/testdata/account.yaml", Run: overdraw}.Explore(t, cfg).Expect(t, Violates("underLimit"))
-	System{Binding: "../validate/testdata/account.yaml", Run: overdraw, Constants: map[string]string{"LIMIT": "200"}}.
-		Explore(t, cfg).Expect(t, Conforms())
+	x := System{Binding: "../validate/testdata/account.yaml", Run: overdraw, Opts: []Option{Constants(map[string]string{"LIMIT": "200"})}}.
+		Explore(t, cfg)
+	x.Expect(t, Conforms())
+	if x.Cached != 0 {
+		t.Errorf("the LIMIT 200 run took a verdict of another instance")
+	}
 }
 
 // A claim naming an invariant or action the model does not have fails at

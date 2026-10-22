@@ -7,7 +7,7 @@ go run -C path/to/qweave ./cmd/qweave -C . -cover [-coverpkg your/module/pkg] go
 ```
 
 ```go
-x := sys.Explore(t, qtest.ExploreConfig{Seeds: 30, Coverage: true}) // sys is a qtest.System
+x := sys.Explore(t, qtest.ExploreConfig{Seeds: 30}) // sys is a qtest.System; coverage is collected when woven
 t.Log(x.CodeCoverage()) // never run, run by no step, outcomes that ran the same code
 ```
 
@@ -50,8 +50,8 @@ raise the kind's rate or script it first.
 
 `t.Log(x.Evidence())` (an exploration, or a sweep's `Swept`) says in a few
 lines what the runs show: verdicts by reason, fault kinds faulted and
-pairs together (and those never faulted), the code run (with
-`Coverage: true`), and mutants killed (set `Mutants` from
+pairs together (and those never faulted), the code run (when woven
+with `-cover`), and mutants killed (set `Mutants` from
 `sys.Mutate`). Read it after a green test: it is what "conforms" leaves
 unsaid.
 
@@ -62,7 +62,7 @@ go run -C path/to/qweave ./cmd/qweave -C . -mutate -coverpkg your/module/pkg go 
 ```
 
 ```go
-rep := sys.Mutate(t, qtest.ExploreConfig{Seeds: 20, Rates: crashy}, nil) // skips unwoven
+rep := sys.Mutate(t, qtest.ExploreConfig{Seeds: 20, Rates: crashy}) // skips unwoven
 t.Log(rep.Evidence()) // the baseline's verdicts and faults, with the mutants
 rep.Expect(t, qtest.NoSurvivors("pay.go:42 drop call")) // equivalent ones marked, by position (and operator)
 ```

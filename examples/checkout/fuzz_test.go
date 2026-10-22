@@ -17,7 +17,7 @@ import (
 // judging every run.
 func FuzzFaithful(f *testing.F) {
 	qtest.RequireQuint(f)
-	system(checkout.Config{Isolation: qenv.SnapshotIsolation}).Fuzz(f, qtest.ExploreConfig{Rates: crashy})
+	system(checkout.Config{Isolation: qenv.SnapshotIsolation}).Fuzz(f, crashy)
 }
 
 // A shrunk Hegel failure becomes a fuzz corpus entry: its choices encode to
@@ -29,7 +29,7 @@ func TestShrunkFailureAsCorpus(t *testing.T) {
 		t.Skip("shrinking against the model")
 	}
 	sys := system(checkout.Config{Isolation: qenv.SnapshotIsolation, Mutation: shop.LockWithoutWrite})
-	v := quinthegel.Shrink(t, sys, hegel.WithTestCases(50), hegel.WithSeed(1))
+	v := quinthegel.Shrink(t, sys, qenv.DefaultRates, hegel.WithTestCases(50), hegel.WithSeed(1))
 	data, err := qenv.EncodeChoices(v.Choices, qenv.DefaultRates)
 	if err != nil {
 		t.Fatal(err)

@@ -15,7 +15,8 @@
   - `After` checks the distinct runs in bulk after Hegel finishes. It is
     the cheapest, but shrinks nothing.
   - `Off` records only.
-- **`Global: true`** installs each case's recorder as the global qobs
+- **`Opts`** are qtest's options (`qtest.Constants`, `qtest.Invariants`,
+  `qtest.Quint`, `qtest.RecorderOptions`). **`qtest.Global()`** installs each case's recorder as the global qobs
   recorder too, for steps from goroutines the body starts (a server's
   handlers, a cluster's nodes). The body's own goroutine always records
   into the case. Tests with it must not run in parallel: a second install

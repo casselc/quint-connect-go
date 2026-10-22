@@ -44,7 +44,7 @@ func (m *machine) InvariantNoOverdraft(tc hegel.TestCase) {
 }
 
 func cfg(mode quinthegel.Mode) quinthegel.Config {
-	return quinthegel.Config{Binding: "bank.binding.yaml", Mode: mode, Global: true, AllowEmpty: true}
+	return quinthegel.Config{Binding: "bank.binding.yaml", Mode: mode, Opts: []qtest.Option{qtest.Global()}, AllowEmpty: true}
 }
 
 func runMachine(m Mutation) func(*hegel.T, *quinthegel.Recorder) {
@@ -70,7 +70,7 @@ func TestHegelCatchesSelfTransfer(t *testing.T) {
 	if testing.Short() {
 		t.Skip("shrinking against the model runs quint ~100 times")
 	}
-	v := quinthegel.FindViolation(t, quinthegel.Config{Binding: "bank.binding.yaml", Global: true}, func(tc hegel.TestCase, _ *quinthegel.Recorder) {
+	v := quinthegel.FindViolation(t, quinthegel.Config{Binding: "bank.binding.yaml", Opts: []qtest.Option{qtest.Global()}}, func(tc hegel.TestCase, _ *quinthegel.Recorder) {
 		hegel.RunStateful(tc, &machine{bank: New(accounts, WithMutation(SelfTransfer))}, hegel.WithStatefulStepCount(12))
 	}, hegel.WithTestCases(50), hegel.WithSeed(3))
 	var self bool

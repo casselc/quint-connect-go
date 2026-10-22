@@ -15,7 +15,7 @@ import (
 const account = "../validate/testdata/account.yaml"
 
 func opts() []Option {
-	return []Option{WithOptions(validate.Options{Backend: "typescript"}), RecorderOptions(qobs.WithActor("acct-1"))}
+	return []Option{Quint(validate.Options{Backend: "typescript"}), RecorderOptions(qobs.WithActor("acct-1"))}
 }
 
 func needQuint(t *testing.T) {

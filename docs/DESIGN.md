@@ -1969,13 +1969,13 @@ means it could not run, which fails the test and names the seed; it is
 not a verdict.
 - `sys.Explore(t, cfg)` explores seeds. `ExploreConfig.Chooser` gives
   each seed its own chooser instead of a seeded one.
-- `sys.Sweep(t, sw, run)` sweeps covering rows, the row deciding how to
-  run; with `run` nil the System's own Run reads the row from its chooser
-  (`qtest.RowOf`, V4).
+- `sys.Sweep(t, sw)` sweeps covering rows, the System's own Run reading
+  the row from its chooser (`qtest.RowOf`, V4; W4 removed the per-sweep
+  run function, and `qsweep.FaultKind` factors turn kinds off).
 - `sys.FollowTraces(t, trace, faults)` generates the model's traces,
   scripts each one's faults, runs the system on each script, and fails a
   run whose script did not complete (`Remaining`), the P6 message.
-- `quinthegel.Shrink(t, sys)` lives in quinthegel, which imports qtest:
+- `quinthegel.Shrink(t, sys, rates)` lives in quinthegel, which imports qtest:
   Hegel stays out of qtest. It is FindViolation over `sys.Run` on
   `rec.Env(Chooser(tc))`.
 

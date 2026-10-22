@@ -7,11 +7,11 @@ import (
 	"github.com/casselc/quint-connect-go/connect"
 	"github.com/casselc/quint-connect-go/itf"
 	"github.com/casselc/quint-connect-go/qenv"
-	"github.com/casselc/quint-connect-go/qsweep"
 )
 
-// A System is an application bound to its model: the binding, the model's
-// constants for its instance, and how to run it on a chooser. The
+// A System is an application bound to its model: the binding, the options
+// of its checks (the model's constants for its instance, ...), and how to
+// run it on a chooser. The
 // workflows over it share that one definition: explore seeds (Explore),
 // follow a model's traces through their faults (FollowTraces), sweep
 // configurations (Sweep), and shrink a failure with Hegel
@@ -24,10 +24,9 @@ import (
 //	sys.Explore(t, qtest.ExploreConfig{Seeds: 100}).Expect(t, qtest.Conforms())
 type System struct {
 	Binding string
-	// Constants are the model's constants for this instance, over the
-	// binding's (Constants).
-	Constants map[string]string
-	// Opts are further options (artifacts, quint options).
+	// Opts apply to every workflow over the system: the model's constants
+	// for this instance (Constants), the invariants checked (Invariants),
+	// quint's options (Quint), the recorder's (RecorderOptions).
 	Opts []Option
 	// Run deploys and runs the application on c: a simulation made from c
 	// (qenv.New(c)) records into the run's recorder. An error means the run
@@ -37,11 +36,7 @@ type System struct {
 }
 
 func (s System) opts(more ...Option) []Option {
-	out := append([]Option(nil), s.Opts...)
-	if len(s.Constants) > 0 {
-		out = append(out, Constants(s.Constants))
-	}
-	return append(out, more...)
+	return append(append([]Option(nil), s.Opts...), more...)
 }
 
 // Explore runs the system once per seed, each time with a seeded qenv
@@ -97,43 +92,36 @@ func (s System) FollowTraces(t testing.TB, trace connect.Config, faults connect.
 }
 
 // Sweep explores each covering row of sw as a subtest named by the row,
-// checking its expectation there, running the
-// system as run says for the row. With run nil it is the System's own
-// Run, which reads the row from its chooser (RowOf): one Run for every
-// workflow.
-func (s System) Sweep(t *testing.T, sw Sweep, run func(row qsweep.Row, c qenv.Chooser) error) *Swept {
+// checking its expectation there. The system's Run reads the row from its
+// chooser (RowOf) and configures itself from it: one Run for every
+// workflow. A row's FaultKind factors that are off are off in the chooser.
+func (s System) Sweep(t *testing.T, sw Sweep) *Swept {
 	t.Helper()
 	sw.Explore.Opts = s.opts(sw.Explore.Opts...)
-	if run == nil {
-		run = func(_ qsweep.Row, c qenv.Chooser) error { return s.Run(c) }
-	}
-	return sweep(t, s.Binding, sw, run)
+	return sweep(t, s.Binding, sw, s.Run)
 }
 
 // Fuzz explores the system with Go's coverage-guided fuzzer: each input is
-// one run, its bytes the run's choices (qenv.FromBytes at cfg.Rates:
-// schedules, faults), the model the oracle; cfg's Opts and Coverage apply
-// to each run (its Seeds, Parallel and Chooser are the fuzzer's). Without -fuzz, go test runs the seeds and
-// the corpus in testdata/fuzz as regression tests. Seed it with runs worth
-// keeping: a shrunk Hegel failure, once fixed, is
-// qenv.EncodeChoices(v.Choices, cfg.Rates). The empty input, every choice
-// nominal, is always a seed.
+// one run, its bytes the run's choices (qenv.FromBytes at rates:
+// schedules, faults; zero rates are qenv.DefaultRates), the model the
+// oracle. Without -fuzz, go test runs the seeds and the corpus in
+// testdata/fuzz as regression tests. Seed it with runs worth keeping: a
+// shrunk Hegel failure, once fixed, is qenv.EncodeChoices(v.Choices,
+// rates). The empty input, every choice nominal, is always a seed. Inputs
+// that repeat a run's steps take its verdict without quint.
 //
-//	func FuzzShop(f *testing.F) { sys.Fuzz(f, qtest.ExploreConfig{Rates: rates}) }
-func (s System) Fuzz(f *testing.F, cfg ExploreConfig, seeds ...[]byte) {
+//	func FuzzShop(f *testing.F) { sys.Fuzz(f, rates) }
+func (s System) Fuzz(f *testing.F, rates qenv.Rates, seeds ...[]byte) {
 	f.Helper()
 	f.Add([]byte{})
 	for _, sd := range seeds {
 		f.Add(sd)
 	}
-	if cfg.Verdicts == nil {
-		cfg.Verdicts = &VerdictCache{} // per fuzzing worker: inputs that repeat a run's steps skip quint
+	if rates.Default == 0 && rates.Kinds == nil {
+		rates = qenv.DefaultRates
 	}
-	rates := cfg.Rates
 	f.Fuzz(func(t *testing.T, data []byte) {
-		x := cfg
-		x.Seeds, x.Parallel = 1, 1
-		x.Chooser = func(uint64) qenv.Chooser { return qenv.FromBytes(data, rates) }
-		s.Explore(t, x).Expect(t, Conforms())
+		s.Explore(t, ExploreConfig{Seeds: 1, Parallel: 1,
+			Chooser: func(uint64) qenv.Chooser { return qenv.FromBytes(data, rates) }}).Expect(t, Conforms())
 	})
 }

@@ -21,7 +21,7 @@ func TestHegelShrinksReorder(t *testing.T) {
 		t.Skip("shrinking against the model")
 	}
 	sys := system(streams.Config{Mutation: pipeline.NonIdempotentProducer})
-	v := quinthegel.Shrink(t, sys, hegel.WithTestCases(100), hegel.WithSeed(1))
+	v := quinthegel.Shrink(t, sys, faulty, hegel.WithTestCases(100), hegel.WithSeed(1))
 	v.Expect(t, qtest.Violates("perKeyOrder"))
 	t.Logf("shrunk to %d steps; %s", len(v.Steps), v.Report.Summary())
 
@@ -40,22 +40,16 @@ func TestFaithfulSweep(t *testing.T) {
 	if testing.Short() {
 		t.Skip("sweeps hundreds of runs")
 	}
-	kinds := []string{"log.produce", "log.commit", "log.fetch", "nemesis"}
 	space := []qsweep.Factor{qsweep.Ints("partitions", 1, 2, 3), qsweep.Ints("consumers", 1, 2, 3)}
-	for _, k := range kinds {
-		space = append(space, qsweep.Bool(k))
+	for _, k := range []string{"log.produce", "log.commit", "log.fetch", "nemesis"} {
+		space = append(space, qsweep.FaultKind(k))
 	}
-	sw := system(streams.Config{}).Sweep(t, qtest.Sweep{Factors: space, Explore: qtest.ExploreConfig{Seeds: 10, Rates: faulty}},
-		func(row qsweep.Row, c qenv.Chooser) error {
-			var off []string
-			for _, k := range kinds {
-				if !row.On(k) {
-					off = append(off, "fault."+k)
-				}
-			}
-			_, err := streams.Run(qenv.Without(c, off...), streams.Config{Partitions: row.Int("partitions"), Consumers: row.Int("consumers")})
-			return err
-		})
+	sys := qtest.System{Binding: binding, Run: func(c qenv.Chooser) error {
+		row, _ := qtest.RowOf(c) // the row's fault kinds that are off are off in c
+		_, err := streams.Run(c, streams.Config{Partitions: row.Int("partitions"), Consumers: row.Int("consumers")})
+		return err
+	}}
+	sw := sys.Sweep(t, qtest.Sweep{Factors: space, Explore: qtest.ExploreConfig{Seeds: 10, Rates: faulty}})
 	t.Log(sw.Evidence())
 }
 
@@ -64,5 +58,5 @@ func TestFaithfulSweep(t *testing.T) {
 // coverage, the model judging every run.
 func FuzzFaithful(f *testing.F) {
 	qtest.RequireQuint(f)
-	system(streams.Config{}).Fuzz(f, qtest.ExploreConfig{Rates: faulty})
+	system(streams.Config{}).Fuzz(f, faulty)
 }

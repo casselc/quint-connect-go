@@ -50,7 +50,7 @@ func system(m Mutation) qtest.System {
 func TestNoDedupe(t *testing.T) {
 	qtest.RequireQuint(t)
 	system(NoDedupe).Explore(t, qtest.ExploreConfig{Seeds: 30}).Expect(t, qtest.Some(qtest.Rejects("apply")))
-	quinthegel.Shrink(t, system(NoDedupe)).Expect(t, qtest.Rejects("apply")) // Hegel, shrunk to one fault
+	quinthegel.Shrink(t, system(NoDedupe), lossy).Expect(t, qtest.Rejects("apply")) // Hegel, shrunk to one fault
 	system(Faithful).Explore(t, qtest.ExploreConfig{Seeds: 30}).Expect(t, qtest.Conforms())
 }
 ```

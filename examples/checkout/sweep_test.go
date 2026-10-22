@@ -19,32 +19,24 @@ var space = []qsweep.Factor{
 	qsweep.Ints("orders", 2, 3, 4),
 	qsweep.Ints("stock", 1, 2, 3).Constant("STOCK"), // the model's instance follows the row's
 	qsweep.Bool("crash"),
-	qsweep.Bool("queue.ack"),
-	qsweep.Bool("rpc.api"),
-	qsweep.Bool("rpc.provider"),
+	qsweep.FaultKind("queue.ack"),
+	qsweep.FaultKind("rpc.api"),
+	qsweep.FaultKind("rpc.provider"),
 }
 
 var isoOf = map[string]qenv.Isolation{"ser": qenv.Serializable, "si": qenv.SnapshotIsolation, "rc": qenv.ReadCommitted}
 
-// deploy runs the shop as a row says, with the fault kinds it turns off.
-func deploy(m shop.Mutation) func(qsweep.Row, qenv.Chooser) error {
-	return func(row qsweep.Row, c qenv.Chooser) error {
-		var off []string
-		for _, k := range []string{"queue.ack", "rpc.api", "rpc.provider"} {
-			if !row.On(k) {
-				off = append(off, "fault."+k)
-			}
-		}
+// sweepSystem is the shop with mutation m, deployed as each sweep row says
+// (the row's fault kinds that are off are off in its chooser already).
+func sweepSystem(m shop.Mutation) qtest.System {
+	return qtest.System{Binding: binding, Run: func(c qenv.Chooser) error {
+		row, _ := qtest.RowOf(c)
 		cfg := checkout.Config{Isolation: isoOf[row.Get("iso")], Mutation: m,
 			Orders: row.Int("orders"), Stock: row.Int("stock"), NoCrashes: !row.On("crash")}
-		_, err := checkout.Run(qenv.Without(c, off...), cfg)
+		_, err := checkout.Run(c, cfg)
 		return err
-	}
+	}}
 }
-
-// shopSystem is the shop bound to its model, for sweeps (each row says how
-// to deploy it).
-var shopSystem = qtest.System{Binding: binding}
 
 // The faithful shop conforms on every pairwise row: every pair of factor
 // values, every pair of fault kinds together and each kind alone, at
@@ -54,7 +46,7 @@ func TestFaithfulSweep(t *testing.T) {
 	if testing.Short() {
 		t.Skip("sweeps hundreds of runs")
 	}
-	sw := shopSystem.Sweep(t, qtest.Sweep{Factors: space, Explore: qtest.ExploreConfig{Seeds: 20, Rates: crashy}}, deploy(shop.Faithful))
+	sw := sweepSystem(shop.Faithful).Sweep(t, qtest.Sweep{Factors: space, Explore: qtest.ExploreConfig{Seeds: 20, Rates: crashy}})
 	t.Log(sw.Evidence())
 	if u := sw.Coverage().Untried(); len(u) > 0 {
 		t.Errorf("fault kinds never together: %v", u)
@@ -71,13 +63,13 @@ func TestNoIdempotencyKeySweep(t *testing.T) {
 	if testing.Short() {
 		t.Skip("sweeps hundreds of runs")
 	}
-	shopSystem.Sweep(t, qtest.Sweep{Factors: space, Explore: qtest.ExploreConfig{Seeds: 20, Rates: crashy},
+	sweepSystem(shop.NoIdempotencyKey).Sweep(t, qtest.Sweep{Factors: space, Explore: qtest.ExploreConfig{Seeds: 20, Rates: crashy},
 		Expect: func(row qsweep.Row) []qtest.Claim {
 			if row.On("rpc.provider") {
 				return []qtest.Claim{qtest.Violates("chargedAtMostOnce")}
 			}
 			return []qtest.Claim{qtest.Violates("settledCorrectly"), qtest.None(qtest.Violates("chargedAtMostOnce"))}
-		}}, deploy(shop.NoIdempotencyKey))
+		}})
 }
 
 // Both orders of every pair of fault kinds, each imposed by a Script on a

@@ -50,11 +50,12 @@ func (s *Swept) Coverage() *qenv.Coverage {
 
 var rowKey = qrun.NewKey[qsweep.Row]("sweep.row")
 
-// RowOf is the sweep row a run's chooser was made for (System.Sweep with
-// no run function): a System's Run configures itself from it.
+// RowOf is the sweep row a run's chooser was made for (System.Sweep): a
+// System's Run configures itself from it (sizes, mutations); the row's
+// fault kinds that are off are off in the chooser already.
 func RowOf(c qenv.Chooser) (qsweep.Row, bool) { return qrun.In(qenv.ContextOf(c), rowKey) }
 
-func sweep(t *testing.T, bindingPath string, sw Sweep, scenario func(row qsweep.Row, c qenv.Chooser) error) *Swept {
+func sweep(t *testing.T, bindingPath string, sw Sweep, scenario func(c qenv.Chooser) error) *Swept {
 	t.Helper()
 	strength := sw.Strength
 	if strength == 0 {
@@ -75,8 +76,16 @@ func sweep(t *testing.T, bindingPath string, sw Sweep, scenario func(row qsweep.
 			if sw.Opts != nil {
 				xc.Opts = append(append([]Option(nil), xc.Opts...), sw.Opts(row)...)
 			}
+			var off []string
+			for _, k := range row.FaultsOff() {
+				off = append(off, "fault."+k)
+			}
 			x := explore(t, bindingPath, xc, func(c qenv.Chooser) error {
-				return scenario(row, qenv.WithContext(c, qrun.With(qenv.ContextOf(c), rowKey, row)))
+				c = qenv.WithContext(c, qrun.With(qenv.ContextOf(c), rowKey, row))
+				if len(off) > 0 {
+					c = qenv.Without(c, off...)
+				}
+				return scenario(c)
 			})
 			s.Runs[i] = x
 			want := []Claim{Conforms()}

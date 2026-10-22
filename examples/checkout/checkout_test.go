@@ -85,7 +85,7 @@ func TestHegelShrinksWriteSkew(t *testing.T) {
 	}
 	sys := system(checkout.Config{Isolation: qenv.SnapshotIsolation, Mutation: shop.LockWithoutWrite})
 	skew := qtest.AnyOf(qtest.Rejects("ship"), qtest.Rejects("cancel"))
-	v := quinthegel.Shrink(t, sys, hegel.WithTestCases(50), hegel.WithSeed(1))
+	v := quinthegel.Shrink(t, sys, crashy, hegel.WithTestCases(50), hegel.WithSeed(1))
 	v.Expect(t, skew)
 
 	replay := sys.Explore(t, qtest.ExploreConfig{Seeds: 1, Chooser: func(uint64) qenv.Chooser { return qenv.Replay(v.Choices) }})

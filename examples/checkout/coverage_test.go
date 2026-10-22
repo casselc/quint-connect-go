@@ -21,7 +21,7 @@ func TestCodeCoverage(t *testing.T) {
 	if len(qcover.Blocks()) == 0 {
 		t.Skip("not woven for coverage: run with qweave -cover")
 	}
-	x := explore(t, checkout.Config{Isolation: qenv.SnapshotIsolation}, qtest.ExploreConfig{Seeds: 30, Rates: crashy, Coverage: true, Parallel: 4})
+	x := explore(t, checkout.Config{Isolation: qenv.SnapshotIsolation}, qtest.ExploreConfig{Seeds: 30, Rates: crashy, Parallel: 4})
 	x.Expect(t, qtest.Conforms())
 	t.Log(x.Coverage())
 	t.Log(x.CodeCoverage())

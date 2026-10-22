@@ -23,6 +23,10 @@ import (
 // against the model in bulk.
 type Exploration struct {
 	Runs []*Run
+	// Cached counts the runs judged from an earlier verdict on the same
+	// steps against the same instance (this exploration's, or any before
+	// it in the test binary), without running quint.
+	Cached int
 
 	constants map[string]string // the instance checked against, for messages
 	test      string            // the test's name, for reproducing a seed
@@ -42,7 +46,7 @@ func (x *Exploration) Coverage() *qenv.Coverage {
 }
 
 // CodeCoverage is the runs' code coverage read against their steps
-// (ExploreConfig.Coverage): what no run ran, what ran under no step, and
+// (collected when the code is woven with qweave -cover): what no run ran, what ran under no step, and
 // the outcomes of an action that ran the same code.
 func (x *Exploration) CodeCoverage() *qcover.Summary {
 	runs := make([]*qcover.Counts, len(x.Runs))
@@ -81,14 +85,9 @@ type ExploreConfig struct {
 	// has nowhere to go and fails the exploration (qobs.Strict,
 	// qobs.Escaped).
 	Parallel int
-	// Coverage collects each run's code coverage, by step (qcover; the
-	// code must be woven with qweave -cover): Exploration.CodeCoverage.
-	Coverage bool
 	// Chooser, if set, makes each seed's chooser instead of a seeded one
 	// at Rates: a Script per seed, a Replay of a recorded run, a swarm.
 	Chooser func(seed uint64) qenv.Chooser
-	// Verdicts, if set, reuses the verdicts of runs with the same steps.
-	Verdicts *VerdictCache
 }
 
 // explore runs the scenario once per seed and checks every run (System.Explore):
@@ -105,6 +104,7 @@ func explore(t testing.TB, bindingPath string, cfg ExploreConfig, scenario func(
 		cfg.Parallel = runtime.GOMAXPROCS(0)
 	}
 	c := config(t, cfg.Opts)
+	woven := len(qcover.Blocks()) > 0
 	defer qobs.Strict()() // a step with nowhere to go fails the exploration, rather than vanish from its run
 	mark, _ := qobs.Escaped(0)
 	seeds := make([]uint64, cfg.Seeds)
@@ -140,7 +140,7 @@ func explore(t testing.TB, bindingPath string, cfg ExploreConfig, scenario func(
 			var sink qobs.Sink = mem
 			ctx := context.Background()
 			var code *qcover.Counts
-			if cfg.Coverage {
+			if woven { // the code is woven with qweave -cover: count it by step
 				code = qcover.NewCounts()
 				ctx, sink = qcover.WithCounts(ctx, code), code.Sink(mem)
 			}
@@ -206,19 +206,18 @@ func explore(t testing.TB, bindingPath string, cfg ExploreConfig, scenario func(
 	first := map[string]int{} // key -> index in todo
 	at := map[int]int{}       // run -> index in todo
 	for i, steps := range runs {
-		if cfg.Verdicts != nil {
-			keys[i] = inst.String() + qtrace.Key(steps)
-			if rep, ok := cfg.Verdicts.get(keys[i]); ok {
-				x.Runs[i].Report = rep
-				continue
-			}
-			if j, ok := first[keys[i]]; ok {
-				at[i] = j
-				cfg.Verdicts.hit()
-				continue
-			}
-			first[keys[i]] = len(todo)
+		keys[i] = inst.String() + qtrace.Key(steps)
+		if rep, ok := verdicts.get(keys[i]); ok {
+			x.Runs[i].Report = rep
+			x.Cached++
+			continue
 		}
+		if j, ok := first[keys[i]]; ok {
+			at[i] = j
+			x.Cached++
+			continue
+		}
+		first[keys[i]] = len(todo)
 		at[i] = len(todo)
 		todo = append(todo, steps)
 	}
@@ -233,9 +232,7 @@ func explore(t testing.TB, bindingPath string, cfg ExploreConfig, scenario func(
 				t.Fatalf("quintgo: seed %d: %v", x.Runs[i].Seed, errs[j])
 			}
 			x.Runs[i].Report = reps[j]
-			if cfg.Verdicts != nil {
-				cfg.Verdicts.put(keys[i], reps[j])
-			}
+			verdicts.put(keys[i], reps[j])
 		}
 	}
 	if os.Getenv("QUINTGO_KEEP") != "" {
@@ -247,32 +244,27 @@ func explore(t testing.TB, bindingPath string, cfg ExploreConfig, scenario func(
 	return x
 }
 
-// A VerdictCache keeps the model's verdicts by the runs' steps: a run whose
-// steps were already judged is not checked again. Fuzzing needs it (most
-// inputs repeat a run's model-level steps, and quint takes a second), as
-// does any exploration whose seeds repeat runs.
-type VerdictCache struct {
-	mu   sync.Mutex
-	m    map[string]*validate.Report
-	hits int
+// verdicts keeps the model's verdicts by instance and steps, for the test
+// binary: a run whose steps were already judged against the same instance
+// is not checked again. Fuzzing needs it (most inputs repeat a run's
+// model-level steps, and quint takes a second), as do mutants (most of
+// their runs repeat the baseline's) and explorations whose seeds repeat
+// runs.
+var verdicts verdictCache
+
+type verdictCache struct {
+	mu sync.Mutex
+	m  map[string]*validate.Report
 }
 
-// Hits counts the runs judged from the cache.
-func (v *VerdictCache) Hits() int { v.mu.Lock(); defer v.mu.Unlock(); return v.hits }
-
-func (v *VerdictCache) get(k string) (*validate.Report, bool) {
+func (v *verdictCache) get(k string) (*validate.Report, bool) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	r, ok := v.m[k]
-	if ok {
-		v.hits++
-	}
 	return r, ok
 }
 
-func (v *VerdictCache) hit() { v.mu.Lock(); v.hits++; v.mu.Unlock() }
-
-func (v *VerdictCache) put(k string, r *validate.Report) {
+func (v *verdictCache) put(k string, r *validate.Report) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	if v.m == nil {

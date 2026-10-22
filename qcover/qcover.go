@@ -5,7 +5,7 @@
 // Code is instrumented by qweave (`qweave -cover go test ./...`): each
 // block of the root module's packages calls Hit on entry and the file
 // registers its blocks at init. A run collects into its own Counts, put in
-// its context (WithCounts; qtest.Explore does with ExploreConfig.Coverage),
+// its context (WithCounts; qtest's explorations do whenever blocks are registered),
 // found from a block through the goroutine's run (qrun), so runs in
 // parallel keep their coverage apart. The blocks
 // a task runs between two of its steps are the later step's: steps are

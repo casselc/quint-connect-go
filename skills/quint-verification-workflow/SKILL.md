@@ -75,7 +75,7 @@ document the gap (as glomers does for the scheme model).
   `v := quinthegel.FindViolation(t, cfg, body, hegel.WithSeed(n))`
   returns the shrunk run; state how it shows with
   `v.Expect(t, qtest.Rejects("transfer"))`, not by reading its
-  summary (`quinthegel.Shrink(t, sys)` for a System). Skip it under `testing.Short()`: shrinking runs quint
+  summary (`quinthegel.Shrink(t, sys, rates)` for a System, at its explorations' rates). Skip it under `testing.Short()`: shrinking runs quint
   dozens of times.
 - **Faults.** For distributed code, embed `hegelnet.Network`, or your
   own fault rules, so Hegel schedules losses, partitions, timers and

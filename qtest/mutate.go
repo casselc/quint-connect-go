@@ -115,18 +115,15 @@ func (r *MutationReport) String() string {
 // Mutate explores the system once per woven mutant (qweave -mutate; with
 // none woven it skips): a baseline exploration with every mutant off,
 // which must conform and says which mutants' code is reached, then each
-// reached mutant (keep, nil: all) with cfg's seeds. A mutant is killed
+// reached mutant with cfg's seeds. A mutant is killed
 // when some run is rejected by the model, errs or panics. Verdicts are
-// shared across the explorations (VerdictCache): most mutants' runs repeat
-// the baseline's steps.
-func (s System) Mutate(t testing.TB, cfg ExploreConfig, keep func(qmut.Mutant) bool) *MutationReport {
+// shared across the explorations: most mutants' runs repeat the
+// baseline's steps.
+func (s System) Mutate(t testing.TB, cfg ExploreConfig) *MutationReport {
 	t.Helper()
 	all := qmut.Mutants()
 	if len(all) == 0 {
 		t.Skip("no mutants woven: run with qweave -mutate")
-	}
-	if cfg.Verdicts == nil {
-		cfg.Verdicts = &VerdictCache{}
 	}
 	cfg.Opts = s.opts(cfg.Opts...)
 	reach := &qmut.Reach{}
@@ -136,9 +133,6 @@ func (s System) Mutate(t testing.TB, cfg ExploreConfig, keep func(qmut.Mutant) b
 	base.Expect(t, Conforms())
 	rep := &MutationReport{Baseline: base}
 	for _, m := range all {
-		if keep != nil && !keep(m) {
-			continue
-		}
 		if !reach.Reached(m.ID) {
 			rep.Unreached = append(rep.Unreached, m)
 			continue
