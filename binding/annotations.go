@@ -7,6 +7,7 @@ import (
 	"go/token"
 	"io/fs"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -58,11 +59,8 @@ func AnnotationsOf(fset *token.FileSet, f *ast.File) []Annotation {
 				continue
 			}
 			a := Annotation{Pos: fset.Position(c.Pos()).String(), At: c.Pos(), Decl: fn, Func: fn.Name.Name, Keys: map[string]string{}}
-			for _, arg := range splitDirective(strings.TrimPrefix(c.Text, "//quint:action")) {
-				k, v, _ := strings.Cut(arg, ":")
-				if len(v) >= 2 && (v[0] == '"' || v[0] == '\'') && v[len(v)-1] == v[0] {
-					v = v[1 : len(v)-1]
-				}
+			for _, kv := range directiveArgs(strings.TrimPrefix(c.Text, "//quint:action")) {
+				k, v := kv[0], kv[1]
 				if k == "action" {
 					a.Action = v
 				} else {
@@ -75,33 +73,52 @@ func AnnotationsOf(fset *token.FileSet, f *ast.File) []Annotation {
 	return out
 }
 
-// splitDirective splits on spaces outside quotes, as Orchestrion does.
-func splitDirective(s string) []string {
-	var out []string
+// directiveArgs splits a directive's arguments on spaces outside quotes
+// and brackets, then each at its first colon; a quoted value is unquoted.
+// It is qweave's splitArgs, which decides what weaving makes of the
+// directive: testdata/directives.json is the table both are tested on.
+func directiveArgs(s string) [][2]string {
+	var fields []string
 	var cur strings.Builder
-	var q byte
+	depth, inQuote := 0, false
 	for i := 0; i < len(s); i++ {
 		c := s[i]
 		switch {
-		case q != 0:
-			if c == q {
-				q = 0
+		case inQuote:
+			if c == '\\' && i+1 < len(s) {
+				cur.WriteByte(c)
+				i++
+				c = s[i]
+			} else if c == '"' {
+				inQuote = false
 			}
-			cur.WriteByte(c)
-		case c == '"' || c == '\'':
-			q = c
-			cur.WriteByte(c)
-		case c == ' ' || c == '\t':
+		case c == '"':
+			inQuote = true
+		case c == '(' || c == '[' || c == '{':
+			depth++
+		case c == ')' || c == ']' || c == '}':
+			depth--
+		case (c == ' ' || c == '\t') && depth == 0:
 			if cur.Len() > 0 {
-				out = append(out, cur.String())
+				fields = append(fields, cur.String())
 				cur.Reset()
 			}
-		default:
-			cur.WriteByte(c)
+			continue
 		}
+		cur.WriteByte(c)
 	}
 	if cur.Len() > 0 {
-		out = append(out, cur.String())
+		fields = append(fields, cur.String())
+	}
+	var out [][2]string
+	for _, f := range fields {
+		k, v, _ := strings.Cut(f, ":")
+		if len(v) >= 2 && v[0] == '"' {
+			if u, err := strconv.Unquote(v); err == nil {
+				v = u
+			}
+		}
+		out = append(out, [2]string{k, v})
 	}
 	return out
 }

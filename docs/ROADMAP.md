@@ -256,7 +256,12 @@ names what it needs.
   table binding and qweave both run); `qobs.Attributes` from
   `qtrace.Step.Attributes`; one checker cache and steps key for qtest and
   quinthegel; simdeps lists qmut, qenv/weave and examples/twophase, or
-  derives its list from qenv's importers.
+  derives its list from qenv's importers. *Done:* binding splits
+  directives as qweave does (it split `f(a, b)` in two), one table both
+  test; `qobs.Attributes` is `Step.Attributes` as OTel attributes;
+  `validate.Cached` and `qtrace.Key`/`Keyer` serve qtest and quinthegel
+  (qtest's cache handed a later test an earlier one's Dir and NoITF);
+  simdeps adds every importer of qenv but quinthegel.
 - **V10. Package boundaries.** `qobs.OTelSink` to `otelio` (qobs and qenv
   OTel-free: smaller gosim translations); qmeta keeps the chain and
   `Recovery`, `Recovers`, `Assess`, `Of`, `OfSimulation`, `System`,

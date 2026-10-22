@@ -17,11 +17,9 @@ package qtest
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/casselc/quint-connect-go/qcover"
@@ -125,20 +123,12 @@ func (r *Run) Faults() []qenv.Choice { return (&qenv.Recorder{Choices: r.Choices
 // OK reports whether every actor conformed and satisfied the invariants.
 func (r *Run) OK() bool { return r.Report != nil && r.Report.OK() }
 
-var checkers sync.Map // binding path + options -> *validate.Checker
-
 func checker(t testing.TB, bindingPath string, o validate.Options) *validate.Checker {
 	t.Helper()
-	abs, _ := filepath.Abs(bindingPath)
-	key := fmt.Sprintf("%s|%s|%s", abs, o.Quint, o.Backend)
-	if c, ok := checkers.Load(key); ok {
-		return c.(*validate.Checker)
-	}
-	c, err := validate.NewChecker(abs, o) // typechecks the model and lints the binding once
+	c, err := validate.Cached(bindingPath, o) // typechecks the model and lints the binding once
 	if err != nil {
 		t.Fatalf("quintgo: %v", err)
 	}
-	checkers.Store(key, c)
 	return c
 }
 

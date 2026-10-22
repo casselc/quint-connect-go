@@ -221,7 +221,7 @@ func explore(t testing.TB, bindingPath string, cfg ExploreConfig, scenario func(
 	at := map[int]int{}       // run -> index in todo
 	for i, steps := range runs {
 		if cfg.Verdicts != nil {
-			keys[i] = inst.String() + stepsKey(steps)
+			keys[i] = inst.String() + qtrace.Key(steps)
 			if rep, ok := cfg.Verdicts.get(keys[i]); ok {
 				x.Runs[i].Report = rep
 				continue
@@ -289,23 +289,6 @@ func (v *VerdictCache) put(k string, r *validate.Report) {
 // arguments, observations and order keys, with recorder, process and
 // thread ids renumbered by first appearance (they are random per run) and
 // times left out.
-func stepsKey(steps []qtrace.Step) string {
-	ids := map[string]int{}
-	id := func(s string) int {
-		if n, ok := ids[s]; ok {
-			return n
-		}
-		ids[s] = len(ids)
-		return ids[s]
-	}
-	var b strings.Builder
-	for _, s := range steps {
-		fmt.Fprintf(&b, "%s|%s|%d|%d|%d|%s|%v|%v|%v\n", s.Action, s.Outcome, id("r:"+s.Recorder), id("p:"+s.Process), id("t:"+s.Thread),
-			s.Actor, sortedKV(s.Args), sortedKV(s.Obs), sortedKV(s.Order))
-	}
-	return b.String()
-}
-
 func sortedKV[V any](m map[string]V) []string {
 	out := make([]string, 0, len(m))
 	for k, v := range m {

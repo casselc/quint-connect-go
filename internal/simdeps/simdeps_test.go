@@ -9,7 +9,9 @@ import (
 )
 
 // The packages a simulation runs: qenv's runtime and doubles, recording,
-// the load simulation, and the examples that run on gosim.
+// the load simulation, and the examples that run on gosim; with them,
+// every package that imports qenv (simulatedPackages), so a new double or
+// example is checked without being listed.
 var simulated = []string{
 	"github.com/casselc/quint-connect-go/qenv",
 	"github.com/casselc/quint-connect-go/qobs",
@@ -20,10 +22,52 @@ var simulated = []string{
 	"github.com/casselc/quint-connect-go/qrun",
 	"github.com/casselc/quint-connect-go/qcover",
 	"github.com/casselc/quint-connect-go/qenv/fault",
+	"github.com/casselc/quint-connect-go/qmut",
 	"github.com/casselc/quint-connect-go/examples/glomers/maelstrom",
 	"github.com/casselc/quint-connect-go/examples/glomers/broadcast",
 	"github.com/casselc/quint-connect-go/examples/checkout",
 	"github.com/casselc/quint-connect-go/examples/retrystorm",
+}
+
+// hostSide import qenv but run outside any simulation: the Hegel adapters.
+var hostSide = map[string]bool{
+	"github.com/casselc/quint-connect-go/quinthegel": true,
+}
+
+const module = "github.com/casselc/quint-connect-go"
+
+// simulatedPackages is simulated and every package of the module that
+// imports qenv, but the host-side ones.
+func simulatedPackages(t *testing.T) []string {
+	out, err := exec.Command("go", "list", "-json", module+"/...").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]bool{}
+	all := append([]string(nil), simulated...)
+	for _, p := range all {
+		seen[p] = true
+	}
+	dec := json.NewDecoder(strings.NewReader(string(out)))
+	for {
+		var p pkg
+		if err := dec.Decode(&p); err == io.EOF {
+			break
+		} else if err != nil {
+			t.Fatal(err)
+		}
+		if seen[p.ImportPath] || hostSide[p.ImportPath] {
+			continue
+		}
+		for _, imp := range p.Imports {
+			if imp == module+"/qenv" {
+				all = append(all, p.ImportPath)
+				seen[p.ImportPath] = true
+				break
+			}
+		}
+	}
+	return all
 }
 
 type pkg struct {
@@ -47,7 +91,8 @@ func native(p pkg) string {
 }
 
 func TestSimulatedPackagesHaveNoNativeDeps(t *testing.T) {
-	out, err := exec.Command("go", append([]string{"list", "-deps", "-json"}, simulated...)...).Output()
+	roots := simulatedPackages(t)
+	out, err := exec.Command("go", append([]string{"list", "-deps", "-json"}, roots...)...).Output()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +107,10 @@ func TestSimulatedPackagesHaveNoNativeDeps(t *testing.T) {
 		}
 		pkgs[p.ImportPath] = p
 	}
-	for _, root := range simulated {
+	if len(roots) <= len(simulated) {
+		t.Fatalf("found no importers of qenv beyond the listed packages (%d): the derivation is broken", len(roots))
+	}
+	for _, root := range roots {
 		if chain := find(pkgs, root, map[string]bool{}); chain != nil {
 			why := native(pkgs[chain[len(chain)-1]])
 			t.Errorf("%s depends on %s, which a simulation cannot run: %s.\n"+

@@ -260,10 +260,6 @@ func (m ids) of(s string) int {
 	return m[s]
 }
 
-func stepKey(s *qtrace.Step, procs, threads ids) string {
-	return fmt.Sprintf("%s|p%d|t%d|%s|%s|%v;", s.Actor, procs.of(s.Process), threads.of(s.Thread), s.Outcome, s.String(), s.Obs)
-}
-
 // prefixKeys returns the cache key of every prefix of steps (keys[i]
 // covers steps[:i+1]); with no steps, one key for the empty run.
 func prefixKeys(consts string, steps []qtrace.Step) []string {
@@ -274,9 +270,9 @@ func prefixKeys(consts string, steps []qtrace.Step) []string {
 		return []string{b.String()}
 	}
 	keys := make([]string, 0, len(steps))
-	procs, threads := ids{}, ids{}
+	var k qtrace.Keyer
 	for i := range steps {
-		b.WriteString(stepKey(&steps[i], procs, threads))
+		b.WriteString(k.Step(&steps[i]))
 		keys = append(keys, b.String())
 	}
 	return keys

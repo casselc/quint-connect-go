@@ -7,6 +7,8 @@ import (
 
 	"github.com/casselc/quint-connect-go/binding"
 	"github.com/casselc/quint-connect-go/qtrace"
+	"path/filepath"
+	"sync"
 )
 
 // Checker validates steps against one binding. Create it once (it typechecks
@@ -32,6 +34,31 @@ func NewChecker(bindingPath string, opt Options) (*Checker, error) {
 		return nil, fmt.Errorf("binding %s does not fit %s: %v", bindingPath, b.Module, errs)
 	}
 	return &Checker{Binding: b, Model: m, Options: opt}, nil
+}
+
+var cached sync.Map // absolute binding path, quint, backend -> *Checker
+
+// Cached is NewChecker once per binding, quint binary and backend in a
+// process (the model is typechecked and the binding linted once), with
+// o's other options (Dir, NoITF) on the copy it returns: qtest and
+// quinthegel share it.
+func Cached(bindingPath string, o Options) (*Checker, error) {
+	abs, err := filepath.Abs(bindingPath)
+	if err != nil {
+		return nil, err
+	}
+	key := abs + "|" + o.Quint + "|" + o.Backend
+	c, ok := cached.Load(key)
+	if !ok {
+		nc, err := NewChecker(abs, o)
+		if err != nil {
+			return nil, err
+		}
+		c, _ = cached.LoadOrStore(key, nc)
+	}
+	cc := *c.(*Checker)
+	cc.Options = o
+	return &cc, nil
 }
 
 // WithConstants returns a checker for another instance of the same model:

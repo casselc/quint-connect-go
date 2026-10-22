@@ -1,0 +1,11 @@
+[
+  {"in": "action:deposit", "out": [["action", "deposit"]]},
+  {"in": " action:deposit  account:acct amount:n ", "out": [["action", "deposit"], ["account", "acct"], ["amount", "n"]]},
+  {"in": "action:deposit obs.balance:b.Balance(ctx, acct)", "out": [["action", "deposit"], ["obs.balance", "b.Balance(ctx, acct)"]]},
+  {"in": "action:put key:\"a b\" value:v", "out": [["action", "put"], ["key", "a b"], ["value", "v"]]},
+  {"in": "action:x note:\"say \\\"hi\\\"\"", "out": [["action", "x"], ["note", "say \"hi\""]]},
+  {"in": "action:x set:[]int{1, 2} m:map[string]int{\"a\": 1}", "out": [["action", "x"], ["set", "[]int{1, 2}"], ["m", "map[string]int{\"a\": 1}"]]},
+  {"in": "action:x\tfrom:src", "out": [["action", "x"], ["from", "src"]]},
+  {"in": "action:x flag", "out": [["action", "x"], ["flag", ""]]},
+  {"in": "action:x url:http://h:1/p", "out": [["action", "x"], ["url", "http://h:1/p"]]}
+]

@@ -297,6 +297,10 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   `quintgo lint -sim .` (in CI) flags `go` statements and wall-clock
   calls in files that import qenv, tests included; `//qenv:ok` exempts a
   line (give the reason after it).
+- `//quint:action` arguments split on spaces outside quotes and brackets
+  (`obs.balance:b.Balance(ctx, acct)` is one): binding's lint and qweave
+  share the rule, tested on `binding/testdata/directives.json`. Change
+  both with the table.
 - `quintgo lint -binding -src` and quintaction (`-binding`) check literal
   actions passed to `qobs.Record` and `Recorder.Record`, in files that
   import qobs. An action through a constant or variable is not seen, and
@@ -381,8 +385,9 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   package imports: keep Hegel and other native code out of it. Hegel
   adapters live in quinthegel (`Chooser`, `FindTrigger`), and the Glomers one in `maelstrom/hegelnet`, never
   next to code a simulation runs. `internal/simdeps` fails if qenv, qobs,
-  qtrace, qload, qmeta or a simulated example depends on Hegel, purego or
-  cgo, and names the import chain. It writes the
+  qtrace, qload, qmeta, any package that imports qenv (quinthegel aside)
+  or a simulated example depends on Hegel, purego or cgo, and names the
+  import chain. It writes the
   translation into the module's `.gosim/`, which `gofmt -l .` at the root
   reports: it is gitignored, ignore it.
 - qenv's native runtime (`qenv.NewNative`) keeps one-task-at-a-time

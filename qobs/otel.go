@@ -2,6 +2,7 @@ package qobs
 
 import (
 	"context"
+	"sort"
 
 	"github.com/casselc/quint-connect-go/qtrace"
 	"go.opentelemetry.io/otel/attribute"
@@ -29,34 +30,20 @@ func (o *OTelSink) Record(ctx context.Context, s *qtrace.Step) {
 	span.End(trace.WithTimestamp(s.Time))
 }
 
-// Attributes encodes a step in the schema.
+// Attributes encodes a step in the schema: the native step log's
+// attributes (qtrace.Step.Attributes) as OTel attributes, but its time,
+// which is the event's timestamp. One encoding serves both formats.
 func Attributes(s *qtrace.Step) []attribute.KeyValue {
-	kv := []attribute.KeyValue{
-		attribute.String(qtrace.KeyAction, s.Action),
-		attribute.Int64(qtrace.KeySeq, int64(s.Seq)),
-		attribute.String(qtrace.KeyRecorder, s.Recorder),
-		attribute.String(qtrace.KeyOutcome, s.Outcome),
+	m := s.Attributes()
+	delete(m, qtrace.KeyTime)
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
 	}
-	if s.Actor != "" {
-		kv = append(kv, attribute.String(qtrace.KeyActor, s.Actor))
-	}
-	if s.Process != "" {
-		kv = append(kv, attribute.String(qtrace.KeyProcess, s.Process))
-	}
-	if s.Thread != "" {
-		kv = append(kv, attribute.String(qtrace.KeyThread, s.Thread))
-	}
-	if s.Error != "" {
-		kv = append(kv, attribute.String(qtrace.KeyError, s.Error))
-	}
-	for k, v := range s.Args {
-		kv = append(kv, attr(qtrace.PrefixArg+k, v))
-	}
-	for k, v := range s.Obs {
-		kv = append(kv, attr(qtrace.PrefixObs+k, v))
-	}
-	for k, v := range s.Order {
-		kv = append(kv, attribute.Int64(qtrace.PrefixOrder+k, v))
+	sort.Strings(keys)
+	kv := make([]attribute.KeyValue, 0, len(keys))
+	for _, k := range keys {
+		kv = append(kv, attr(k, m[k]))
 	}
 	return kv
 }

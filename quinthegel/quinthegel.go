@@ -254,7 +254,7 @@ func Test(t *testing.T, cfg Config, body func(ht *hegel.T, rec *Recorder), opts 
 		case Each:
 			CheckCase(ht, cc, steps)
 		case After:
-			key := stepsKey(steps)
+			key := qtrace.Key(steps)
 			mu.Lock()
 			if !seen[key] {
 				seen[key] = true
@@ -307,38 +307,11 @@ func Render(steps []qtrace.Step) string {
 	return b.String()
 }
 
-func stepsKey(steps []qtrace.Step) string {
-	var b strings.Builder
-	procs, threads := ids{}, ids{}
-	for i := range steps {
-		b.WriteString(stepKey(&steps[i], procs, threads))
-		fmt.Fprintf(&b, "%v;", steps[i].Order)
-	}
-	return b.String()
-}
-
-var checkers sync.Map
 
 // Checker returns a validate.Checker for a binding, typechecking the model
-// once per test binary and options.
+// once per test binary and options (validate.Cached).
 func Checker(bindingPath string, o validate.Options) (*validate.Checker, error) {
-	abs, err := filepath.Abs(bindingPath)
-	if err != nil {
-		return nil, err
-	}
-	key := abs + "|" + o.Quint + "|" + o.Backend
-	if c, ok := checkers.Load(key); ok {
-		cc := *c.(*validate.Checker)
-		cc.Options.Dir = o.Dir
-		return &cc, nil
-	}
-	c, err := validate.NewChecker(abs, o)
-	if err != nil {
-		return nil, err
-	}
-	checkers.Store(key, c)
-	cc := *c
-	return &cc, nil
+	return validate.Cached(bindingPath, o)
 }
 
 func keepDir(t testing.TB, dir string) string {
@@ -396,7 +369,7 @@ func batched(t *testing.T, cfg Config, body func(ht *hegel.T, rec *Recorder), op
 		seen := map[string]bool{}
 		hegel.Test(t, func(ht *hegel.T) {
 			steps := record(ht)
-			key := stepsKey(steps)
+			key := qtrace.Key(steps)
 			mu.Lock()
 			defer mu.Unlock()
 			if !seen[key] {
