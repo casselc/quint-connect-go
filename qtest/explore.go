@@ -102,6 +102,10 @@ type ExploreConfig struct {
 // simulated system is explored like Maelstrom or Jepsen explore real
 // ones: many random schedules and faults, every one judged by the model.
 // State expectations with Exploration.Expect.
+//
+// Deprecated: use System{Binding: bindingPath, Run: run}.Explore(t, cfg),
+// whose Run returns the run's error and serves Shrink, Sweep, Fuzz and
+// Mutate too.
 func Explore(t testing.TB, bindingPath string, cfg ExploreConfig, scenario func(c qenv.Chooser)) *Exploration {
 	t.Helper()
 	return explore(t, bindingPath, cfg, func(c qenv.Chooser) error { scenario(c); return nil })

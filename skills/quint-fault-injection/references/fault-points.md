@@ -20,7 +20,7 @@ func (s *Store) Write(ctx context.Context, k, v string) error
   `*qenv.InjectedError`. Outside a simulation the call returns nil.
 - Rates apply as to any fault kind (`Kinds: {"fault.store": 0.2}`), and
   shrinking removes the faults the failure does not need.
-- **Coverage.** `x := qtest.Explore(...); t.Log(x.Coverage())`, or
+- **Coverage.** `x := sys.Explore(t, cfg); t.Log(x.Coverage())`, or
   `qenv.CoverageOf(choices)` for recorded choices. It lists every fault
   kind, declared or a double's, with the runs that reached it and the
   options taken. A declared point no run reached (`Unreached`) is a

@@ -40,7 +40,7 @@ On either kind:
   test binary each, and `quinthegel.Shrink` and `Sweep` take it as any
   other System; a failed simulated test is the run's error, named with
   its seed;
-- check the steps with `qtest.Check` or `qtest.Validate`, or add them
+- check the steps with `qtest.Validate(...).Expect(t, ...)`, or add them
   with `rec.Add(steps...)` inside `quinthegel.FindViolation`.
 
 Each choice is a round trip to the test process, about 50 µs, so a gosim

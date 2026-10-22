@@ -2074,7 +2074,7 @@ the bytes that make it again. A test turns checkout's shrunk write skew
 into an 834-byte corpus entry that replays to the same steps and the same
 rejection.
 
-**`System.Fuzz(f, rates, seeds...)`.** Each fuzz input is one run on
+**`System.Fuzz(f, cfg, seeds...)`** (cfg an ExploreConfig since V5). Each fuzz input is one run on
 `FromBytes(input)`, judged by the model. `go test` runs the corpus and the
 seeds; `go test -fuzz` explores, guided by coverage of the code under
 test. Seeds and Hegel are random and shrinking respectively; neither is

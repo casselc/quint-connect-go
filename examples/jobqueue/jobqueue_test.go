@@ -74,7 +74,8 @@ func TestTwoLeasesOfOneJob(t *testing.T) {
 // code: the run conforms.
 func TestSlowWorkerConformsButRunsTwice(t *testing.T) {
 	qtest.RequireQuint(t)
-	run := qtest.RecordAndCheck(t, "jobqueue.binding.yaml", func(*qobs.Recorder) { slowWorker(newService(queue.Faithful)) })
+	run := qtest.Record(t, "jobqueue.binding.yaml", func(*qobs.Recorder) { slowWorker(newService(queue.Faithful)) })
+	run.Expect(t, qtest.Conforms())
 
 	c, err := validate.NewChecker("jobqueue.binding.yaml", validate.Options{Dir: t.TempDir()})
 	if err != nil {
@@ -113,10 +114,11 @@ func restartScenario(svc *queue.Service) {
 
 func TestRestartConforms(t *testing.T) {
 	qtest.RequireQuint(t)
-	run := qtest.RecordAndCheck(t, "jobqueue.binding.yaml", func(*qobs.Recorder) {
+	run := qtest.Record(t, "jobqueue.binding.yaml", func(*qobs.Recorder) {
 		svc, _ := newService(queue.Faithful)
 		restartScenario(svc)
 	})
+	run.Expect(t, qtest.Conforms())
 	if p := run.Report.Actors[0]; len(p.Calls) == 0 || p.Calls[6].Action != "restart" {
 		t.Fatalf("want the restart inferred from the change of incarnation:\n%s", run.Report.Summary())
 	}

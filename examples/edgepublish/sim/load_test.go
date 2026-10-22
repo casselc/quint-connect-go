@@ -62,6 +62,6 @@ func TestLoadRunAgainstModel(t *testing.T) {
 	if c.Duplicates() == 0 {
 		t.Fatal("no duplicates in this minute: the check below would be vacuous")
 	}
-	qtest.Check(t, binding, mem.Steps(), qtest.Invariants()).Expect(t, qtest.Conforms())
+	qtest.Validate(t, binding, mem.Steps(), qtest.Invariants()).Expect(t, qtest.Conforms())
 	qtest.Validate(t, binding, mem.Steps()).Expect(t, qtest.Violates("committedNoDuplicatePayload"))
 }

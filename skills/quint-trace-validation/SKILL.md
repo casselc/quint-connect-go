@@ -100,8 +100,9 @@ In the editor and in CI, the same checks run as analyzers (qanalysis):
 ## 3. Check
 
 - In a test:
-  `qtest.RecordAndCheck(t, "bank.binding.yaml", func(*qobs.Recorder) { scenario() })`.
-  Use `qtest.Check` for steps recorded elsewhere. Start with
+  `qtest.Record(t, "bank.binding.yaml", func(*qobs.Recorder) { scenario() }).Expect(t, qtest.Conforms())`.
+  Use `qtest.Validate` for steps recorded elsewhere. (`RecordAndCheck`
+  and `Check` are deprecated: every verdict is an `Expect`.) Start with
   `qtest.RequireQuint(t)`, which skips the test without quint.
 - **Expected verdicts** (mutants): `qtest.Record(...).Expect(t, e...)`,
   where each `e` says how the run must show up:

@@ -62,7 +62,7 @@ func TestKafkaConforms(t *testing.T) {
 		}
 	}
 	t.Logf("%d steps", len(steps))
-	qtest.Check(t, binding, steps)
+	qtest.Validate(t, binding, steps).Expect(t, qtest.Conforms())
 }
 
 // The bugs a fault-free run shows on Kafka too: a commit ahead of its

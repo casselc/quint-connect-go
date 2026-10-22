@@ -46,7 +46,7 @@ func TestSeededRunsConform(t *testing.T) {
 		c := qenv.NewSeeded(seed)
 		c.Rates.Kinds = map[string]float64{"fault.partition": 0.3}
 		steps := run(t, c, "")
-		qtest.Check(t, binding, steps).Expect(t, qtest.Conforms())
+		qtest.Validate(t, binding, steps).Expect(t, qtest.Conforms())
 		t.Logf("seed %d: %d steps", seed, len(steps))
 	}
 }

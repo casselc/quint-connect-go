@@ -136,7 +136,8 @@ Everything else is generic.
    - `qobs.NewOTelSink(tp)`, on a TracerProvider that never samples these
      spans out;
    - `qobs.FileSink("steps.jsonl")` for a native step log;
-   - in tests, `qtest.RecordAndCheck`, which also writes the model-level ITF.
+   - in tests, `qtest.Record(...).Expect(t, qtest.Conforms())`, which also
+     writes the model-level ITF.
 
    For ITF emitted in-process, write argument templates as Quint literals:
    records, `Set(...)` and constructors, not calls of model operators.
@@ -151,7 +152,7 @@ Everything else is generic.
 
 | | |
 |---|---|
-| `qtest.RecordAndCheck(t, binding, scenario)` | record a scenario in a test and check it; `qtest.Record` returns the result, `qtest.Check` takes steps; `.Expect(t, qtest.Mismatch("deposit"))` states how a mutant must show up |
+| `qtest.Record(t, binding, scenario).Expect(t, qtest.Conforms())` | record a scenario in a test and check it; `qtest.Validate` takes steps recorded elsewhere; `.Expect(t, qtest.Mismatch("deposit"))` states how a mutant must show up |
 | `validate.NewChecker(binding, opts)`, `.Check(ctx, steps)`, `.CheckRuns(ctx, runs, n)` | the library entry points |
 | `validate.ValidateITF(ctx, trace, ITFOptions{...})` | a model-level ITF, including raw `quint run --mbt` output |
 | `quintgo validate [-binding b.yaml] [-convert r.yaml] FILE...` | from files (OTLP/JSON, step log or ITF, detected by content); exit 0 conforms, 1 violation, 2 error |

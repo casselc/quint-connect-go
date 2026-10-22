@@ -7,7 +7,7 @@ go run -C path/to/qweave ./cmd/qweave -C . -cover [-coverpkg your/module/pkg] go
 ```
 
 ```go
-x := qtest.Explore(t, binding, qtest.ExploreConfig{Seeds: 30, Coverage: true}, scenario)
+x := sys.Explore(t, qtest.ExploreConfig{Seeds: 30, Coverage: true}) // sys is a qtest.System
 t.Log(x.CodeCoverage()) // never run, run by no step, outcomes that ran the same code
 ```
 

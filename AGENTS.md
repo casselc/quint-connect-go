@@ -43,7 +43,7 @@ qlint/        simulation and weaving lints (quintgo lint -sim, -weave); per file
 qanalysis/    separate module (x/tools): analyzers (cmd/quintvet, golangci plugin), static action map (cmd/actionmap)
 qmut/         mutant schemata (woven by qweave -mutate): one build, a mutant per run; qtest's System.Mutate explores each
 sktrace/      SimKube traces (msgpack v3, own decoder): production workloads as load shapes and replayed writes
-qsweep/       covering arrays (pairwise and t-way rows with constraints, sequence covering); qtest.SweepExplore runs them
+qsweep/       covering arrays (pairwise and t-way rows with constraints, sequence covering); System.Sweep runs them
 qrole/        load roles (//quint:serve, //quint:operation, //quint:call; aspects in orchestrion.yml): u and v as gauges
 cmd/quintgo/  CLI
 skills/       agent skills, the source of truth (embedded by package skills;

@@ -25,11 +25,8 @@ func woven(t *testing.T) {
 }
 
 func explore(t *testing.T, cfg sim.Config, seeds int, opts ...qtest.Option) *qtest.Exploration {
-	return qtest.Explore(t, binding, qtest.ExploreConfig{Seeds: seeds, Opts: opts}, func(c qenv.Chooser) {
-		if err := sim.Run(c, cfg); err != nil {
-			t.Error(err)
-		}
-	})
+	sys := qtest.System{Binding: binding, Opts: opts, Run: func(c qenv.Chooser) error { return sim.Run(c, cfg) }}
+	return sys.Explore(t, qtest.ExploreConfig{Seeds: seeds})
 }
 
 // Every interleaving of pushes, rotations and background seals, with S3

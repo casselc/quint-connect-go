@@ -45,7 +45,7 @@ func payday(b *Bank) {
 // ($QUINTGO_KEEP keeps them).
 func TestRecordedRunConforms(t *testing.T) {
 	qtest.RequireQuint(t)
-	qtest.RecordAndCheck(t, "bank.binding.yaml", func(*qobs.Recorder) { payday(New(accounts)) })
+	qtest.Record(t, "bank.binding.yaml", func(*qobs.Recorder) { payday(New(accounts)) }).Expect(t, qtest.Conforms())
 }
 
 // The same scenario on the LostDeposit mutant: the third deposit to each

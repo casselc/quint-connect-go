@@ -64,5 +64,5 @@ func TestFaithfulSweep(t *testing.T) {
 // coverage, the model judging every run.
 func FuzzFaithful(f *testing.F) {
 	qtest.RequireQuint(f)
-	system(streams.Config{}).Fuzz(f, faulty)
+	system(streams.Config{}).Fuzz(f, qtest.ExploreConfig{Rates: faulty})
 }

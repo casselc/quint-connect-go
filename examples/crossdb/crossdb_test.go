@@ -14,11 +14,7 @@ import (
 const binding = "crossdb.binding.yaml"
 
 func explore(t *testing.T, cfg crossdb.Config, x qtest.ExploreConfig) *qtest.Exploration {
-	return qtest.Explore(t, binding, x, func(c qenv.Chooser) {
-		if err := crossdb.Run(c, cfg); err != nil {
-			t.Fatal(err)
-		}
-	})
+	return qtest.System{Binding: binding, Run: func(c qenv.Chooser) error { return crossdb.Run(c, cfg) }}.Explore(t, x)
 }
 
 // crashy crashes the provider at one scheduling step in fifty.

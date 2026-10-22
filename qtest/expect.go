@@ -266,9 +266,24 @@ func Expect(t testing.TB, r *validate.Report, es ...Expectation) {
 	}
 }
 
-// Expect is qtest.Expect on the run's report.
+// Expect is qtest.Expect on the run's report, naming the run's step log
+// and model-level ITF when it fails (Record's and Validate's):
+//
+//	qtest.Record(t, "bank.binding.yaml", payday).Expect(t, qtest.Conforms())
 func (r *Run) Expect(t testing.TB, es ...Expectation) {
 	t.Helper()
+	if r.Report != nil && r.StepLog != "" {
+		for _, e := range es {
+			if !e.check(r.Report) {
+				itfs := make([]string, 0, len(r.ITF))
+				for _, k := range keysOf(r.ITF) {
+					itfs = append(itfs, r.ITF[k])
+				}
+				t.Fatalf("quintgo: want %s, got:\n%s  step log: %s\n  model-level ITF: %s",
+					e, r.Report.Summary(), r.StepLog, strings.Join(itfs, ", "))
+			}
+		}
+	}
 	Expect(t, r.Report, es...)
 }
 

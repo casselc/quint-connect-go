@@ -38,12 +38,12 @@ func service(t testing.TB, m kv.Mutation, sr *tracetest.SpanRecorder) *kv.Client
 // the one the store's lock produced.
 func TestServiceUnderLoadConforms(t *testing.T) {
 	qtest.RequireQuint(t)
-	qtest.RecordAndCheck(t, "kv.binding.yaml", func(*qobs.Recorder) {
+	qtest.Record(t, "kv.binding.yaml", func(*qobs.Recorder) {
 		cl := service(t, kv.Faithful, nil)
 		if err := kv.Load(context.Background(), cl.Base, 8, 40, []string{"a", "b"}, 1); err != nil {
 			t.Fatal(err)
 		}
-	})
+	}).Expect(t, qtest.Conforms())
 }
 
 // The server's plain OTel spans, from the same kind of load, converted by

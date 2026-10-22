@@ -50,7 +50,7 @@ func (r *MutationReport) String() string {
 // when some run is rejected by the model, errs or panics. Verdicts are
 // shared across the explorations (VerdictCache): most mutants' runs repeat
 // the baseline's steps.
-func (s System) Mutate(t *testing.T, cfg ExploreConfig, keep func(qmut.Mutant) bool) *MutationReport {
+func (s System) Mutate(t testing.TB, cfg ExploreConfig, keep func(qmut.Mutant) bool) *MutationReport {
 	t.Helper()
 	all := qmut.Mutants()
 	if len(all) == 0 {

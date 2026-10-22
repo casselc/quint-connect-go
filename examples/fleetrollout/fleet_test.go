@@ -13,12 +13,16 @@ import (
 
 const binding = "fleet.binding.yaml"
 
+// system is the controller in a simulated fleet, configured as cfg.
+func system(cfg fleetrollout.Config) qtest.System {
+	return qtest.System{Binding: binding, Run: func(c qenv.Chooser) error {
+		_, err := fleetrollout.Run(c, cfg)
+		return err
+	}}
+}
+
 func explore(t *testing.T, cfg fleetrollout.Config, seeds int) *qtest.Exploration {
-	return qtest.Explore(t, binding, qtest.ExploreConfig{Seeds: seeds}, func(c qenv.Chooser) {
-		if _, err := fleetrollout.Run(c, cfg); err != nil {
-			t.Fatal(err)
-		}
-	})
+	return system(cfg).Explore(t, qtest.ExploreConfig{Seeds: seeds})
 }
 
 // The faithful controller keeps the budget and finishes the rollout,
@@ -42,16 +46,10 @@ func TestIgnoreObservedGenerationOverBudget(t *testing.T) {
 func TestInMemoryProgress(t *testing.T) {
 	qtest.RequireQuint(t)
 	noKubeFaults := qenv.Rates{Default: 0.05, Kinds: map[string]float64{"fault.kube": 0}}
-	qtest.Explore(t, binding, qtest.ExploreConfig{Seeds: 15, Rates: noKubeFaults}, func(c qenv.Chooser) {
-		if _, err := fleetrollout.Run(c, fleetrollout.Config{Mutation: rollout.InMemoryProgress, NoCrashes: true}); err != nil {
-			t.Fatal(err)
-		}
-	}).Expect(t, qtest.Conforms())
-	qtest.Explore(t, binding, qtest.ExploreConfig{Seeds: 20, Rates: noKubeFaults}, func(c qenv.Chooser) {
-		if _, err := fleetrollout.Run(c, fleetrollout.Config{Mutation: rollout.InMemoryProgress}); err != nil {
-			t.Fatal(err)
-		}
-	}).Expect(t, qtest.Violates("withinBudget"))
+	system(fleetrollout.Config{Mutation: rollout.InMemoryProgress, NoCrashes: true}).
+		Explore(t, qtest.ExploreConfig{Seeds: 15, Rates: noKubeFaults}).Expect(t, qtest.Conforms())
+	system(fleetrollout.Config{Mutation: rollout.InMemoryProgress}).
+		Explore(t, qtest.ExploreConfig{Seeds: 20, Rates: noKubeFaults}).Expect(t, qtest.Violates("withinBudget"))
 	explore(t, fleetrollout.Config{Mutation: rollout.InMemoryProgress, NoCrashes: true}, 20).Expect(t, qtest.Violates("withinBudget"))
 }
 

@@ -223,7 +223,9 @@ names what it needs.
   deprecated for `Validate`/`Record` + `.Expect` and `qtest.System`;
   README §3, quint-metastability, quint-trace-validation and
   instrumentation.md updated. `Explore`, `Sweep`, `FollowTraces`, `Mutate`
-  take `testing.TB`; `Fuzz` takes an `ExploreConfig`.
+  take `testing.TB`; `Fuzz` takes an `ExploreConfig`. *Done,* but `Sweep`
+  keeps `*testing.T` (a subtest per row needs `t.Run`); every in-repo
+  caller moved to Record/Validate + Expect or a System.
 - **V6. First hour.** `quintgo scaffold -system` prints a runnable System
   test with a mutant claim; `examples/hello` (one service, one retry, one
   dedupe mutant, under 150 lines) is the README's first simulated

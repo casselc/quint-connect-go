@@ -58,7 +58,7 @@ func (s System) Explore(t testing.TB, cfg ExploreConfig) *Exploration {
 // trace (a scripted fault it never came to) fails the test with the
 // faults left. trace configures `quint run` (Dir defaults to a temporary
 // directory).
-func (s System) FollowTraces(t *testing.T, trace connect.Config, faults connect.FaultMap) *Exploration {
+func (s System) FollowTraces(t testing.TB, trace connect.Config, faults connect.FaultMap) *Exploration {
 	t.Helper()
 	if trace.Dir == "" {
 		trace.Dir = t.TempDir()
@@ -104,23 +104,29 @@ func (s System) Sweep(t *testing.T, sw Sweep, run func(row qsweep.Row, c qenv.Ch
 }
 
 // Fuzz explores the system with Go's coverage-guided fuzzer: each input is
-// one run, its bytes the run's choices (qenv.FromBytes at rates: schedules,
-// faults), the model the oracle. Without -fuzz, go test runs the seeds and
+// one run, its bytes the run's choices (qenv.FromBytes at cfg.Rates:
+// schedules, faults), the model the oracle; cfg's Opts and Coverage apply
+// to each run (its Seeds, Parallel and Chooser are the fuzzer's). Without -fuzz, go test runs the seeds and
 // the corpus in testdata/fuzz as regression tests. Seed it with runs worth
 // keeping: a shrunk Hegel failure, once fixed, is
-// qenv.EncodeChoices(v.Choices, rates). The empty input, every choice
+// qenv.EncodeChoices(v.Choices, cfg.Rates). The empty input, every choice
 // nominal, is always a seed.
 //
-//	func FuzzShop(f *testing.F) { sys.Fuzz(f, rates) }
-func (s System) Fuzz(f *testing.F, rates qenv.Rates, seeds ...[]byte) {
+//	func FuzzShop(f *testing.F) { sys.Fuzz(f, qtest.ExploreConfig{Rates: rates}) }
+func (s System) Fuzz(f *testing.F, cfg ExploreConfig, seeds ...[]byte) {
 	f.Helper()
 	f.Add([]byte{})
 	for _, sd := range seeds {
 		f.Add(sd)
 	}
-	verdicts := &VerdictCache{} // per fuzzing worker: inputs that repeat a run's steps skip quint
+	if cfg.Verdicts == nil {
+		cfg.Verdicts = &VerdictCache{} // per fuzzing worker: inputs that repeat a run's steps skip quint
+	}
+	rates := cfg.Rates
 	f.Fuzz(func(t *testing.T, data []byte) {
-		s.Explore(t, ExploreConfig{Seeds: 1, Parallel: 1, Verdicts: verdicts,
-			Chooser: func(uint64) qenv.Chooser { return qenv.FromBytes(data, rates) }}).Expect(t, Conforms())
+		x := cfg
+		x.Seeds, x.Parallel = 1, 1
+		x.Chooser = func(uint64) qenv.Chooser { return qenv.FromBytes(data, rates) }
+		s.Explore(t, x).Expect(t, Conforms())
 	})
 }

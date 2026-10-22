@@ -2,10 +2,10 @@
 // Quint model inside a Go test: no OTel, no files to manage.
 //
 //	func TestWithdraw(t *testing.T) {
-//		qtest.RecordAndCheck(t, "binding.yaml", func(rec *qobs.Recorder) {
+//		qtest.Record(t, "binding.yaml", func(rec *qobs.Recorder) {
 //			acct.Withdraw(ctx, 20) // woven //quint:action steps go to rec too
 //			rec.Record(ctx, "deposit", nil, "amount", 5, "obs.balance", 35)
-//		})
+//		}).Expect(t, qtest.Conforms())
 //	}
 //
 // The recorder is installed as the global one for the scenario's duration,
@@ -200,6 +200,9 @@ func Record(t testing.TB, bindingPath string, scenario func(rec *qobs.Recorder),
 
 // RecordAndCheck is Record, failing the test (with the offending step and
 // invariant) unless every actor conforms and satisfies the invariants.
+//
+// Deprecated: use Record(...).Expect(t, Conforms()), which states other
+// verdicts the same way.
 func RecordAndCheck(t testing.TB, bindingPath string, scenario func(rec *qobs.Recorder), opts ...Option) *Run {
 	t.Helper()
 	r := Record(t, bindingPath, scenario, opts...)
@@ -208,6 +211,8 @@ func RecordAndCheck(t testing.TB, bindingPath string, scenario func(rec *qobs.Re
 }
 
 // Check validates steps recorded elsewhere, failing the test on a violation.
+//
+// Deprecated: use Validate(...).Expect(t, Conforms()).
 func Check(t testing.TB, bindingPath string, steps []qtrace.Step, opts ...Option) *Run {
 	t.Helper()
 	r := Validate(t, bindingPath, steps, opts...)

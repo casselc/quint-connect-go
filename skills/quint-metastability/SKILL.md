@@ -123,7 +123,7 @@ ok, first := qmeta.Mostly(qmeta.Of(x, "markPaid", 5*time.Minute), trigger, 3)   
 - **Goodput is a model step's rate.** The app's own recorded steps are
   counted per tick (`r.Series.Rate("markPaid", from, to)`), so
   performance and correctness come from one run:
-  `qtest.Check(t, binding, mem.Steps(), qtest.Constants(...))`.
+  `qtest.Validate(t, binding, mem.Steps(), qtest.Constants(...)).Expect(t, qtest.Conforms())`.
 - **Set `Healthy`.** A system that collapsed before the trigger would
   otherwise "recover" to its collapsed goodput. With 8 consumers, the
   checkout shop collapses on its own, and that bug was hidden this way.

@@ -192,8 +192,9 @@ invariants: [noOverdraft]
 Then check, in a test or from files:
 
 ```go
-qtest.RecordAndCheck(t, "bank.binding.yaml", func(*qobs.Recorder) { payday(bank.New(accounts)) })
-// a mutant, and how it must show up: Conforms, Rejects(action), Mismatch(action), Violates(invariant)
+// every verdict is stated the same way: Conforms, Rejects(action), Mismatch(action), Violates(invariant)
+qtest.Record(t, "bank.binding.yaml", func(*qobs.Recorder) { payday(bank.New(accounts)) }).Expect(t, qtest.Conforms())
+// a mutant, and how it must show up
 qtest.Record(t, "bank.binding.yaml", func(*qobs.Recorder) { payday(bank.New(accounts, bank.WithMutation(bank.LostDeposit))) }).Expect(t, qtest.Mismatch("deposit"))
 ```
 

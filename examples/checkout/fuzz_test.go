@@ -17,7 +17,7 @@ import (
 // judging every run.
 func FuzzFaithful(f *testing.F) {
 	qtest.RequireQuint(f)
-	system(checkout.Config{Isolation: qenv.SnapshotIsolation}).Fuzz(f, crashy)
+	system(checkout.Config{Isolation: qenv.SnapshotIsolation}).Fuzz(f, qtest.ExploreConfig{Rates: crashy})
 }
 
 // A shrunk Hegel failure becomes a fuzz corpus entry: its choices encode to

@@ -56,6 +56,8 @@ func RowOf(c qenv.Chooser) (qsweep.Row, bool) { return qrun.In(qenv.ContextOf(c)
 
 // SweepExplore explores each covering row of sw as a subtest named by the
 // row, checking its expectation there.
+//
+// Deprecated: use System.Sweep.
 func SweepExplore(t *testing.T, bindingPath string, sw Sweep, scenario func(row qsweep.Row, c qenv.Chooser)) *Swept {
 	t.Helper()
 	return sweep(t, bindingPath, sw, func(row qsweep.Row, c qenv.Chooser) error { scenario(row, c); return nil })

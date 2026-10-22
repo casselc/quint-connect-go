@@ -19,7 +19,7 @@ func budget(m retry.Mutation) *retry.Budget {
 // and keep the amplification bound and the cap.
 func TestBudgetConforms(t *testing.T) {
 	qtest.RequireQuint(t)
-	qtest.RecordAndCheck(t, "retrystorm.binding.yaml", func(*qobs.Recorder) { Burst(budget(retry.Faithful)) })
+	qtest.Record(t, "retrystorm.binding.yaml", func(*qobs.Recorder) { Burst(budget(retry.Faithful)) }).Expect(t, qtest.Conforms())
 }
 
 // Uncapped: the 100th deposit of the quiet period overfills the bucket.
