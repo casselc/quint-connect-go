@@ -249,7 +249,9 @@ names what it needs.
   `Shrink` default to Hegel's quiet verbosity and no reproduction blob
   for an expected failure (`QUINTGO_VERBOSE=1` restores them);
   `Shrink(...).Expect(t, qtest.Conforms())` states that Hegel finds
-  nothing, as `FindTrigger(...).Expect(t, false)` does.
+  nothing, as `FindTrigger(...).Expect(t, false)` does. *Done:* Hegel's
+  os.Stdout is captured while it runs (it has no other output) and shown
+  only for an unexpected outcome; examples/hello's TestHegelShrinks.
 - **V9. Small duplicates, second pass.** One directive parser (a golden
   table binding and qweave both run); `qobs.Attributes` from
   `qtrace.Step.Attributes`; one checker cache and steps key for qtest and

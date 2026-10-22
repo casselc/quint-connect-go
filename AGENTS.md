@@ -106,7 +106,9 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
 - Backend: `QUINT_BACKEND=rust|typescript` (`QUINTGO_BACKEND` also works).
   `QUINTGO_KEEP=/dir` keeps generated modules and traces from qtest and
   quinthegel. `QUINTGO_SEED=n` runs an exploration's seed n alone (each
-  failing run's report prints the command).
+  failing run's report prints the command). `QUINTGO_VERBOSE=1` shows
+  Hegel's output for expected failures (FindViolation and Shrink capture
+  os.Stdout while Hegel runs, since Hegel writes nowhere else).
 
 ## Conventions
 

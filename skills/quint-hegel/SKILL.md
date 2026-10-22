@@ -73,7 +73,12 @@ func TestBankAgainstModel(t *testing.T) {
   if v.Last().Action != "transfer" { t.Fatalf("...%s", quinthegel.Render(v.Steps)) }
   ```
   (`hegel.Test` cannot express "expected to fail". `FindViolation`
-  wraps `hegel.Run`, `CaseChecker` and the TooSlow suppression.)
+  wraps `hegel.Run`, `CaseChecker` and the TooSlow suppression.) Hegel
+  runs quiet: the expected failure's replay, stack and reproduction blob
+  are shown only if the outcome is not the expected one
+  (`QUINTGO_VERBOSE=1` shows them always). A System shrinks the same way:
+  `quinthegel.Shrink(t, sys).Expect(t, qtest.Rejects("apply"))`, and
+  `.Expect(t, qtest.Conforms())` states that Hegel finds nothing.
 - **Generators.** Draw invalid inputs too: unknown ids, non-positive
   amounts, duplicates. Map refused calls to `outcomes: { error: skip }` in
   the binding. A refused call is then no model step, but a wrongly

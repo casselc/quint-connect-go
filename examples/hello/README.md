@@ -18,6 +18,7 @@ back; a model that says every request counts once. The whole system is
 |---|---|---|---|
 | `TestFaithfulConforms` | none | 30 seeds, one message fault in five | every run conforms |
 | `TestNoDedupeCountsRetries` | `NoDedupe`: a retried or duplicated request is counted again | the same exploration | some run's `apply` is rejected (the model has no second apply of a request); with no faults every run conforms: no retry, no bug |
+| `TestHegelShrinks` | `NoDedupe`, then none | Hegel makes every choice (`quinthegel.Shrink`) | shrunk to one fault and a rejected `apply`; in the faithful counter Hegel finds nothing (`Expect(t, qtest.Conforms())`) |
 
 The bug needs a fault to show: a lost response makes the client retry,
 and a duplicate delivers the request twice. That is why the faults are
@@ -33,7 +34,6 @@ go test .                       # needs quint on PATH
 MUTATION=no-dedupe ./run-demo.sh
 ```
 
-Next: the same System runs under Hegel (`quinthegel.Shrink(t, system(NoDedupe))`
-shrinks to the one fault the bug needs), sweeps (`System.Sweep`) and the
-fuzzer (`System.Fuzz`); [examples/checkout](../checkout) is a saga with
+Next: the same System runs under sweeps (`System.Sweep`) and the fuzzer
+(`System.Fuzz`); [examples/checkout](../checkout) is a saga with
 crashes, isolation levels and an outbox.
