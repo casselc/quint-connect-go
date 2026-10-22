@@ -229,7 +229,10 @@ names what it needs.
 - **V6. First hour.** `quintgo scaffold -system` prints a runnable System
   test with a mutant claim; `examples/hello` (one service, one retry, one
   dedupe mutant, under 150 lines) is the README's first simulated
-  example; examples/bank gains a System test.
+  example; examples/bank gains a System test. *Done:* scaffold -system
+  (its test compiles, fails until Run records steps, and skips the
+  mutant claim until one is injected); examples/hello (80 lines, in CI's
+  demos); bank's `TestTellersAsASystem`.
 - **V7. Messages, second pass.** A missing step field names the fields
   the step has and the `args:` fix (no Go template text); an unknown
   action says "did you mean" and lists them; QNT508 out of reports; one

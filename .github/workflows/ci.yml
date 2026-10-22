@@ -55,6 +55,8 @@ jobs:
           examples/jobqueue/run-demo.sh
           SEEDS=15 examples/checkout/run-demo.sh
           examples/twophase/run-demo.sh
+          examples/hello/run-demo.sh
+          MUTATION=no-dedupe examples/hello/run-demo.sh && exit 1 || true
           examples/retrystorm/run-demo.sh
 
   edgepublish:

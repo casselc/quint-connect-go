@@ -14,6 +14,7 @@ which tests catch which bug.
 | `hegel_test.go` `TestHegelVariesModelTraces` | model traces replayed in Hegel, with drawn invalid requests | — (faithful bank) |
 | `trace_test.go` `TestRecordedRun*` | steps recorded by `qobs.Record` in `bank.go`, checked with `qtest` | `LostDeposit` |
 | `trace_test.go` `TestOTelSpansConvertedAndChecked` | the bank's plain OTel spans, converted by `bank.convert.yaml` | `LostDeposit` |
+| `system_test.go` `TestTellersAsASystem` | three tellers in a qenv simulation as one `qtest.System`, the chooser picking operations and interleavings, explored by seeds | `SelfTransfer` (a rejected transfer) and `LostDeposit` (a mismatched deposit) |
 
 Files:
 - `bank.binding.yaml` maps recorded steps, and converted ones, to the

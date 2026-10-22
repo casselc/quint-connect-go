@@ -37,6 +37,7 @@ template for them.
 ```sh
 quintgo scaffold -spec model/m.qnt -module m > m.binding.yaml   # parameters default to same-named fields
 quintgo lint -binding m.binding.yaml -src ./pkg
+quintgo scaffold -system -binding m.binding.yaml -pkg m > system_test.go   # a System test: fill in Run, then a mutant
 ```
 
 Add only what isn't a same-named field:

@@ -2,6 +2,7 @@
 // telemetry.
 //
 //	quintgo scaffold -spec model.qnt -module M          print a binding skeleton for M
+//	quintgo scaffold -system -binding b.yaml [-pkg p]   print a qtest.System test for the binding
 //	quintgo lint     -binding b.yaml [-src DIR]         check a binding (and annotations, literal Record actions) against the model
 //	quintgo lint     -sim DIR                           check simulation code for goroutines, wall-clock time and steps that escape it
 //	quintgo lint     -weave DIR                         check code woven by qenv/weave for go statements and method values it cannot rewrite
@@ -77,6 +78,7 @@ func main() {
 func usage() {
 	fmt.Fprintln(os.Stderr, `usage:
   quintgo scaffold -spec model.qnt -module M
+  quintgo scaffold -system -binding b.yaml [-pkg p]
   quintgo lint     -binding b.yaml [-src DIR] [-sim DIR]
   quintgo lint     -sim DIR | -weave DIR
   quintgo steps    [-actors a,b] [-actions a,b] [-since T] [-until T] [-pseudonymize f,g] [-binding b.yaml]
@@ -100,10 +102,28 @@ func scaffold(args []string) error {
 	fset := flag.NewFlagSet("scaffold", flag.ExitOnError)
 	spec := fset.String("spec", "", "Quint spec")
 	module := fset.String("module", "", "parameterised module to bind")
+	system := fset.Bool("system", false, "print a qtest.System test for -binding instead of a binding")
+	bpath := fset.String("binding", "", "binding file (with -system)")
+	pkg := fset.String("pkg", "app", "package of the test (with -system)")
 	quint := fset.String("quint", "quint", "quint binary")
 	fset.Parse(args)
+	if *system {
+		if *bpath == "" {
+			return fmt.Errorf("scaffold -system needs -binding (write one first: quintgo scaffold -spec model.qnt -module M)")
+		}
+		b, err := binding.Load(*bpath)
+		if err != nil {
+			return err
+		}
+		m, err := binding.LoadModel(*quint, b.SpecPath(), b.Module)
+		if err != nil {
+			return err
+		}
+		fmt.Print(systemTest(*pkg, *bpath, b, m))
+		return nil
+	}
 	if *spec == "" || *module == "" {
-		return fmt.Errorf("scaffold needs -spec and -module")
+		return fmt.Errorf("scaffold needs -spec and -module (or -system -binding b.yaml)")
 	}
 	m, err := binding.LoadModel(*quint, *spec, *module)
 	if err != nil {
@@ -599,4 +619,92 @@ func sortedKeys[V any](m map[string]V) []string {
 		}
 	}
 	return out
+}
+
+// systemTest is a qtest.System test for the binding: a Run that deploys
+// nothing yet, one commented qobs.Record per bound or modelled action with
+// the fields the binding reads, a conformance test that fails until steps
+// are recorded, and a mutant claim to fill in.
+func systemTest(pkg, bpath string, b *binding.Binding, m *binding.Model) string {
+	var rec strings.Builder
+	for _, a := range m.ActionNames() {
+		if a == "init" || a == "step" || a == b.Restart {
+			continue
+		}
+		// the parameters' fields in the signature's order, then the rest
+		// (observations) as Fields sorts them
+		var fields []string
+		rest := map[string]bool{}
+		for _, f := range b.Actions[a].Fields(m.Actions[a]...) {
+			rest[f] = true
+		}
+		for _, p := range m.Actions[a] {
+			if rest[p.Name] {
+				fields = append(fields, p.Name)
+				delete(rest, p.Name)
+			}
+		}
+		fields = append(fields, sortedKeys(rest)...)
+		kv := ""
+		for _, f := range fields {
+			v := f
+			if o, ok := strings.CutPrefix(f, "obs."); ok {
+				v = "observed" + strings.ToUpper(o[:1]) + o[1:]
+			}
+			kv += fmt.Sprintf(", %q, %s", f, v)
+		}
+		fmt.Fprintf(&rec, "\t\t\t// qobs.Record(ctx, %q, err%s) // %s\n", a, kv, m.Signature(a))
+	}
+	claim := "qtest.Some(qtest.Rejects(\"ACTION\"))"
+	if len(b.Invariants) > 0 {
+		claim = fmt.Sprintf("qtest.Some(qtest.Violates(%q))", b.Invariants[0])
+	}
+	return fmt.Sprintf(`package %[1]s
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/casselc/quint-connect-go/qenv"
+	"github.com/casselc/quint-connect-go/qtest"
+)
+
+// system deploys the application, with mutation injected (0: none), in a
+// simulation made from c. Every workflow runs it: Explore (seeds),
+// quinthegel.Shrink (Hegel), Sweep, Fuzz, Mutate.
+func system(mutation int) qtest.System {
+	return qtest.System{Binding: %[2]q, Run: func(c qenv.Chooser) error {
+		s := qenv.New(c)
+		defer s.Close()
+		// Deploy the application here: its services (qenv.NewService),
+		// stores (qenv.NewStore), queues (qenv.NewQueue) and crashable
+		// processes (s.Process), its code written against those seams and
+		// qenv.Go, qenv.Now, qenv.Sleep. Record each model step where it
+		// takes effect, with the fields the binding reads:
+		s.Spawn("client", func(ctx context.Context) {
+%[3]s		})
+		return s.Run(time.Minute) // a task waiting forever is an error (qenv.ErrStuck)
+	}}
+}
+
+// The faithful application conforms through every seed's faults.
+func TestConforms(t *testing.T) {
+	qtest.RequireQuint(t)
+	x := system(0).Explore(t, qtest.ExploreConfig{Seeds: 30})
+	if len(x.Runs[0].Steps) == 0 {
+		t.Fatal("scaffold: Run records no steps yet: deploy the application in it and record its steps")
+	}
+	x.Expect(t, qtest.Conforms())
+}
+
+// A mutant must be caught, and how: say which check fails (Rejects,
+// Mismatch, Violates; over runs Some, All, None). A check no mutant can
+// fail proves nothing.
+func TestMutantIsCaught(t *testing.T) {
+	qtest.RequireQuint(t)
+	t.Skip("scaffold: inject a bug with system(1), state how it shows, and remove this line")
+	system(1).Explore(t, qtest.ExploreConfig{Seeds: 30}).Expect(t, %[4]s)
+}
+`, pkg, bpath, rec.String(), claim)
 }

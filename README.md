@@ -232,6 +232,30 @@ between them only at seams. One `Chooser` makes every choice:
 
 Option 0 of every choice is nominal, so shrinking removes faults.
 
+The smallest case is [examples/hello](examples/hello): a counter behind
+a network that loses and duplicates messages, a client that retries, and
+a mutant that forgets to dedupe:
+
+```go
+func Run(c qenv.Chooser, m Mutation) error {
+	s := qenv.New(c)
+	defer s.Close()
+	counter := &Counter{Mutation: m, seen: map[int]bool{}}
+	svc := qenv.NewService(s, "counter", nil, counter.Add) // Add records apply(id) or replay(id)
+	s.Spawn("client", func(ctx context.Context) {
+		for id := 1; id <= Requests; id++ {
+			Send(ctx, svc, id, 100*time.Millisecond) // retries until it hears back
+		}
+	})
+	return s.Run(time.Minute)
+}
+
+sys := qtest.System{Binding: "hello.binding.yaml", Run: func(c qenv.Chooser) error { return Run(c, NoDedupe) }}
+sys.Explore(t, qtest.ExploreConfig{Seeds: 30}).Expect(t, qtest.Some(qtest.Rejects("apply")))
+```
+
+A bigger system deploys more doubles the same way:
+
 ```go
 s := qenv.New(chooser)
 db := qenv.NewStore(s, "shop", qenv.SnapshotIsolation)   // or Serializable, ReadCommitted
@@ -400,7 +424,7 @@ r := qmeta.Assess(x, "markPaid", qmeta.Trigger{Slowdown: 3, Duration: time.Minut
 | `qsweep` | covering arrays: `Cover` (every t-way combination of factor values, with constraints), `Missing`, `Sequences` (every order of t events); `Factor.Constant` (a factor that is a model constant: each row checked with its value) |
 | `load` | read OTLP/JSON, a step log or ITF, detected by content |
 | `skills` | the agent skills below, embedded; install targets |
-| `cmd/quintgo` | CLI: `scaffold`, `lint` (`-sim DIR`: simulation code; `-weave DIR`: woven code), `steps`, `validate`, `itf`, `convert`, `skills` |
+| `cmd/quintgo` | CLI: `scaffold` (a binding; `-system`: a `qtest.System` test for it), `lint` (`-sim DIR`: simulation code; `-weave DIR`: woven code), `steps`, `validate`, `itf`, `convert`, `skills` |
 
 ## Example apps
 
@@ -410,6 +434,7 @@ which bug.
 
 | App | What it is | What it shows |
 |---|---|---|
+| [`examples/hello`](examples/hello) | the smallest simulated system: a counter behind a lossy network, a client that retries (80 lines) | one `qtest.System` explored by seeds; `NoDedupe` caught only when a fault makes the client retry |
 | [`examples/grpcledger`](examples/grpcledger) | separate module: a gRPC ledger (idempotent transfers) with generated code, simulated through `simgrpc` (generated client and server unchanged; lost/duplicated requests, lost responses, refused connections, crashes) and served for real (otelgrpc spans converted to steps) | `NoDedupe` only with faults, `NoFundsCheck` from any load, `SplitTxn` (lost update) as a `Mismatch`; sweep of which faults expose the missing dedupe; Hegel shrink to one duplicated request |
 | [`examples/streams`](examples/streams) | separate module: an outbox publisher and idempotent consumers on Kafka (franz-go, kfake) and Kinesis (AWS SDK, in-process fake), and a simulated partitioned log with lost produces/commits, rewinds, evictions mid-batch and crashes; one model and binding for all three | `commit-first`, `no-dedupe`, `non-idempotent-producer`, `off-by-one` |
 | [`examples/twophase`](examples/twophase) | two-phase commit: a coordinator and participants with durable stores over a lossy network, checked against a [Choreo](https://github.com/informalsystems/choreo) model | a Choreo model with named transitions (`choreo::step_with`) bound, explored, shrunk and driving the code (connect); a coordinator that commits early, a participant that gives up after voting, a decision kept in memory |

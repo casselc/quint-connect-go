@@ -28,10 +28,14 @@ references when the task needs them.
 ```sh
 quint typecheck model.qnt
 quintgo scaffold -spec model.qnt -module M      # a binding skeleton
+quintgo scaffold -system -binding m.binding.yaml -pkg app > system_test.go   # a qtest.System test to fill in
 quintgo lint -binding m.binding.yaml -src .     # binding vs model, annotations vs binding
 quintgo lint -sim .                             # code that escapes a simulation
 quintgo validate -noitf -binding m.binding.yaml run.jsonl
 ```
+
+The smallest simulated example is `examples/hello` (a counter, a lossy
+network, a retrying client, one mutant): read it before the bigger ones.
 
 In Go tests, `qtest.RequireQuint(t)` skips without quint; state what
 each test expects with `qtest.Expect` and its claims, never by matching

@@ -81,6 +81,12 @@ qobs.Record(s.Context(), "settle", nil)
   double's own receive waits with `qenv.WaitIdle`.
 - **Workload choices** (cancel or not, when) are schedule choices:
   `s.Choose("sched.client.cancel", 10)`.
+- **Start from a scaffold:** `quintgo scaffold -system -binding
+  app.binding.yaml -pkg app` prints a System test whose Run deploys
+  nothing yet, a commented `qobs.Record` per action with the fields the
+  binding reads, a conformance test that fails until steps are recorded,
+  and a mutant test to fill in. `examples/hello` is the smallest one
+  filled in.
 - **Write a `Run(chooser, Config)`** for the whole deployment, so tests,
   Hegel and a CLI that writes step logs all share it.
 
