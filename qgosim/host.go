@@ -53,8 +53,18 @@ func put(pkg string, mt *metatesting.MetaT) {
 	pool.idle[pkg] = append(pool.idle[pkg], mt)
 }
 
+// entropic hands the simulation chunks of entropy (qenv.EntropyOf) for
+// its choices other than faults: a round trip per chunk, not per choice.
+type entropic struct {
+	qenv.Chooser
+	e func(n int) []byte
+}
+
+func (c entropic) Entropy(n int) []byte { return c.e(n) }
+
 // Run runs the gosim test named test, in the package pkg (an import path),
-// with c making every choice of the run, and returns the steps it recorded
+// with c making every choice of the run (from c's entropy, if it has any:
+// qenv.EntropyOf), and returns the steps it recorded
 // (Sink). env is the simulated test's environment ("KEY=value"). The
 // package's test binary is built (gosim build-tests) the first time.
 //
@@ -68,7 +78,11 @@ func Run(t *testing.T, pkg, test string, c qenv.Chooser, env ...string) ([]qtrac
 	}
 	defer put(pkg, mt)
 	var log bytes.Buffer
-	res, err := mt.RunWith(t, &metatesting.RunConfig{Test: test, ExtraEnv: env}, c, func(line string) { log.WriteString(line) })
+	var mc metatesting.Chooser = c
+	if e := qenv.EntropyOf(c); e != nil {
+		mc = entropic{c, e}
+	}
+	res, err := mt.RunWith(t, &metatesting.RunConfig{Test: test, ExtraEnv: env}, mc, func(line string) { log.WriteString(line) })
 	if err != nil {
 		return nil, err
 	}

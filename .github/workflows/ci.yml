@@ -88,7 +88,12 @@ jobs:
           node-version: 22
       - name: Install quint
         run: ../../ci/install-quint.sh
-      - name: fetch and patch gosim
+      - uses: actions/checkout@v4
+        with:
+          ref: gosim-fork
+          path: qgosim/.gosim-fork
+          fetch-depth: 0
+      - name: the gosim fork at qgosim's commit
         run: ../../qgosim/fetch-gosim.sh
       - name: vet
         run: go vet ./... && go vet -tags sim ./broadcast/cluster/ ./checkout/ && (cd ../../qgosim && go vet ./... && go vet -tags sim ./...)

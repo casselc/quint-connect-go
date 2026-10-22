@@ -41,6 +41,10 @@ func (h *EnvChooser) byte() int {
 	return int(b)
 }
 
+// Entropy implements qenv.Entropy: a chunk drawn from the test case, which
+// Hegel shrinks toward zeros, the nominal choices.
+func (h *EnvChooser) Entropy(n int) []byte { return hegel.Draw(h.tc, hegel.Binary(n, n)) }
+
 // Choose implements qenv.Chooser.
 func (h *EnvChooser) Choose(kind string, n int) int {
 	if !qenv.IsFault(kind) {

@@ -20,7 +20,7 @@ checked against the system's Quint model with its usual binding.
   tests.
 
 ```sh
-../../qgosim/fetch-gosim.sh   # clones gosim into qgosim/.gosim-fork and applies the patch
+../../qgosim/fetch-gosim.sh   # clones the fork (branch gosim-fork) into qgosim/.gosim-fork
 go test -short ./...          # FULL: go test ./... (adds the Hegel test, ~5 min)
 ./run-demo.sh
 ```
@@ -73,7 +73,8 @@ module of its own that runs on gosim's runtime. Hegel cannot run in there
   cancellation's void, which looks the charge up by the order's key,
   finds nothing under the mutant's per-attempt key, so the order stays
   paid. qenv's scheduler finds the double charge first.
-- A choice round trip to the test process costs about 50 µs, so a
-  broadcast run takes 350 ms with qenv choosing and 60 ms with gosim's own
-  seed. Handing the simulation entropy in chunks, as `quinthegel.Chooser` already
-  draws it, would remove most of that (DESIGN.md §15.5, phase 0).
+- The host hands the simulation entropy in 512-byte chunks, for every
+  choice but faults (`qenv.EntropyOf`), as `quinthegel.Chooser` draws it.
+  A broadcast run takes 48 ms that way. One round trip per choice took
+  438 ms, and gosim's own seed takes 60 ms. A Recorder records the
+  chunks, so `qenv.Replay` still repeats a run exactly.

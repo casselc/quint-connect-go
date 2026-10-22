@@ -34,7 +34,7 @@ qobs/ qtrace/ otelio/ convert/ load/   recording, schema/reconstruction, OTLP, s
 binding/ validate/ qtest/              binding YAML, quint-test-based validator, test helpers (Expect, Explore)
 qenv/         deterministic simulation: scheduler, virtual time, processes, choosers; Store, Queue, Service doubles
 qenv/weave/   Orchestrion aspects: sync locks, wait groups and //qenv:go goroutines simulated inside qenv, real outside
-qgosim/       separate module: qenv and whole programs in gosim (patched: gosim.patch, ./fetch-gosim.sh)
+qgosim/       separate module: qenv and whole programs in gosim (the fork: branch gosim-fork, ./fetch-gosim.sh)
 qload/ qmeta/ load simulation (open/closed-loop clients, servers, triggers); CTMC, recovery property, Hegel trigger search
 cmd/quintgo/  CLI
 skills/       agent skills, the source of truth (embedded by package skills;
@@ -242,3 +242,11 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   tasks start on the process's machine (a spawn queue its main goroutine
   serves), and a machine crash is requested before the crash hooks run,
   which may restart it.
+- The gosim fork is the `gosim-fork` branch of this repository: upstream
+  history plus our commits, its `FORK.md` saying what they change.
+  `qgosim/fetch-gosim.sh` pins the commit qgosim needs (`REF`): change the
+  fork there, push the branch, then bump `REF`. Choosers with entropy
+  (`qenv.EntropyOf`: Seeded, quinthegel.Chooser, a Recorder or Replay of
+  them) hand gosim bytes in chunks for every choice but faults. A chooser
+  without it (a plain wrapper) falls back to one round trip per choice,
+  about 9 times slower.

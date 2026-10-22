@@ -3,6 +3,7 @@ package qenv_test
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
@@ -147,5 +148,27 @@ func TestContextOf(t *testing.T) {
 	}
 	if qenv.ContextOf(qenv.Nominal{}) == nil {
 		t.Fatal("no context for a plain chooser")
+	}
+}
+
+// Entropy reaches through the wrappers: a Recorder records each chunk and
+// Replay hands the same chunks back, between the ordinary choices.
+func TestEntropyRecordsAndReplays(t *testing.T) {
+	rec := &qenv.Recorder{C: qenv.NewSeeded(5)}
+	c := qenv.WithContext(rec, context.Background())
+	e := qenv.EntropyOf(c)
+	if e == nil {
+		t.Fatal("no entropy through WithContext and Recorder")
+	}
+	a := e(8)
+	k := c.Choose("fault.x", 2)
+	b := e(8)
+	r := qenv.Replay(rec.Choices)
+	re := qenv.EntropyOf(r)
+	if !reflect.DeepEqual(re(8), a) || r.Choose("fault.x", 2) != k || !reflect.DeepEqual(re(8), b) {
+		t.Fatalf("replay differs from %v", rec.Choices)
+	}
+	if qenv.EntropyOf(qenv.Nominal{}) != nil {
+		t.Fatal("Nominal has no entropy")
 	}
 }

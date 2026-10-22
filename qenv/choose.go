@@ -49,20 +49,58 @@ func ContextOf(c Chooser) context.Context {
 // IsFault reports whether a choice kind is a fault choice.
 func IsFault(kind string) bool { return strings.HasPrefix(kind, "fault.") }
 
-// A Choice is one decision, as recorded by a Recorder.
+// A Choice is one decision, as recorded by a Recorder. A chunk of entropy
+// (EntropyOf) is a Choice of Kind "entropy", N bytes long, in Bytes.
 type Choice struct {
 	Kind  string
 	N     int
 	Value int
+	Bytes []byte
 }
 
-func (c Choice) String() string { return fmt.Sprintf("%s=%d/%d", c.Kind, c.Value, c.N) }
+func (c Choice) String() string {
+	if c.Kind == "entropy" {
+		return fmt.Sprintf("entropy/%d", c.N)
+	}
+	return fmt.Sprintf("%s=%d/%d", c.Kind, c.Value, c.N)
+}
 
 // Nominal makes every choice 0: no faults, canonical schedule.
 type Nominal struct{}
 
 // Choose implements Chooser.
 func (Nominal) Choose(string, int) int { return 0 }
+
+// Entropy is how a chooser hands a simulation that is not qenv's (gosim's,
+// through qgosim) bytes from which to make its own choices other than
+// faults: one call per chunk rather than one per choice. A byte (two above
+// 256 options) modulo the number of options is the choice, so a zero byte
+// is option 0, as quinthegel's Hegel chooser makes choices.
+type Entropy interface {
+	Entropy(n int) []byte
+}
+
+// EntropyOf returns c's source of entropy, through the wrappers of this
+// package (WithContext, Recorder, Replay), or nil if it has none.
+func EntropyOf(c Chooser) func(n int) []byte {
+	switch c := c.(type) {
+	case ctxChooser:
+		return EntropyOf(c.Chooser)
+	case *Recorder:
+		if e := EntropyOf(c.C); e != nil {
+			return func(n int) []byte {
+				b := e(n)
+				c.Choices = append(c.Choices, Choice{Kind: "entropy", N: n, Bytes: b})
+				return b
+			}
+		}
+	case *replay:
+		return c.entropy
+	case Entropy:
+		return c.Entropy
+	}
+	return nil
+}
 
 // Rates gives the probability that a fault choice is not nominal, by kind.
 // A kind matches its own entry, else the longest entry that is a prefix of
@@ -111,6 +149,15 @@ func (s *Seeded) Choose(kind string, n int) int {
 	return 1 + s.r.IntN(n-1)
 }
 
+// Entropy implements Entropy: seeded bytes.
+func (s *Seeded) Entropy(n int) []byte {
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = byte(s.r.Uint32())
+	}
+	return b
+}
+
 // Recorder records the choices of the Chooser it wraps, to replay a run.
 type Recorder struct {
 	C       Chooser
@@ -156,6 +203,20 @@ func (r *replay) Choose(kind string, n int) int {
 	}
 	r.i++
 	return c.Value
+}
+
+// entropy replays a recorded chunk of entropy: the same simulation asks for
+// the same chunks at the same points.
+func (r *replay) entropy(n int) []byte {
+	if r.i >= len(r.cs) {
+		return make([]byte, n)
+	}
+	c := r.cs[r.i]
+	if c.Kind != "entropy" || c.N != n {
+		panic(fmt.Sprintf("qenv: replay diverged at choice %d: recorded %s/%d, asked for %d bytes of entropy (the run is not deterministic)", r.i, c.Kind, c.N, n))
+	}
+	r.i++
+	return c.Bytes
 }
 
 // Swarm turns some fault kinds off for a whole run, chosen once from c:

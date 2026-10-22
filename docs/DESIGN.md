@@ -1453,7 +1453,7 @@ Chooser built from the trace, while the schedule stays nominal.
 
 | phase | work | depends on |
 |---|---|---|
-| 0 | the fork in a repository of its own, with CI; choices in chunks from the host (§14's cost) | a repository |
+| 0 | the fork in a repository of its own, with CI; choices in chunks from the host (§14's cost) (done, §15.7: a branch for now) | a repository |
 | 1 | the runtime interface, the native runtime and the gosim adapter; checkout's tests on qenv and on gosim (done, §15.6) | — |
 | 2 | the pass framework in the translator; `//quint:action` as a pass, so the edgepublish publisher runs in gosim without Orchestrion | 0 |
 | 3 | the `-toolexec` front end; Orchestrion aspect files; method values, promoted calls and channels woven | 2 |
@@ -1511,4 +1511,35 @@ and the test now names both.
 A checkout run makes about 27,000 choices, nine in ten of them the
 scheduler's. At 2.7 s a run on gosim against milliseconds on qenv's
 scheduler, phase 0's chunked choices are the next thing to do.
+
+### 15.7 Phase 0 as built
+
+**Where the fork lives.** Until it has a repository, the fork is the
+`gosim-fork` branch of this one. The branch has no history in common
+with main: it is upstream's history plus our commits, and its FORK.md
+says what they change. Keeping upstream's history makes our changes
+ordinary commits, which rebase onto a newer gosim.
+`qgosim/fetch-gosim.sh` pins the commit qgosim was built against. CI
+checks the branch out next to qgosim and moves it to that commit.
+
+**Entropy.** A chooser that implements `qenv.Entropy` hands out bytes.
+`qenv.EntropyOf` finds that capability through `WithContext`,
+`Recorder` and `Replay`. The test binary then makes every choice but
+faults from 512-byte chunks, by the same rule as `quinthegel.Chooser`: a
+byte, two above 256 options, modulo n.
+- Faults still go to the host one by one, for their rates and their
+  notes on the test case.
+- A Recorder stores each chunk as a choice of kind `entropy`, so a run
+  replays exactly.
+
+The effect on broadcast's TCP cluster:
+
+| how choices are made | time per run |
+|---|---|
+| one round trip per choice | 438 ms |
+| gosim's own seed | 60 ms |
+| chunks of entropy | 48 ms |
+
+For Hegel, the chunks are the same draws its chooser makes on qenv's
+scheduler, so shrinking a gosim run behaves as shrinking a qenv run does.
 
