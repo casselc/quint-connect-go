@@ -234,3 +234,20 @@ their proposers' picks:
 
 The rename belongs in the breaking release (ROADMAP R2): the module path
 changes anyway.
+
+
+## Third review (after V1–V17)
+
+Two reviews, architecture and design, with nothing released, so every
+shim was in scope. The plan they led to is ROADMAP's W track; the full
+reports were working files.
+
+### Architecture
+
+| # | Item | Action | Effort | Risk |
+|
+
+### Design
+
+| # | Item | Change | Effort |
+|

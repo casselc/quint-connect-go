@@ -355,3 +355,45 @@ names what it needs.
 
 Order: V1–V2 before the next example; V3 → V4 → V5 → V6; V7–V9 alongside;
 V10 → V11 → V12; V13–V16 alongside; R1 any time; R2 last; R3 independent.
+
+## After the third review (W)
+
+From the third architecture and design reviews (docs/REVIEW.md, "Third
+review"). Nothing is released, so compatibility is no constraint: shims,
+aliases and deprecated names go. The module rename stays parked; R1's
+tags wait for it. Decided with the maintainer: all of it, the global
+recorder opt-in.
+
+- **W1. Bugs.** Escaped steps compared by count (the 1000-message cap
+  hid every later one); a Scripted kind with the prefix fires; `Rates.Of`
+  and Swarm match at dots; a tool error names the first seed, not a map's;
+  `Shrink` runs the System's Opts and the exploration's rates; the shrunk
+  run's faults and a replay hint in Hegel's log; qload keeps `Sim.Run`'s
+  error; `Recovers` judges against the offered load; `quinthegel.Config.Parallel`
+  (ignored) gone.
+- **W2. The global recorder opt-in.** `qtest.Record` and quinthegel install
+  it only with `qtest.Global()`; installs restore by identity and a second
+  concurrent one fails; with no default global, an escaped step means one.
+- **W3. Removals.** V5's deprecations and their last callers; dead or
+  internal-only exports (`Sim.Faults`, `Sim.Native`, `Sim.OnSettle`,
+  `Sim.Fault`, `qobs.InContext`, `KeepIn`, `ReplayFiles`, `CheckRuns`,
+  `GenerateTest`, the free `qtest.Expect`); qenv/choice and qenv/profile
+  internal, qenv the API.
+- **W4. One way to configure.** qtest's Options only (Config unexported,
+  every option documented, `WithOptions` → `Quint`); `System{Binding, Run,
+  Opts}`; quinthegel takes `[]qtest.Option`; `ExploreConfig.Coverage` and
+  `Verdicts` automatic; `Fuzz(f, rates)`; one way to sweep (the System's
+  Run with RowOf).
+- **W5. One name per concept.** The reviews' tables: `qload.System` →
+  `Target`, `qenv.Recorder` → `ChoiceLog`, `qenv.Faults` → `DeclareFaults`,
+  `Chain.Expect` → `Mean`, Evidence the one coverage accessor, recovery
+  and trigger claims by name, and the rest.
+- **W6. The `fault.` prefix out** of everything users type or read; it
+  stays in the Chooser protocol.
+- **W7. Crashes per virtual time, CrashWindow on**, by default on every
+  runtime; examples retuned, claims not loosened.
+- **W8. First hour and docs.** A quickstart in README; quint-start in the
+  skill list, with a glossary and a first-hour path; qweave's install;
+  scaffold fixes; report wording; skills corrected; the examples' own
+  hand-written assertions as claims; `quintgo validate` writes no ITF by
+  default.
