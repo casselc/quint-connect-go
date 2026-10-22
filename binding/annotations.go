@@ -7,7 +7,6 @@ import (
 	"go/token"
 	"io/fs"
 	"path/filepath"
-	"sort"
 	"strings"
 )
 
@@ -110,9 +109,20 @@ func splitDirective(s string) []string {
 // LintAnnotations checks annotations against the model and the binding:
 // each names an action of the model, and records every field the binding's
 // templates for that action use. It also reports bound actions that no
-// annotation emits (a warning: they may be emitted by explicit calls).
+// annotation emits (a warning: they may be emitted by explicit calls,
+// which LintSource checks too).
 func (b *Binding) LintAnnotations(m *Model, anns []Annotation) (errs, warns []string) {
-	emitted := map[string]bool{}
+	errs, emitted := b.lintAnnotations(m, anns)
+	for _, name := range sortedNames(b.Actions) {
+		if !emitted[name] {
+			warns = append(warns, fmt.Sprintf("action %s is bound but no //quint:action emits it (explicit qobs.Record calls are not scanned)", name))
+		}
+	}
+	return errs, warns
+}
+
+func (b *Binding) lintAnnotations(m *Model, anns []Annotation) (errs []string, emitted map[string]bool) {
+	emitted = map[string]bool{}
 	for _, a := range anns {
 		if a.Action == "" {
 			errs = append(errs, fmt.Sprintf("%s: %s: //quint:action without action:NAME", a.Pos, a.Func))
@@ -120,7 +130,7 @@ func (b *Binding) LintAnnotations(m *Model, anns []Annotation) (errs, warns []st
 		}
 		emitted[a.Action] = true
 		if _, ok := m.Actions[a.Action]; !ok {
-			errs = append(errs, fmt.Sprintf("%s: %s: %s is not an action of %s", a.Pos, a.Func, a.Action, m.Module))
+			errs = append(errs, fmt.Sprintf("%s: %s: %s", a.Pos, a.Func, m.notAnAction(a.Action)))
 			continue
 		}
 		ab := b.Actions[a.Action]
@@ -130,15 +140,5 @@ func (b *Binding) LintAnnotations(m *Model, anns []Annotation) (errs, warns []st
 			}
 		}
 	}
-	var bound []string
-	for name := range b.Actions {
-		bound = append(bound, name)
-	}
-	sort.Strings(bound)
-	for _, name := range bound {
-		if !emitted[name] {
-			warns = append(warns, fmt.Sprintf("action %s is bound but no //quint:action emits it (explicit qobs.Record calls are not scanned)", name))
-		}
-	}
-	return errs, warns
+	return errs, emitted
 }

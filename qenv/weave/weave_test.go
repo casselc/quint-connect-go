@@ -48,7 +48,7 @@ func TestWovenSyncInSimulation(t *testing.T) {
 					}
 				}
 				weave.Add(&wg, 1)
-				go weave.Go(func() { defer weave.Done(&wg); done++ })()
+				go weave.Go(func() { defer weave.Done(&wg); done++ })() //qenv:ok what weaving makes of a //qenv:go statement
 			})
 		}
 		s.Spawn("waiter", func(ctx context.Context) {

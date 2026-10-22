@@ -34,7 +34,7 @@ func TestClaimNamesAreChecked(t *testing.T) {
 	for _, c := range []Claim{None(Violates("underLimt")), Rejects("depositt")} {
 		f := &failTB{TB: t}
 		done := make(chan struct{})
-		go func() { defer close(done); x.Expect(f, c) }()
+		go func() { defer close(done); x.Expect(f, c) }() //qenv:ok failTB's Fatalf ends the goroutine (runtime.Goexit)
 		<-done
 		if len(f.errs) != 1 || !strings.Contains(f.errs[0], "misspelled") {
 			t.Errorf("%v: %v", c, f.errs)

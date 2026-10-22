@@ -45,7 +45,8 @@ func sortFindings(fs []Finding) {
 func (f Finding) String() string { return f.Pos + ": " + f.What + ": " + f.Fix }
 
 // Sim scans the Go files under dir that import qenv (simulation code),
-// tests excluded, for code that escapes the simulation:
+// tests included (a System's Run closure lives in a test), for code that
+// escapes the simulation:
 //   - goroutines started with `go`: outside the scheduler, so runs are
 //     not reproducible, and a step they record has no run (qobs.Strict
 //     panics);
@@ -68,7 +69,7 @@ func Sim(dir string) ([]Finding, error) {
 		if d.IsDir() && path != dir && (d.Name() == "vendor" || d.Name() == "testdata" || strings.HasPrefix(d.Name(), ".")) {
 			return filepath.SkipDir
 		}
-		if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+		if d.IsDir() || !strings.HasSuffix(path, ".go") {
 			return nil
 		}
 		f, err := parser.ParseFile(fset, path, nil, parser.ParseComments)

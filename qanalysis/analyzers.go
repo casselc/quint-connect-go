@@ -15,12 +15,14 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"go/types"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
 
 	"golang.org/x/tools/go/analysis"
+	"golang.org/x/tools/go/types/typeutil"
 
 	"github.com/casselc/quint-connect-go/binding"
 	"github.com/casselc/quint-connect-go/qlint"
@@ -31,13 +33,14 @@ var All = []*analysis.Analyzer{Sim, Weave, Action}
 
 // Sim reports code in files that import qenv that escapes the simulation:
 // go statements, the wall clock, steps recorded with a background context
-// (qlint.SimFile). Test files are skipped, as by `quintgo lint -sim`.
+// (qlint.SimFile). Test files are checked, as by `quintgo lint -sim`: a
+// System's Run closure lives in one.
 var Sim = &analysis.Analyzer{
 	Name: "quintsim",
 	Doc:  "report code that escapes a qenv simulation (go statements, the wall clock, steps recorded with context.Background)",
 	URL:  "https://github.com/casselc/quint-connect-go/tree/main/qanalysis",
 	Run: func(pass *analysis.Pass) (any, error) {
-		return nil, report(pass, qlint.SimFile)
+		return nil, report(pass, qlint.SimFile, true)
 	},
 }
 
@@ -49,13 +52,13 @@ var Weave = &analysis.Analyzer{
 	Doc:  "report what qenv/weave cannot rewrite (unmarked go statements, sync method values, embedded sync types)",
 	URL:  "https://github.com/casselc/quint-connect-go/tree/main/qanalysis",
 	Run: func(pass *analysis.Pass) (any, error) {
-		return nil, report(pass, qlint.WovenFile)
+		return nil, report(pass, qlint.WovenFile, false)
 	},
 }
 
-func report(pass *analysis.Pass, check func(*token.FileSet, *ast.File) []qlint.Finding) error {
+func report(pass *analysis.Pass, check func(*token.FileSet, *ast.File) []qlint.Finding, tests bool) error {
 	for _, f := range pass.Files {
-		if strings.HasSuffix(pass.Fset.File(f.Pos()).Name(), "_test.go") {
+		if !tests && strings.HasSuffix(pass.Fset.File(f.Pos()).Name(), "_test.go") {
 			continue
 		}
 		for _, x := range check(pass.Fset, f) {
@@ -70,10 +73,12 @@ func report(pass *analysis.Pass, check func(*token.FileSet, *ast.File) []qlint.F
 // receiver and named results (they are evaluated on return, where its
 // locals are out of scope). With -binding: each names an action of the
 // binding's model and records every field the binding's templates for it
-// use (binding.LintAnnotations; loading the model runs quint).
+// use (binding.LintAnnotations), and every literal action passed to
+// qobs.Record or Recorder.Record is one of the model's (binding.LintRecords;
+// loading the model runs quint).
 var Action = &analysis.Analyzer{
 	Name: "quintaction",
-	Doc:  "check //quint:action annotations: the action is named, expressions use only parameters, the receiver and named results, and (with -binding) the binding's model has the action and its fields are recorded",
+	Doc:  "check //quint:action annotations: the action is named, expressions use only parameters, the receiver and named results, and (with -binding) the binding's model has the action and its fields are recorded, as it has every literal qobs.Record action",
 	URL:  "https://github.com/casselc/quint-connect-go/tree/main/qanalysis",
 	Run:  runAction,
 }
@@ -90,6 +95,7 @@ var notExpressions = map[string]bool{"when": true}
 
 func runAction(pass *analysis.Pass) (any, error) {
 	var lint func(binding.Annotation) []string
+	var model *binding.Model
 	if bindingPath != "" {
 		b, m, err := loadBinding(bindingPath, quintBin)
 		if err != nil {
@@ -99,8 +105,12 @@ func runAction(pass *analysis.Pass) (any, error) {
 			errs, _ := b.LintAnnotations(m, []binding.Annotation{a})
 			return errs
 		}
+		model = m
 	}
 	for _, f := range pass.Files {
+		if model != nil {
+			checkRecords(pass, model, f)
+		}
 		for _, a := range binding.AnnotationsOf(pass.Fset, f) {
 			if a.Action == "" {
 				pass.Reportf(a.At, "//quint:action on %s without action:NAME: name the model action the step is", a.Func)
@@ -115,6 +125,26 @@ func runAction(pass *analysis.Pass) (any, error) {
 		}
 	}
 	return nil, nil
+}
+
+// checkRecords reports the literal actions of f's qobs.Record and
+// Recorder.Record calls that model lacks. The scan is quintgo lint's
+// (binding.RecordsOf); types confirm each call is qobs's.
+func checkRecords(pass *analysis.Pass, m *binding.Model, f *ast.File) {
+	for _, r := range binding.RecordsOf(pass.Fset, f) {
+		if !isQobsRecord(typeutil.Callee(pass.TypesInfo, r.Call)) {
+			continue
+		}
+		for _, e := range binding.LintRecords(m, []binding.RecordCall{r}) {
+			pass.Reportf(r.At, "%s", strings.TrimPrefix(e, r.Pos+": "))
+		}
+	}
+}
+
+// isQobsRecord reports whether obj is qobs.Record or (*qobs.Recorder).Record.
+func isQobsRecord(obj types.Object) bool {
+	fn, ok := obj.(*types.Func)
+	return ok && fn.Name() == "Record" && fn.Pkg() != nil && fn.Pkg().Path() == "github.com/casselc/quint-connect-go/qobs"
 }
 
 // checkScope reports the names in a's expressions that are not in the

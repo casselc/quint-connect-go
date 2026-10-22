@@ -2,7 +2,7 @@
 // telemetry.
 //
 //	quintgo scaffold -spec model.qnt -module M          print a binding skeleton for M
-//	quintgo lint     -binding b.yaml [-src DIR]         check a binding (and annotations) against the model
+//	quintgo lint     -binding b.yaml [-src DIR]         check a binding (and annotations, literal Record actions) against the model
 //	quintgo lint     -sim DIR                           check simulation code for goroutines, wall-clock time and steps that escape it
 //	quintgo lint     -weave DIR                         check code woven by qenv/weave for go statements and method values it cannot rewrite
 //	quintgo steps    FILE...                            print the reconstructed per-actor traces
@@ -137,7 +137,7 @@ func scaffold(args []string) error {
 func lint(args []string) (int, error) {
 	fset := flag.NewFlagSet("lint", flag.ExitOnError)
 	bpath := fset.String("binding", "", "binding file")
-	src := fset.String("src", "", "Go source tree to scan for //quint:action")
+	src := fset.String("src", "", "Go source tree to scan for //quint:action annotations and literal qobs.Record actions")
 	sim := fset.String("sim", "", "Go source tree of simulation code (files importing qenv) to check for what escapes the simulation")
 	weave := fset.String("weave", "", "Go source tree woven by qenv/weave to check for what weaving cannot rewrite")
 	quint := fset.String("quint", "quint", "quint binary")
@@ -196,7 +196,12 @@ func lint(args []string) (int, error) {
 		for _, a := range anns {
 			fmt.Printf("  %-28s %-14s %s\n", a.Pos[strings.LastIndex(a.Pos, "/")+1:], a.Action, a.Func)
 		}
-		e, w := b.LintAnnotations(m, anns)
+		recs, err := binding.ScanRecords(*src)
+		if err != nil {
+			return 2, err
+		}
+		fmt.Printf("%d literal Record calls under %s\n", len(recs), *src)
+		e, w := b.LintSource(m, anns, recs)
 		errs, warns = append(errs, e...), w
 	}
 	for _, w := range warns {
