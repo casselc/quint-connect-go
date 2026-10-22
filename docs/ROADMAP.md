@@ -404,3 +404,94 @@ recorder opt-in.
   scaffold fixes; report wording; skills corrected; the examples' own
   hand-written assertions as claims; `quintgo validate` writes no ITF by
   default.
+
+## What a green suite proves (X)
+
+From a review of the testing regimes by the architect and design agents,
+after W. A green suite today proves less than it looks:
+- **It is a fixed sample.** CI re-checks the same seeds and Hegel seed
+  every run; nothing bounds the search or widens it.
+- **It can be vacuous.** No report says which model actions the runs
+  took, or which invariants held only because their antecedent never
+  did. `Reaches` is used in one test, `NoSurvivors` in none.
+- **The models are not run on their own.** No CI step runs `quint run
+  --invariant` on the examples' models.
+- **The doubles' contracts are trusted.** `TestIsolationAnomalies` shows
+  each Store level allows the anomalies it should, not that it allows
+  only those (DESIGN §10.7).
+- **The real tiers record their own order.** The model checks the order
+  the implementation claims (kvstore records under its lock); nothing
+  compares it with the real time clients saw, and the reconstruction
+  orders concurrent steps by recording order, sound only when they
+  commute.
+- **No `-race`.** The recorder and sinks, the native runtime and the
+  real servers run without it.
+
+The track, in order:
+
+- **X1. Hygiene (S).** `go test -race -short` on the packages that are
+  not simulated (qobs, qtrace, validate, qrun, qenv's native tests,
+  kvstore, grpcledger, streams' real tiers). A leak check in qenv's
+  TestMain from `runtime.Stack` (no goleak: the core takes no new
+  dependency). A nightly workflow with fresh seeds (`Seeds: 2000`,
+  `-fuzztime 30m`, Hegel unseeded) whose failures become corpus entries
+  (`EncodeChoices`).
+- **X2. Model coverage and anti-vacuity (S, then M).** Exploration counts
+  each run's actions and outcomes and names the model's actions no run
+  took: a `model` line in Evidence; `Takes(action)` (the twin of
+  `Reaches` for a model action, with `InAtLeast`); `Exercised()`, every
+  model action taken and every declared fault kind faulted in some run,
+  exceptions named with a reason. A CI step runs `quint run --invariant`
+  on every example model; `quint verify` (Apalache) nightly on the small
+  ones, outside `go test`. Then vacuity: an invariant's antecedent (from
+  a top-level `implies`, or declared in the binding) gets a witness def
+  in the rendered module, and the report says which held vacuously in
+  every run.
+- **X3. Bounded exhaustive schedules (M; after W7).** A stateless,
+  delay-bounded DFS chooser (`qenv/internal/choice`): option 0 is the
+  oldest task or nominal, so a non-zero schedule choice is a delay and a
+  non-zero fault choice a fault, and "≤ k delays, ≤ f faults" falls out
+  of the protocol. `System.Exhaust(t, qtest.Bound{Delays, Faults,
+  MaxRuns})` returns an Exploration (the same claims and Evidence);
+  `Complete()` fails a search MaxRuns cut short, and Evidence says
+  "complete: N schedules" or "truncated". The verdict cache makes
+  schedules with the same steps cost a Go run, not a quint check. Wide
+  value choices (`sched.wait`'s durations) count against the bound or
+  stay nominal: document which. No DPOR (it needs every seam's
+  footprint). Targets: checkout's `DualWrite` at f=1, hello's dedupe and
+  streams' reorder at k≤2.
+- **X4. Real-time order (S–M).** Clients record invoke and complete
+  times; if A completed before B was invoked, A's step must precede B's
+  (`qtrace`, an issue with a fix, no quint). Then, for overlapping
+  steps, `Validate(..., qtest.Order(qtest.Linearize))` searches the
+  orders their intervals allow, the model as the sequential spec. Targets:
+  kvstore's real tier (a read path outside the lock), grpcledger's.
+- **X5. The doubles' contracts (M).** Under `QENV_CHECK=1`, Store emits
+  read and write sets with commit versions and a checker
+  (`qenv/internal/history`, Elle-style) fails on cycles the level forbids
+  (G0, G1c, G-single, G2): soundness next to TestIsolationAnomalies'
+  completeness. Reusable on a real database tier.
+- **X6. Clock faults (M).** Per-process skew and jumps (`clock.skew`,
+  `clock.jump`; option 0 none), applied in `qenv.Now` by the task's
+  process; profiles and `ToVirtual`/`ToReal` stay global. Targets:
+  streams' fencing, crossdb's grace period, jobqueue's leases (moved onto
+  qenv).
+- **X7. Storage faults and partitions (M).** A `qenv.Disk` double (lost
+  writes not synced, a torn last record, rollback on crash), first
+  against the toolkit's own `qobs.FileSink`, then jobqueue's journal;
+  partitions between named processes in `Service`.
+- **X8. Smaller claims and corpora.** `ShrunkTo(n)` for a shrunk run's
+  faults (hello's hand count goes); an exploration corpus
+  (`ExploreConfig.Corpus`: saved runs replay first, a failing one is
+  written with its reproduce line); one example's mutation test ending in
+  `NoSurvivors`, and `Reaches`/`Exercised` in checkout's conforming
+  tests; `FollowTraces` in the README and quint-start's table; qload
+  monotonicity (more capacity never recovers worse) as self-tests.
+
+Deferred: online streaming verification (resuming quint from a checkpoint
+is unsound for nondeterministic models; `quintgo validate -follow` over
+rolling windows from `init` if wanted), differential runs (the model is
+already the common oracle), DPOR.
+
+Order: X1 → X2 (stage 1 and the models' `quint run`) → X3 → X4 → X5 → X6
+→ X2 (vacuity) → X7; X8 alongside.
