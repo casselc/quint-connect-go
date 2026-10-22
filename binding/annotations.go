@@ -13,7 +13,9 @@ import (
 
 // Annotation is one //quint:action directive found in Go source.
 type Annotation struct {
-	Pos    string // file:line
+	Pos    string        // file:line
+	At     token.Pos     // Pos in the file set the file was parsed with
+	Decl   *ast.FuncDecl // the annotated function
 	Func   string
 	Action string
 	Keys   map[string]string // key -> Go expression
@@ -37,33 +39,41 @@ func ScanAnnotations(dir string) ([]Annotation, error) {
 		if err != nil {
 			return err
 		}
-		for _, decl := range f.Decls {
-			fn, ok := decl.(*ast.FuncDecl)
-			if !ok || fn.Doc == nil {
-				continue
-			}
-			for _, c := range fn.Doc.List {
-				if !strings.HasPrefix(c.Text, "//quint:action") || (len(c.Text) > 14 && c.Text[14] != ' ') {
-					continue
-				}
-				a := Annotation{Pos: fset.Position(c.Pos()).String(), Func: fn.Name.Name, Keys: map[string]string{}}
-				for _, arg := range splitDirective(strings.TrimPrefix(c.Text, "//quint:action")) {
-					k, v, _ := strings.Cut(arg, ":")
-					if len(v) >= 2 && (v[0] == '"' || v[0] == '\'') && v[len(v)-1] == v[0] {
-						v = v[1 : len(v)-1]
-					}
-					if k == "action" {
-						a.Action = v
-					} else {
-						a.Keys[k] = v
-					}
-				}
-				out = append(out, a)
-			}
-		}
+		out = append(out, AnnotationsOf(fset, f)...)
 		return nil
 	})
 	return out, err
+}
+
+// AnnotationsOf are the //quint:action directives on the functions of one
+// parsed file (with comments).
+func AnnotationsOf(fset *token.FileSet, f *ast.File) []Annotation {
+	var out []Annotation
+	for _, decl := range f.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || fn.Doc == nil {
+			continue
+		}
+		for _, c := range fn.Doc.List {
+			if !strings.HasPrefix(c.Text, "//quint:action") || (len(c.Text) > 14 && c.Text[14] != ' ') {
+				continue
+			}
+			a := Annotation{Pos: fset.Position(c.Pos()).String(), At: c.Pos(), Decl: fn, Func: fn.Name.Name, Keys: map[string]string{}}
+			for _, arg := range splitDirective(strings.TrimPrefix(c.Text, "//quint:action")) {
+				k, v, _ := strings.Cut(arg, ":")
+				if len(v) >= 2 && (v[0] == '"' || v[0] == '\'') && v[len(v)-1] == v[0] {
+					v = v[1 : len(v)-1]
+				}
+				if k == "action" {
+					a.Action = v
+				} else {
+					a.Keys[k] = v
+				}
+			}
+			out = append(out, a)
+		}
+	}
+	return out
 }
 
 // splitDirective splits on spaces outside quotes, as Orchestrion does.

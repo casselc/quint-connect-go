@@ -1,8 +1,9 @@
-// Package lint finds code that escapes a qenv simulation or its weaving
-// (quintgo lint -sim, -weave). It is apart from qenv so that gosim, which
+// Package qlint finds code that escapes a qenv simulation or its weaving
+// (quintgo lint -sim, -weave; the analyzers of the qanalysis module wrap
+// SimFile and WovenFile). It is apart from qenv so that gosim, which
 // translates everything a simulated package imports, does not translate
 // go/ast and go/parser with it.
-package lint
+package qlint
 
 import (
 	"fmt"
@@ -21,6 +22,8 @@ type Finding struct {
 	Pos  string // file:line:col
 	What string
 	Fix  string
+	// At is Pos in the file set the file was parsed with, for analyzers.
+	At token.Pos
 
 	file      string
 	line, col int
@@ -72,7 +75,7 @@ func Sim(dir string) ([]Finding, error) {
 		if err != nil {
 			return err
 		}
-		out = append(out, lintFile(fset, f)...)
+		out = append(out, SimFile(fset, f)...)
 		return nil
 	})
 	sortFindings(out)
@@ -87,7 +90,9 @@ var wallClock = map[string]string{
 	"Tick": "a loop with qenv.Sleep", "NewTimer": "qenv.Sleep, or a Signal with a deadline", "NewTicker": "a loop with qenv.Sleep",
 }
 
-func lintFile(fset *token.FileSet, f *ast.File) []Finding {
+// SimFile is Sim's check of one parsed file (with comments): nothing
+// unless the file imports qenv.
+func SimFile(fset *token.FileSet, f *ast.File) []Finding {
 	names := map[string]string{} // import path -> local name
 	for _, im := range f.Imports {
 		p, _ := strconv.Unquote(im.Path.Value)
@@ -113,7 +118,7 @@ func lintFile(fset *token.FileSet, f *ast.File) []Finding {
 		pos := fset.Position(n.Pos())
 		if !exempt[pos.Line] {
 			out = append(out, Finding{Pos: fmt.Sprintf("%s:%d:%d", pos.Filename, pos.Line, pos.Column), What: what, Fix: fix,
-				file: pos.Filename, line: pos.Line, col: pos.Column})
+				At: n.Pos(), file: pos.Filename, line: pos.Line, col: pos.Column})
 		}
 	}
 	sel := func(e ast.Expr, pkgPath string) (string, bool) {
@@ -186,14 +191,15 @@ func Woven(dir string) ([]Finding, error) {
 		if err != nil {
 			return err
 		}
-		out = append(out, lintWovenFile(fset, f)...)
+		out = append(out, WovenFile(fset, f)...)
 		return nil
 	})
 	sortFindings(out)
 	return out, err
 }
 
-func lintWovenFile(fset *token.FileSet, f *ast.File) []Finding {
+// WovenFile is Woven's check of one parsed file (with comments).
+func WovenFile(fset *token.FileSet, f *ast.File) []Finding {
 	marked := map[int]string{} // line -> directive on it
 	for _, cg := range f.Comments {
 		for _, c := range cg.List {
@@ -208,7 +214,7 @@ func lintWovenFile(fset *token.FileSet, f *ast.File) []Finding {
 	add := func(n ast.Node, what, fix string) {
 		pos := fset.Position(n.Pos())
 		out = append(out, Finding{Pos: fmt.Sprintf("%s:%d:%d", pos.Filename, pos.Line, pos.Column), What: what, Fix: fix,
-			file: pos.Filename, line: pos.Line, col: pos.Column})
+			At: n.Pos(), file: pos.Filename, line: pos.Line, col: pos.Column})
 	}
 	called := map[ast.Expr]bool{}
 	ast.Inspect(f, func(n ast.Node) bool {

@@ -1,6 +1,9 @@
 package checkout_test
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/casselc/quint-connect-go/examples/checkout"
@@ -22,4 +25,15 @@ func TestCodeCoverage(t *testing.T) {
 	x.Expect(t, qtest.Conforms())
 	t.Log(x.Coverage())
 	t.Log(x.CodeCoverage())
+	// kept for qanalysis/actionmap, which reads it against the code each
+	// action reaches statically
+	if k := os.Getenv("QUINTGO_KEEP"); k != "" {
+		b, err := json.Marshal(x.CodeCoverage())
+		if err == nil {
+			err = os.WriteFile(filepath.Join(k, "checkout-coverage.json"), b, 0o644)
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
 }
