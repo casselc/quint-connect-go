@@ -1,6 +1,7 @@
 package qmeta_test
 
 import (
+	"github.com/casselc/quint-connect-go/quinthegel"
 	"strings"
 	"testing"
 	"time"
@@ -76,12 +77,12 @@ func TestFindTrigger(t *testing.T) {
 		t.Logf("%.1f req/s, no trigger: recovers in most runs: %v", base, ok)
 	}
 	t0 := time.Now()
-	r := qmeta.FindTrigger(t, sim(9.5), 9.5, space, 300*time.Second, hegel.WithTestCases(40), hegel.WithSeed(1))
+	r := quinthegel.FindTrigger(t, sim(9.5), 9.5, space, 300*time.Second, hegel.WithTestCases(40), hegel.WithSeed(1))
 	if r == nil {
 		t.Fatal("no trigger found at 9.5 req/s")
 	}
 	t.Logf("searched in %v", time.Since(t0))
-	if r := qmeta.FindTrigger(t, sim(8), 8, space, 15*time.Minute, hegel.WithTestCases(30), hegel.WithSeed(1)); r != nil {
+	if r := quinthegel.FindTrigger(t, sim(8), 8, space, 15*time.Minute, hegel.WithTestCases(30), hegel.WithSeed(1)); r != nil {
 		t.Fatalf("at 8 req/s the system should always recover; %v did not", r.Trigger)
 	}
 }

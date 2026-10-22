@@ -1,6 +1,7 @@
 package broadcast
 
 import (
+	"github.com/casselc/quint-connect-go/examples/glomers/maelstrom/hegelnet"
 	"math/rand/v2"
 	"strings"
 	"testing"
@@ -94,7 +95,7 @@ func TestReadOwnOnlyRejected(t *testing.T) {
 // ---- Hegel schedules the network ---------------------------------------------
 
 type machine struct {
-	maelstrom.Network
+	hegelnet.Network
 	next int
 }
 
@@ -105,7 +106,7 @@ func (m *machine) RuleBroadcast(tc hegel.TestCase) {
 
 func scenario(tc hegel.TestCase, mut Mutation, steps int) {
 	s := cluster(mut)
-	hegel.RunStateful(tc, &machine{Network: maelstrom.Network{Sim: s, Faults: true}}, hegel.WithStatefulStepCount(steps))
+	hegel.RunStateful(tc, &machine{Network: hegelnet.Network{Sim: s, Faults: true}}, hegel.WithStatefulStepCount(steps))
 	finish(s)
 }
 

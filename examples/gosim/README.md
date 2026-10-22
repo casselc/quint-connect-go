@@ -50,7 +50,7 @@ module of its own that runs on gosim's runtime. Hegel cannot run in there
 | `broadcast.TestSeededRunsConform` | `qenv.NewSeeded`, partitions at 30% | none | conforms, both invariants hold |
 | `broadcast.TestReplayIsDeterministic` | `qenv.Recorder`, then `qenv.Replay` | none | identical steps from the same ~5500 choices |
 | `broadcast.TestReadOwnOnlyRejected` | `qenv.NewSeeded` | `ReadOwnOnly` | `qtest.Mismatch("read")` |
-| `broadcast.TestHegelFindsNoRetry` (not `-short`) | `qenv.Hegel` | `NoRetry` | `quinthegel.FindViolation`: `convergedWhenSettled`, shrunk to gossip lost to an isolated node |
+| `broadcast.TestHegelFindsNoRetry` (not `-short`) | `quinthegel.Chooser` | `NoRetry` | `quinthegel.FindViolation`: `convergedWhenSettled`, shrunk to gossip lost to an isolated node |
 | `checkout.TestFaithfulConformsOnGosim` | `qtest.Explore`, crashes 1 in 20 | none, at each isolation level | conforms |
 | `checkout.TestMutantsOnGosim` | `qtest.Explore` | `LockWithoutWrite` at snapshot isolation | a ship or cancel the model rejects (write skew) |
 | | | `NoIdempotencyKey` | `chargedAtMostOnce` or `settledCorrectly` violated |
@@ -75,5 +75,5 @@ module of its own that runs on gosim's runtime. Hegel cannot run in there
   paid. qenv's scheduler finds the double charge first.
 - A choice round trip to the test process costs about 50 µs, so a
   broadcast run takes 350 ms with qenv choosing and 60 ms with gosim's own
-  seed. Handing the simulation entropy in chunks, as `qenv.Hegel` already
+  seed. Handing the simulation entropy in chunks, as `quinthegel.Chooser` already
   draws it, would remove most of that (DESIGN.md §15.5, phase 0).

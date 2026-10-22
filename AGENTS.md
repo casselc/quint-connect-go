@@ -154,8 +154,8 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
 - Option 0 of every qenv choice is nominal (no fault, canonical order).
   Keep that convention in new doubles: it is what makes Hegel's shrinking
   remove faults.
-- `qenv.Hegel` draws 512-byte chunks (`hegel.Binary(n, n)`), not one draw
-  per choice: per-choice draws made a shrinking test 20x slower. A task's
+- `quinthegel.Chooser` draws 512-byte chunks (`hegel.Binary(n, n)`), not
+  one draw per choice: per-choice draws made a shrinking test 20x slower. A task's
   panic is re-raised by `Sim.Run` with its original value, because Hegel
   aborts a test case by panicking from whichever goroutine draws.
 - A nemesis (crash) is considered at every scheduling step: its rate is
@@ -226,9 +226,12 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   no `order.*` keys, where the recording order is the reconstructed order,
   and with equal instance constants. Keep those guards.
 - gosim (`qgosim`, `examples/gosim`) translates everything the simulated
-  package imports: keep Hegel and other native code out of it. qenv's
-  `HegelChooser`, qmeta's `FindTrigger`/`Search` and the Maelstrom
-  runtime's Hegel driver are `//go:build !sim` for that. It writes the
+  package imports: keep Hegel and other native code out of it. Hegel
+  adapters live in quinthegel (`Chooser`, `FindTrigger`,
+  `SearchTrigger`), and the Glomers one in `maelstrom/hegelnet`, never
+  next to code a simulation runs. `internal/simdeps` fails if qenv, qobs,
+  qtrace, qload, qmeta or a simulated example depends on Hegel, purego or
+  cgo, and names the import chain. It writes the
   translation into the module's `.gosim/`, which `gofmt -l .` at the root
   reports: it is gitignored, ignore it.
 - qenv's native runtime (`qenv.NewNative`) keeps one-task-at-a-time

@@ -1,18 +1,14 @@
-// Not built inside gosim (the sim tag): Hegel runs on the host, and its
-// native library cannot be translated into a simulation. There, the host's
-// Chooser, Hegel's included, makes the choices (DESIGN.md §14).
-
-//go:build !sim
-
-package qenv
+package quinthegel
 
 import (
 	"fmt"
 
 	"hegel.dev/go/hegel"
+
+	"github.com/casselc/quint-connect-go/qenv"
 )
 
-// HegelChooser draws the choices from a Hegel test case, so Hegel
+// EnvChooser makes a qenv simulation's choices from a Hegel test case, so Hegel
 // explores schedules and faults and shrinks them. It draws entropy in
 // chunks of bytes (hegel.Binary), one draw per chunk rather than per
 // choice: a simulated run makes hundreds of choices, and each draw is a
@@ -21,18 +17,18 @@ import (
 // toward zeros is shrinking toward fewer faults and the canonical
 // schedule. Faults are noted on the test case, so a shrunk
 // failure lists the faults it needs.
-type HegelChooser struct {
+type EnvChooser struct {
 	tc    hegel.TestCase
-	Rates Rates
+	Rates qenv.Rates
 	// Chunk is the number of bytes drawn at a time (default 512).
 	Chunk int
 	buf   []byte
 }
 
-// Hegel returns a chooser drawing from tc, with DefaultRates.
-func Hegel(tc hegel.TestCase) *HegelChooser { return &HegelChooser{tc: tc, Rates: DefaultRates} }
+// Chooser returns a qenv chooser drawing from tc, with qenv.DefaultRates.
+func Chooser(tc hegel.TestCase) *EnvChooser { return &EnvChooser{tc: tc, Rates: qenv.DefaultRates} }
 
-func (h *HegelChooser) byte() int {
+func (h *EnvChooser) byte() int {
 	if len(h.buf) == 0 {
 		n := h.Chunk
 		if n == 0 {
@@ -45,9 +41,9 @@ func (h *HegelChooser) byte() int {
 	return int(b)
 }
 
-// Choose implements Chooser.
-func (h *HegelChooser) Choose(kind string, n int) int {
-	if !IsFault(kind) {
+// Choose implements qenv.Chooser.
+func (h *EnvChooser) Choose(kind string, n int) int {
+	if !qenv.IsFault(kind) {
 		v := h.byte()
 		if n > 256 {
 			v = v<<8 | h.byte()

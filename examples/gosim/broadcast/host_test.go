@@ -88,7 +88,7 @@ func TestHegelFindsNoRetry(t *testing.T) {
 		t.Skip("shrinking against the model")
 	}
 	v := quinthegel.FindViolation(t, quinthegel.Config{Binding: binding, Global: true}, func(tc hegel.TestCase, rec *quinthegel.Recorder) {
-		c := qenv.Hegel(tc)
+		c := quinthegel.Chooser(tc)
 		c.Rates.Kinds = map[string]float64{"fault.partition": 0.3}
 		rec.Add(run(t, c, "NoRetry")...)
 	}, hegel.WithTestCases(60), hegel.WithSeed(1))

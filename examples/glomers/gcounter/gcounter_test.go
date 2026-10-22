@@ -1,6 +1,7 @@
 package gcounter
 
 import (
+	"github.com/casselc/quint-connect-go/examples/glomers/maelstrom/hegelnet"
 	"math/rand/v2"
 	"testing"
 
@@ -87,7 +88,7 @@ func TestGossipOnChangeDoesNotConverge(t *testing.T) {
 }
 
 type machine struct {
-	maelstrom.Network
+	hegelnet.Network
 }
 
 func (m *machine) RuleAdd(tc hegel.TestCase) {
@@ -105,7 +106,7 @@ func TestHegelSchedules(t *testing.T) {
 	quinthegel.Test(t, quinthegel.Config{Binding: "gcounter.binding.yaml", Mode: quinthegel.Batched, Global: true, Rounds: 2},
 		func(ht *hegel.T, _ *quinthegel.Recorder) {
 			s := cluster(Faithful)
-			hegel.RunStateful(ht, &machine{Network: maelstrom.Network{Sim: s, Faults: true}}, hegel.WithStatefulStepCount(25))
+			hegel.RunStateful(ht, &machine{Network: hegelnet.Network{Sim: s, Faults: true}}, hegel.WithStatefulStepCount(25))
 			finish(s)
 		}, hegel.WithTestCases(25), hegel.WithDatabase(""))
 }

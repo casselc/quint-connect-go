@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/casselc/quint-connect-go/quinthegel"
 	"reflect"
 	"strings"
 	"sync"
@@ -200,7 +201,7 @@ func (f *forced) Choose(kind string, n int) int { return f.faults[kind] }
 func TestHegelFindsLostUpdate(t *testing.T) {
 	check := func(forUpdate bool) error {
 		return hegel.Run(func(tc hegel.TestCase) {
-			st := run(t, qenv.Hegel(tc), qenv.ReadCommitted, func(s *qenv.Sim, st *qenv.Store) { increments(s, st, forUpdate) })
+			st := run(t, quinthegel.Chooser(tc), qenv.ReadCommitted, func(s *qenv.Sim, st *qenv.Store) { increments(s, st, forUpdate) })
 			if lostUpdate(st) {
 				tc.Errorf("lost update")
 			}
@@ -420,7 +421,7 @@ func TestSchedulerSemantics(t *testing.T) {
 					d: time.Duration(hegel.Draw(ht, hegel.Integers(0, 5))) * time.Second})
 			}
 		}
-		rec := &qenv.Recorder{C: qenv.Hegel(ht)}
+		rec := &qenv.Recorder{C: quinthegel.Chooser(ht)}
 		got, notifies := run(rec, progs)
 		for _, prog := range got {
 			for _, o := range prog {

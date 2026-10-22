@@ -2,6 +2,7 @@ package weave_test
 
 import (
 	"context"
+	"github.com/casselc/quint-connect-go/quinthegel"
 	"sync"
 	"testing"
 	"time"
@@ -17,7 +18,7 @@ import (
 // by Go; outside a simulation the real methods run.
 func TestWovenSyncInSimulation(t *testing.T) {
 	hegel.Test(t, func(ht *hegel.T) {
-		s := qenv.New(qenv.Hegel(ht))
+		s := qenv.New(quinthegel.Chooser(ht))
 		s.Check = true
 		defer s.Close()
 		var mu sync.RWMutex

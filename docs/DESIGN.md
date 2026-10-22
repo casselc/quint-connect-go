@@ -760,7 +760,7 @@ status lags. The conventions:
   (`Rates`, matched by prefix). Any other kind is a schedule choice,
   uniform under a seed.
 - **Backends.**
-  - `qenv.Hegel(tc)` draws entropy in fixed-size byte chunks: a run makes
+  - `quinthegel.Chooser(tc)` draws entropy in fixed-size byte chunks: a run makes
     hundreds of choices, and a draw per choice made a shrinking test 20x
     slower.
   - `NewSeeded(seed)` gives random runs, Maelstrom- or Jepsen-style.
@@ -811,7 +811,7 @@ Steps are recorded where effects happen:
 `qtest.Explore` runs a scenario over many seeds and checks every run in
 one `CheckBatch`. `Exploration.Expect` states either that all conform, or
 that some failing run shows the expected verdict.
-`quinthegel.FindViolation` with `qenv.Hegel` shrinks a failure to the
+`quinthegel.FindViolation` with `quinthegel.Chooser` shrinks a failure to the
 interleaving and faults it needs. In examples/checkout that took 11 quint
 checks; the verdict cache answered the other 599 candidates.
 
@@ -886,7 +886,7 @@ it, and this is their pipeline, with each tier checking the next:
 | CTMC over (queue, orbit) | `qmeta.New`, `HittingTimes`, `Field`/`SVG` | ~0.1–1 s per configuration | where the tipping point is; how policies rank |
 | calibration | `qmeta.Calibrate` (simulated trajectories) | seconds | the chain's rates, so its numbers mean something |
 | simulation | `qload.Simulate`, `qmeta.Recovers` | ~0.1–0.5 s per run of 20 simulated minutes | does this policy, this code, recover from this trigger |
-| trigger search | `qmeta.FindTrigger` (Hegel) | ~1 min | the smallest trigger that breaks it, shrunk |
+| trigger search | `quinthegel.FindTrigger` (Hegel) | ~1 min | the smallest trigger that breaks it, shrunk |
 | the real system | (load tests) | hours | confirms the one trigger the search found |
 
 ### 11.1 Recovery as the property
@@ -1226,7 +1226,7 @@ Hegel network driver is excluded from `sim` builds.
 - A choice round trip to the host is about 50 µs. A cluster run takes
   350 ms with qenv choosing and 60 ms on gosim's own seed. Eight in ten
   choices are the scheduler's. Handing the simulation entropy in chunks,
-  as `qenv.Hegel` already draws it, would remove most of the round
+  as `quinthegel.Chooser` already draws it, would remove most of the round
   trips. Fault choices would still go to the host one by one, for their
   rates and notes.
 - The first build translates the standard library and every dependency,
@@ -1481,9 +1481,14 @@ double, process and example runs on it unchanged:
   caller runs on.
 - **Settle.** It turns fault choices nominal. It cannot make gosim's
   schedule canonical.
-- **Hegel inside gosim.** qenv's and qmeta's Hegel code is `!sim`, so
-  checkout, which imports qmeta for its load tests, translates without
-  Hegel's native library.
+- **Hegel stays out of the simulated packages.** The Hegel adapters
+  moved out of the packages a simulation runs, into quinthegel:
+  `quinthegel.Chooser` (once `qenv.Hegel`), `FindTrigger` and
+  `SearchTrigger` (once in qmeta). The Glomers network driver moved to
+  `maelstrom/hegelnet`. Build tags had hidden the dependency instead,
+  and the first gosim translation found each one late.
+  `internal/simdeps` now fails, in ordinary CI, when a simulated package
+  depends on Hegel, purego or cgo, and it prints the import chain.
 
 `qgosim` is the adapter, in a module of its own:
 - on the simulated side, `New` (the native runtime with gosim's choices,

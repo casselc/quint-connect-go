@@ -106,7 +106,7 @@ func (r *Recorder) Install() (restore func()) {
 
 // Context returns ctx carrying r (qobs.WithRecorder): code recording
 // through it, such as a qenv simulation made with
-// qenv.WithContext(qenv.Hegel(tc), rec.Context(ctx)), records into r
+// qenv.WithContext(quinthegel.Chooser(tc), rec.Context(ctx)), records into r
 // without the global recorder (Config.Global).
 func (r *Recorder) Context(ctx context.Context) context.Context {
 	return qobs.WithRecorder(ctx, r.Recorder)

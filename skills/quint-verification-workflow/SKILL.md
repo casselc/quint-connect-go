@@ -75,11 +75,11 @@ document the gap (as glomers does for the scheme model).
   returns the shrunk run. Assert on its shape (`v.Last().Action`,
   `v.Summary`). Skip it under `testing.Short()`: shrinking runs quint
   dozens of times.
-- **Faults.** For distributed code, embed `maelstrom.Network`, or your
+- **Faults.** For distributed code, embed `hegelnet.Network`, or your
   own fault rules, so Hegel schedules losses, partitions, timers and
   restarts. For services with stores, queues and remote calls, deploy
   them into a `qenv` simulation (the quint-fault-injection skill). Then
-  explore seeds with `qtest.Explore`, and shrink with `qenv.Hegel`.
+  explore seeds with `qtest.Explore`, and shrink with `quinthegel.Chooser`.
 
 Hegel finds what scripted scenarios don't (glomers kafka: a commit past
 the end of the log). When it does, add the shrunk run as a scripted

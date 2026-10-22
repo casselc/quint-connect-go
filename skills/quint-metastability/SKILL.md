@@ -1,6 +1,6 @@
 ---
 name: quint-metastability
-description: Find and prevent metastable failures (retry storms, a queue that stays full after a spike) in Go services and controllers with quint-connect-go's qload and qmeta packages - predict recovery with a CTMC (qmeta.New, HittingTimes, Field/SVG, Calibrate), confirm with a load simulation on virtual time (qload.Simulate, open- or closed-loop clients, the retry library under test as a qload.Retrier), search and shrink the smallest trigger with Hegel (qmeta.FindTrigger, Recovers), and compare mitigations (backoff, retry budgets, rate limits). Use when choosing or reviewing a retry, timeout, backoff, requeue or rate-limit policy, when a system degrades after a load spike or a dependency slowdown and does not come back, or when a controller's requeue behaviour under a cloud API incident is in question.
+description: Find and prevent metastable failures (retry storms, a queue that stays full after a spike) in Go services and controllers with quint-connect-go's qload and qmeta packages - predict recovery with a CTMC (qmeta.New, HittingTimes, Field/SVG, Calibrate), confirm with a load simulation on virtual time (qload.Simulate, open- or closed-loop clients, the retry library under test as a qload.Retrier), search and shrink the smallest trigger with Hegel (quinthegel.FindTrigger, Recovers), and compare mitigations (backoff, retry budgets, rate limits). Use when choosing or reviewing a retry, timeout, backoff, requeue or rate-limit policy, when a system degrades after a load spike or a dependency slowdown and does not come back, or when a controller's requeue behaviour under a cloud API incident is in question.
 ---
 
 # Metastable failures with qload and qmeta
@@ -108,16 +108,16 @@ Look for loops around the retry loop. A broker's redelivery, a client's
 retry or a controller's requeue each retries too. A budget on the inner
 loop alone does nothing, as checkout's consumers showed.
 
-## 3. Search: Hegel (`qmeta.FindTrigger`)
+## 3. Search: Hegel (`quinthegel.FindTrigger`)
 
 ```go
-r := qmeta.FindTrigger(t, cfg, base, qmeta.TriggerSpace{MaxExtraRate: 10, MaxSlowdown: 4,
+r := quinthegel.FindTrigger(t, cfg, base, qmeta.TriggerSpace{MaxExtraRate: 10, MaxSlowdown: 4,
 	MaxDuration: 5 * time.Minute, Start: 10 * time.Minute}, 5*time.Minute, hegel.WithTestCases(30))
 // nil: no trigger in the space breaks it; else r.Trigger is shrunk toward none
 ```
 
 Assert `r != nil` for a design that should be shown fragile, and
-`r == nil` for the mitigation. `qmeta.Search(t, sys, space)` does the same
+`r == nil` for the mitigation. `quinthegel.SearchTrigger(t, sys, space)` does the same
 for any `qmeta.System` (`qmeta.Of(experiment, goodput, within)`). If it returns the empty trigger, the system
 collapses on noise alone: look for a design bound, such as more
 concurrency than capacity × timeout. Each case runs `Seeds` (default 3)

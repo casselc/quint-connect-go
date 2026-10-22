@@ -1,6 +1,7 @@
 package kafka
 
 import (
+	"github.com/casselc/quint-connect-go/examples/glomers/maelstrom/hegelnet"
 	"math/rand/v2"
 	"testing"
 
@@ -71,7 +72,7 @@ func TestPollSkipsRejected(t *testing.T) {
 }
 
 type machine struct {
-	maelstrom.Network
+	hegelnet.Network
 	msg int
 }
 
@@ -100,7 +101,7 @@ func TestHegelSchedules(t *testing.T) {
 	quinthegel.Test(t, quinthegel.Config{Binding: "kafka.binding.yaml", Mode: quinthegel.Batched, Global: true, AllowEmpty: true, Rounds: 2},
 		func(ht *hegel.T, _ *quinthegel.Recorder) {
 			s := cluster(Faithful)
-			hegel.RunStateful(ht, &machine{Network: maelstrom.Network{Sim: s, NoTimers: true}}, hegel.WithStatefulStepCount(20))
+			hegel.RunStateful(ht, &machine{Network: hegelnet.Network{Sim: s, NoTimers: true}}, hegel.WithStatefulStepCount(20))
 			s.Run(nil, 100000)
 			s.Step("settle")
 		}, hegel.WithTestCases(25), hegel.WithDatabase(""))

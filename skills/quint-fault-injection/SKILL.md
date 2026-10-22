@@ -1,6 +1,6 @@
 ---
 name: quint-fault-injection
-description: Test Go services against a Quint model under deterministic fault injection with quint-connect-go's qenv package - write the app against seams (qenv.DB/Txn, broker and service interfaces, qenv.Go/Now/Sleep), deploy it into a simulated environment (crashable processes, a store at Serializable/SnapshotIsolation/ReadCommitted, an at-least-once queue, lossy RPC, fake Kubernetes API servers), explore seeds with qtest.Explore or shrink with Hegel (qenv.Hegel + quinthegel.FindViolation), and carry the same model to a real environment (kwok, Maelstrom-style). Use when a system's correctness depends on retries, idempotency, outboxes, isolation levels, crashes, status lag or lost responses, or when a bug only shows up in a real environment.
+description: Test Go services against a Quint model under deterministic fault injection with quint-connect-go's qenv package - write the app against seams (qenv.DB/Txn, broker and service interfaces, qenv.Go/Now/Sleep), deploy it into a simulated environment (crashable processes, a store at Serializable/SnapshotIsolation/ReadCommitted, an at-least-once queue, lossy RPC, fake Kubernetes API servers), explore seeds with qtest.Explore or shrink with Hegel (quinthegel.Chooser + quinthegel.FindViolation), and carry the same model to a real environment (kwok, Maelstrom-style). Use when a system's correctness depends on retries, idempotency, outboxes, isolation levels, crashes, status lag or lost responses, or when a bug only shows up in a real environment.
 ---
 
 # Fault injection with qenv
@@ -115,7 +115,7 @@ qtest.Explore(t, "app.binding.yaml", qtest.ExploreConfig{Seeds: 100, Rates: rate
   - Turn whole kinds off with `{"fault.kube": 0}`, or per run with
     `qenv.Swarm`.
 - **Shrinking:**
-  `quinthegel.FindViolation(t, cfg, func(tc, rec) { app.Run(qenv.WithContext(qenv.Hegel(tc), rec.Context(ctx)), cfg) })`
+  `quinthegel.FindViolation(t, cfg, func(tc, rec) { app.Run(qenv.WithContext(quinthegel.Chooser(tc), rec.Context(ctx)), cfg) })`
   shrinks a failure to the interleaving and faults it needs; faults
   appear as notes. Skip it under `testing.Short()`.
 - **Extending qenv** (a new double, a scheduler change): run its tests
@@ -171,11 +171,13 @@ On either kind:
 - put the simulated test under `//go:build sim`, and its host test under
   `//go:build !sim` when they share a package;
 - keep Hegel and anything native out of the simulated package's imports
-  (gosim translates them all). qenv's and qmeta's Hegel parts are
-  `!sim` already;
+  (gosim translates them all). qenv, qobs, qload and qmeta have none:
+  Hegel adapters live in quinthegel (`quinthegel.Chooser`,
+  `quinthegel.FindTrigger`). Do the same with your own: Hegel code in a
+  package the simulation does not import;
 - drive it from the host with `qgosim.Run(t, pkg, test, chooser,
   env...)`, which returns the steps. The chooser can be
-  `qenv.NewSeeded`, `qenv.Hegel(tc)`, a `qenv.Recorder` or `qenv.Replay`.
+  `qenv.NewSeeded`, `quinthegel.Chooser(tc)`, a `qenv.Recorder` or `qenv.Replay`.
   Or use `qtest.Explore(t, binding, x, qgosim.Scenario(t, pkg, test))`,
   which runs seeds in parallel, one test binary each;
 - check the steps with `qtest.Check` or `qtest.Validate`, or add them

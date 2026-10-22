@@ -17,7 +17,7 @@ retries drain). It is checked at two levels:
   - `qload`'s simulation, with the library itself deciding each retry on
     virtual time, confirms them;
   - Hegel searches for the smallest trigger that tips the system and
-    shrinks it (`qmeta.FindTrigger`).
+    shrinks it (`quinthegel.FindTrigger`).
 
 The system is the papers' running example: one server at 10 requests/s
 with a 100-request queue. Clients time out after 9 s and retry up to 3

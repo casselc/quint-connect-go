@@ -1,6 +1,7 @@
 package uniqueids
 
 import (
+	"github.com/casselc/quint-connect-go/examples/glomers/maelstrom/hegelnet"
 	"math/rand/v2"
 	"testing"
 
@@ -118,7 +119,7 @@ func TestIDEncodingInjective(t *testing.T) {
 // Hegel schedules the network (deliveries, losses, partitions) and the
 // requests and restarts; runs are checked in bulk, round after round.
 type machine struct {
-	maelstrom.Network
+	hegelnet.Network
 }
 
 func (m *machine) RuleGenerate(tc hegel.TestCase) {
@@ -134,6 +135,6 @@ func TestHegelSchedules(t *testing.T) {
 	quinthegel.Test(t, quinthegel.Config{Binding: spec, Mode: quinthegel.Batched, Global: true, AllowEmpty: true, Rounds: 2},
 		func(ht *hegel.T, _ *quinthegel.Recorder) {
 			s := sim(Faithful, uint64(hegel.Draw(ht, hegel.Integers(0, 1<<30))))
-			hegel.RunStateful(ht, &machine{Network: maelstrom.Network{Sim: s, Faults: true, NoTimers: true}}, hegel.WithStatefulStepCount(25))
+			hegel.RunStateful(ht, &machine{Network: hegelnet.Network{Sim: s, Faults: true, NoTimers: true}}, hegel.WithStatefulStepCount(25))
 		}, hegel.WithTestCases(30), hegel.WithDatabase(""))
 }

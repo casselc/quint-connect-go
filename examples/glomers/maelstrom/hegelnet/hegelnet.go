@@ -1,14 +1,14 @@
-// Not built inside gosim (the sim tag): Hegel runs outside a simulation,
-// and its native library cannot be translated into one.
-
-//go:build !sim
-
-package maelstrom
+// Package hegelnet lets Hegel schedule a Maelstrom simulator's network: a
+// fragment of a Hegel state machine, kept out of package maelstrom so that
+// the runtime has no Hegel dependency (it runs inside gosim).
+package hegelnet
 
 import (
 	"fmt"
 
 	"hegel.dev/go/hegel"
+
+	"github.com/casselc/quint-connect-go/examples/glomers/maelstrom"
 )
 
 // Network is a Hegel state machine fragment that schedules a Sim: embed it
@@ -17,12 +17,12 @@ import (
 // healing and timers, then shrinks a failure to the shortest schedule.
 //
 //	type machine struct {
-//		maelstrom.Network
+//		hegelnet.Network
 //	}
 //	func (m *machine) RuleBroadcast(tc hegel.TestCase) { m.Sim.Request("c1", ..., ...) }
-//	hegel.RunStateful(tc, &machine{Network: maelstrom.Network{Sim: sim, Faults: true}})
+//	hegel.RunStateful(tc, &machine{Network: hegelnet.Network{Sim: sim, Faults: true}})
 type Network struct {
-	Sim *Sim
+	Sim *maelstrom.Sim
 	// Faults enables RuleDrop and RulePartition; otherwise the network is
 	// reliable (but still reorders).
 	Faults bool
@@ -32,18 +32,18 @@ type Network struct {
 
 // RuleDeliver delivers any message in flight.
 func (n *Network) RuleDeliver(tc hegel.TestCase) {
-	p := len(n.Sim.pending)
+	p := len(n.Sim.Pending())
 	tc.Assume(p > 0)
 	i := hegel.Draw(tc, hegel.Integers(0, p-1))
-	tc.Note(fmt.Sprintf("deliver %s", n.Sim.pending[i]))
+	tc.Note(fmt.Sprintf("deliver %s", n.Sim.Pending()[i]))
 	n.Sim.Deliver(i)
 }
 
 // RuleDrop loses any message in flight.
 func (n *Network) RuleDrop(tc hegel.TestCase) {
-	tc.Assume(n.Faults && len(n.Sim.pending) > 0)
-	i := hegel.Draw(tc, hegel.Integers(0, len(n.Sim.pending)-1))
-	tc.Note(fmt.Sprintf("drop %s", n.Sim.pending[i]))
+	tc.Assume(n.Faults && len(n.Sim.Pending()) > 0)
+	i := hegel.Draw(tc, hegel.Integers(0, len(n.Sim.Pending())-1))
+	tc.Note(fmt.Sprintf("drop %s", n.Sim.Pending()[i]))
 	n.Sim.Drop(i)
 }
 
