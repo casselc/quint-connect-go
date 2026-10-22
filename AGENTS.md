@@ -249,6 +249,11 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   bound (`RecoveryWithin`), not the mean hitting time, which near a storm
   is dominated by rare tips into it. Calibrate a running system with
   `CalibrateTimeout` (λ held): a fit of λ to storm data drives it to μ.
+- The chain's service is exponential. A measured service time far from
+  it (`qmeta.Measure(...).Exponential()` false) changes verdicts, not
+  just numbers. Constant service made a queue longer than μ × timeout
+  absorbing (every request in it times out), where exponential service
+  drains it: check such verdicts in a simulation with `Service.Draw`.
 - `qmeta`'s chain ranks policies; its absolute times are not the
   simulation's. Keep its orbit bound well above the storm's size, and
   assert orderings or orders of magnitude, not seconds.

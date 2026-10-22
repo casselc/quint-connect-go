@@ -131,3 +131,5 @@ the rest, each after the U items it depends on.
 - D1–D2: done (DESIGN §21): `sktrace`, `qload.Piecewise`, retrystorm under
   a production scale-up, fleetrollout under a replayed workload (and the
   model's `scale` for other writers).
+- B1–B2: done (DESIGN §22): pprof labels by role; `qmeta.Measure`, with a
+  verdict that changes with the service-time shape.

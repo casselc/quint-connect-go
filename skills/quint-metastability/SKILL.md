@@ -67,6 +67,24 @@ r := qmeta.Recovers(cfg, 9, qmeta.Trigger{ExtraRate: 5, Duration: time.Minute}, 
   the metastable region, a run's escape is a coin toss.
   `RecoversMostly` takes the majority.
 
+### Measured service times
+
+The chain assumes exponential service. Measure the handler alone (a
+benchmark's latencies) with `qmeta.Measure(samples)`:
+- `Mu()` gives the chain's rate;
+- `CV` is 1 for exponential service;
+- `Exponential()` says whether the chain's numbers can be trusted.
+
+If not, simulate with the measured times (`qload.ServerConfig{Service:
+svc.Draw}`). Constant service at the same mean made a full queue
+absorbing: when the queue holds more than μ × timeout, every request in
+it times out (retrystorm `TestServiceTimeShape`: 6 of 6 seeds recover
+with exponential service, 0 of 6 with constant).
+
+`qrole.Labels(true)` puts pprof labels on the roles, so a CPU profile
+splits by server and service (`go tool pprof -tagfocus
+quint.serve=api`).
+
 ### A production workload as the load
 
 A SimKube trace (`sktrace.ReadFile`) is a real cluster's objects over

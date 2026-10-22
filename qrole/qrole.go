@@ -19,6 +19,7 @@ package qrole
 import (
 	"context"
 	"github.com/casselc/quint-connect-go/qrun"
+	"runtime/pprof"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -77,11 +78,31 @@ func (r *Roles) get(m map[string]*stats, name string) *stats {
 	return s
 }
 
-func track(s *stats) func(err error) {
+var labels atomic.Bool
+
+// Labels turns on pprof labels for the roles: while a request is served,
+// an operation or a call is in progress, the goroutine carries the labels
+// quint.serve, quint.operation or quint.call (the server's or service's
+// name), so a CPU profile splits by server and service
+// (go tool pprof -tagfocus quint.serve=api). Off by default: setting
+// goroutine labels costs an allocation per role.
+func Labels(on bool) { labels.Store(on) }
+
+func track(ctx context.Context, s *stats, role, name string) func(err error) {
 	s.inflight.Add(1)
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	labelled := labels.Load()
+	if labelled {
+		pprof.SetGoroutineLabels(pprof.WithLabels(ctx, pprof.Labels(role, name)))
+	}
 	var once sync.Once
 	return func(err error) {
 		once.Do(func() {
+			if labelled {
+				pprof.SetGoroutineLabels(ctx) // the caller's labels again
+			}
 			s.inflight.Add(-1)
 			if err != nil {
 				s.err.Add(1)
@@ -97,21 +118,21 @@ func track(s *stats) func(err error) {
 // before it waits for a worker or a lock.
 func Serve(ctx context.Context, name string) func(err error) {
 	r := From(ctx)
-	return track(r.get(r.serve, name))
+	return track(ctx, r.get(r.serve, name), "quint.serve", name)
 }
 
 // Operation marks a client's operation on service, all its attempts and
 // the waits between them, until the returned function is called.
 func Operation(ctx context.Context, service string) func(err error) {
 	r := From(ctx)
-	return track(r.get(r.ops, service))
+	return track(ctx, r.get(r.ops, service), "quint.operation", service)
 }
 
 // Call marks one attempt of an operation on service, until its response or
 // timeout.
 func Call(ctx context.Context, service string) func(err error) {
 	r := From(ctx)
-	return track(r.get(r.calls, service))
+	return track(ctx, r.get(r.calls, service), "quint.call", service)
 }
 
 // Queue is u: the requests the server name is serving now.

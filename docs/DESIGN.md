@@ -2025,3 +2025,37 @@ another writer, while the rollout runs, through the same faults.
   the cluster is complete again only when its status catches up.
 - With it, the faithful controller conforms over 30 seeds (540 scale
   steps), and `IgnoreObservedGeneration` is still caught.
+
+## 22. Profiles and measured service (B1–B2)
+
+**B1, labels by role.** `qrole.Labels(true)` makes `Serve`, `Operation` and
+`Call`, and so the woven `//quint:serve`, `//quint:operation` and
+`//quint:call`, set goroutine labels while the role lasts:
+`quint.serve=<server>`, `quint.operation=<service>`,
+`quint.call=<service>`. A CPU profile then splits by server and service.
+It is off by default, since a label set allocates. It needed no hook
+refactor (review S5): the roles' runtime functions set the labels, and
+the aspects are unchanged.
+
+**B2, measured service.** `qmeta.Measure(samples)` summarizes a handler's
+latencies, run alone:
+- the mean, and `Mu` for the chain;
+- the coefficient of variation `CV`, 1 for the chain's exponential
+  service;
+- `Exponential()`, whether that approximation is fair;
+- `Draw`, the measured distribution for `qload.ServerConfig.Service` or a
+  `qenv.Capacity`.
+
+It changed a verdict. At the same mean (100 ms), constant service
+recovers from the spike in 0 of 6 seeds where exponential service
+recovers in 6 of 6.
+- Constant service keeps a healthy queue half as long, but the spike fills
+  it to 100 requests: 10 s of work against a 9 s timeout. Every request in
+  it then times out, with certainty, and the server works only on
+  requests nobody waits for.
+- Under exponential service some still finish in time, and the queue
+  drains.
+
+The chain, being exponential, predicts the recovery. The measurement's CV
+of 0 is the warning. I had expected the opposite: that regular service
+would time out less.

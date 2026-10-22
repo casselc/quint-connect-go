@@ -3,6 +3,8 @@ package qrole_test
 import (
 	"context"
 	"errors"
+	"runtime/pprof"
+	"strings"
 	"testing"
 	"time"
 
@@ -99,5 +101,28 @@ func TestRolesOfTheGoroutinesRun(t *testing.T) {
 	}
 	if ok, _ := qrole.Default.Served("api"); ok != 0 {
 		t.Error("counted into Default")
+	}
+}
+
+// With Labels on, a goroutine serving a request carries its server's
+// label, and loses it when the request is done: a profile splits by role.
+func TestLabels(t *testing.T) {
+	qrole.Labels(true)
+	defer qrole.Labels(false)
+	profile := func() string {
+		var b strings.Builder
+		if err := pprof.Lookup("goroutine").WriteTo(&b, 1); err != nil {
+			t.Fatal(err)
+		}
+		return b.String()
+	}
+	ctx := qrole.WithRoles(context.Background(), qrole.New())
+	done := qrole.Serve(ctx, "api")
+	if p := profile(); !strings.Contains(p, `"quint.serve":"api"`) {
+		t.Fatalf("no label while serving:\n%.2000s", p)
+	}
+	done(nil)
+	if p := profile(); strings.Contains(p, `"quint.serve":"api"`) {
+		t.Error("the label outlives the request")
 	}
 }
