@@ -186,6 +186,15 @@ func (c *Client) attempt(ctx context.Context) error
   time out, known only in hindsight (`qload.Sample.Orbit` vs `Waiting`).
   Under immediate retries the gauge stays at 0 through a storm: the
   alert sees u alone there.
+- `qmeta.Watch{Region, State, Snapshot}` runs in production next to the
+  rule: once (u, v) has been in the region `For` samples, it writes the
+  runtime's flight recorder (the last seconds of execution trace) to
+  `Snapshot`; `go tool trace` shows what every goroutine was doing as the
+  storm began.
+- Where a simulated storm's latency goes: set `env.Sim.Profile =
+  qenv.NewProfile()` in `Deploy`, then `Profile.WriteTo` a file and
+  `go tool pprof -top -cum` it: each wait at a seam, by stack, weighted by
+  virtual time (`-tagfocus task=<kind>` for one kind of task).
 - `region := qmeta.New(fit).Region(healthy, 120)` is the states with less
   than even odds of being healthy within 2 minutes (`RecoveryWithin`). Not
   the mean hitting time: near a storm it is dominated by rare tips into

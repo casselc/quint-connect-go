@@ -1,8 +1,11 @@
 package skills
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"testing"
 )
 
@@ -25,7 +28,8 @@ func TestSkillsHaveFrontMatter(t *testing.T) {
 	}
 	dir := t.TempDir()
 	paths, err := Install(dir, false)
-	if err != nil || len(paths) != len(list) {
+	refs, _ := fs.Glob(FS(), "*/references/*.md")
+	if err != nil || len(paths) != len(list)+len(refs) {
 		t.Fatalf("%v %v", paths, err)
 	}
 	if _, err := Install(dir, false); err == nil {
@@ -50,4 +54,27 @@ func TestRepoSkillDirs(t *testing.T) {
 			}
 		}
 	}
+}
+
+// Every relative link in a skill or reference resolves among the
+// installed files: a skill loads its references (and another skill's) by
+// path.
+func TestSkillLinksResolve(t *testing.T) {
+	link := regexp.MustCompile(`\]\(([^)#:]+\.md)\)`)
+	_ = fs.WalkDir(FS(), ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		b, _ := fs.ReadFile(FS(), p)
+		for _, m := range link.FindAllStringSubmatch(string(b), -1) {
+			target := filepath.ToSlash(filepath.Clean(filepath.Join(filepath.Dir(p), m[1])))
+			if strings.HasPrefix(target, "..") {
+				continue // outside the skills (the repository's docs)
+			}
+			if _, err := fs.Stat(FS(), target); err != nil {
+				t.Errorf("%s links to %s, which is not installed with the skills", p, m[1])
+			}
+		}
+		return nil
+	})
 }

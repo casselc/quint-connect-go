@@ -22,9 +22,21 @@ type Shop struct {
 //quint:action action:place order:id
 func (s *Shop) Place(ctx context.Context, id int) error {
 	s.reserve(id)
+	if err := s.charge(id); err != nil {
+		s.refund(id)
+		return err
+	}
 	s.log()
 	return nil
 }
+
+// charge is a fault point (as //quint:fault would declare it).
+func (s *Shop) charge(id int) error { return nil }
+
+func (s *Shop) refund(id int) { s.stock++ }
+
+// unused is called by nothing.
+func unused() {}
 
 func (s *Shop) reserve(id int) {
 	if id < 0 {

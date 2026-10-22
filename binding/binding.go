@@ -315,3 +315,14 @@ func render(tpl string, data any, funcs template.FuncMap) (string, error) {
 	}
 	return buf.String(), nil
 }
+
+// UsedFields lists, for each action of the model, the step fields the
+// binding reads: its templates' and its parameters' defaults. What a log
+// needs to keep to be checked (qtrace.Filter.Keep).
+func (b *Binding) UsedFields(m *Model) map[string][]string {
+	out := map[string][]string{}
+	for name, ps := range m.Actions {
+		out[name] = b.Actions[name].Fields(ps...)
+	}
+	return out
+}

@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -300,6 +301,38 @@ func (t *Trace) Starts(tick time.Duration) []float64 {
 			out = append(out, 0)
 		}
 		out[i] += 1 / tick.Seconds()
+	}
+	return out
+}
+
+// Lifetimes are the durations of the pods that ended, owned by objects of
+// kind gvk ("": any), in the order the trace lists them.
+func (t *Trace) Lifetimes(gvk string) []time.Duration {
+	var out []time.Duration
+	for _, l := range t.Lifecycles {
+		if (gvk == "" || l.GVK == gvk) && l.End != 0 {
+			out = append(out, l.Duration())
+		}
+	}
+	return out
+}
+
+// Quantiles are n durations spread over ds's distribution, ascending: the
+// options of a simulated delay drawn from a measured one (the first, the
+// shortest, is the nominal choice). Nil if ds is empty.
+func Quantiles(ds []time.Duration, n int) []time.Duration {
+	if len(ds) == 0 || n < 1 {
+		return nil
+	}
+	s := slices.Clone(ds)
+	slices.Sort(s)
+	out := make([]time.Duration, n)
+	for i := range out {
+		q := 0.0
+		if n > 1 {
+			q = float64(i) / float64(n-1)
+		}
+		out[i] = s[int(q*float64(len(s)-1)+0.5)]
 	}
 	return out
 }

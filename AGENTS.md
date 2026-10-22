@@ -39,6 +39,8 @@ qgosim/       separate module: qenv and whole programs in gosim (the fork: branc
 qweave/       separate module: weaves Orchestrion aspects with types into a go -overlay (cmd/qweave); also gosim's
 qload/ qmeta/ load simulation (open/closed-loop clients, servers, triggers); CTMC, recovery property, alert rules
 qcover/ qrun/ code coverage by model step (woven by qweave -cover); a run's state found from its context or goroutine
+qlint/        simulation and weaving lints (quintgo lint -sim, -weave); per file for qanalysis
+qanalysis/    separate module (x/tools): analyzers (cmd/quintvet, golangci plugin), static action map (cmd/actionmap)
 qmut/         mutant schemata (woven by qweave -mutate): one build, a mutant per run; qtest's System.Mutate explores each
 sktrace/      SimKube traces (msgpack v3, own decoder): production workloads as load shapes and replayed writes
 qsweep/       covering arrays (pairwise and t-way rows with constraints, sequence covering); qtest.SweepExplore runs them
@@ -83,6 +85,8 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   && cd examples/gosim && go test -short ./...` (the first run translates
   the standard library, about a minute). Check the simulated side with
   `go vet -tags sim`.
+- qanalysis (its own module): `cd qanalysis && go test ./...` (the checkout
+  comparison weaves and explores checkout: skipped with -short, needs quint).
 - fleetrollout (its own module): `cd examples/fleetrollout && go test ./...`;
   `./kwok-demo.sh` needs kwokctl and kwok on PATH (`go install
   sigs.k8s.io/kwok/cmd/{kwokctl,kwok}@v0.7.0`), no Docker (binary runtime).
@@ -121,6 +125,11 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   paths and set `cmd.Dir` to the spec's directory.
 - Timing-sensitive or slow tests (shrinking against the model) skip under
   `testing.Short()`.
+- A skill's mechanics (how to weave, gosim, sweeps, coverage) go in
+  `skills/<name>/references/*.md`, linked from its SKILL.md with when to
+  read each; verdicts and expectations are in
+  `quint-verification-workflow/references/verdicts.md`. `skills_test.go`
+  checks every link resolves.
 - Skills live in `skills/<name>/SKILL.md`, never directly in `.agents/` or
   `.claude/`, which only hold symlinks to them. Add a symlink in both when
   adding a skill (`skills_test.go` checks it). A skill's front-matter
@@ -153,6 +162,17 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   model's module: bindings and runs read state through a def
   (`stage(n)`). connect's `StatePath: [s, system]` reaches the nodes (the
   `m::choreo::` qualifiers are stripped).
+- quintaction's scope check uses `LookupParent(name, body.Lbrace)`:
+  go/types declares a function body's top-level locals in the same scope
+  as its parameters, so a lookup without the position finds locals.
+  Its analysistest fixtures are GOPATH-style with stub qenv and qobs
+  packages (`qanalysis/testdata/src/github.com/...`): keep the stubs to
+  what the fixtures use. An expectation on a `//quint:action` line goes
+  in a block comment before the directive.
+- actionmap stops at functions outside the loaded packages: a library
+  that calls back (qenv's commit hooks) is one call-graph node for every
+  closure handed to it, and going through it made cancel "reach"
+  PlaceOrder.
 - Long replays are split into `.then` segments of 20 (`binding.segmentSteps`):
   Quint's Rust evaluator rejects chains nested much past 50. A disabled
   last step is reported by quint as QNT511 at the run's own line, and a
@@ -308,6 +328,11 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   tasks start on the process's machine (a spawn queue its main goroutine
   serves), and a machine crash is requested before the crash hooks run,
   which may restart it.
+- Without a Platform, the native runtime's `Close` waits for every
+  task's goroutine to exit (a sleep ends at Close), so a simulation in a
+  `testing/synctest` bubble leaves none behind (the bubble panics if one
+  remains). A task blocked outside a seam (a real lock, a channel) would
+  hang Close: keep tasks' waits in qenv's seams.
 - The gosim fork is the `gosim-fork` branch of this repository: upstream
   history plus our commits, its `FORK.md` saying what they change.
   `qgosim/fetch-gosim.sh` pins the commit qgosim needs (`REF`): change the

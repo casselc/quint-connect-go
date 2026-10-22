@@ -2,7 +2,8 @@
 // from where its steps are recorded (qanalysis/actionmap) and, with
 // -coverage, compares it with the code its steps ran: a qcover.Summary as
 // JSON (examples/checkout's TestCodeCoverage writes one under
-// $QUINTGO_KEEP when woven with qweave -cover).
+// $QUINTGO_KEEP when woven with qweave -cover). It lists dead functions
+// first: the ones no root (main, init, exported API) reaches.
 //
 //	actionmap [-C dir] [-coverage summary.json] packages...
 package main
@@ -29,6 +30,9 @@ func main() {
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
+	}
+	for _, f := range m.Dead {
+		fmt.Printf("dead: %s (no root reaches it)\n", f)
 	}
 	if *cov == "" {
 		for _, a := range m.Actions() {

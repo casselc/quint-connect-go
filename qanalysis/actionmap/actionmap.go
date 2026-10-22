@@ -41,6 +41,7 @@ import (
 
 	"github.com/casselc/quint-connect-go/binding"
 	"github.com/casselc/quint-connect-go/qcover"
+	"github.com/casselc/quint-connect-go/qenv"
 )
 
 const recordFunc = "github.com/casselc/quint-connect-go/qobs.Record"
@@ -49,6 +50,13 @@ const recordFunc = "github.com/casselc/quint-connect-go/qobs.Record"
 type Map struct {
 	Sites map[string][]string        // action -> site functions
 	Reach map[string]map[string]bool // action -> functions reachable from its sites (sites included)
+	// Callers are each own function's own callers (closures under their
+	// declaration, as Name names them).
+	Callers map[string]map[string]bool
+	// Dead are own functions no root reaches: main, every init, and the
+	// exported functions and methods of non-main packages (what deadcode
+	// reports, by the same names as qcover's blocks).
+	Dead []string
 }
 
 // Actions are the map's actions, sorted.
@@ -84,7 +92,23 @@ func Static(dir string, patterns ...string) (*Map, error) {
 	cg := vta.CallGraph(all, cha.CallGraph(prog))
 	cg.DeleteSyntheticNodes()
 
-	m := &Map{Sites: map[string][]string{}, Reach: map[string]map[string]bool{}}
+	m := &Map{Sites: map[string][]string{}, Reach: map[string]map[string]bool{}, Callers: map[string]map[string]bool{}}
+	for f := range all {
+		if !isOwn(f, own) {
+			continue
+		}
+		if n := cg.Nodes[f]; n != nil {
+			for _, e := range n.In {
+				if c := e.Caller.Func; c != nil && isOwn(c, own) && Name(c) != Name(f) {
+					if m.Callers[Name(f)] == nil {
+						m.Callers[Name(f)] = map[string]bool{}
+					}
+					m.Callers[Name(f)][Name(c)] = true
+				}
+			}
+		}
+	}
+	m.Dead = dead(all, cg, own, ssaPkgs)
 	for _, p := range pkgs {
 		for _, f := range p.Syntax {
 			for _, decl := range f.Decls {
@@ -177,6 +201,89 @@ func reach(cg *callgraph.Graph, fn *ssa.Function, own map[*types.Package]bool, i
 		}
 	}
 	visit(fn)
+}
+
+// dead are the own functions no root reaches (Map.Dead). Reaching goes
+// through other packages' functions here: a callback handed to a library
+// is live.
+func dead(all map[*ssa.Function]bool, cg *callgraph.Graph, own map[*types.Package]bool, pkgs []*ssa.Package) []string {
+	live := map[*ssa.Function]bool{}
+	var visit func(f *ssa.Function)
+	visit = func(f *ssa.Function) {
+		if f == nil || live[f] {
+			return
+		}
+		live[f] = true
+		for _, anon := range f.AnonFuncs {
+			visit(anon)
+		}
+		if n := cg.Nodes[f]; n != nil {
+			for _, e := range n.Out {
+				visit(e.Callee.Func)
+			}
+		}
+	}
+	for f := range all {
+		if f.Pkg == nil || !own[f.Pkg.Pkg] || f.Parent() != nil {
+			continue
+		}
+		name := f.Name()
+		root := name == "init" || strings.HasPrefix(name, "init#") || (f.Pkg.Pkg.Name() == "main" && name == "main")
+		// a library package's API is used from elsewhere (its tests too)
+		if f.Pkg.Pkg.Name() != "main" && f.Object() != nil && f.Object().Exported() {
+			root = true
+		}
+		if root {
+			visit(f)
+		}
+	}
+	set := map[string]bool{}
+	for f := range all {
+		if isOwn(f, own) && f.Parent() == nil && !live[f] && f.Synthetic == "" {
+			set[Name(f)] = true
+		}
+	}
+	return sortedKeys(set)
+}
+
+// An ErrorPath is code the exploration never tried: blocks no run ran in
+// the callers of a fault point the runs reached but never faulted, which
+// is where a fault point's error is handled.
+type ErrorPath struct {
+	Kind   string // the fault point's kind
+	Site   string // the fault point's function, as declared
+	Caller string
+	Blocks []qcover.Block
+}
+
+// UntriedErrorPaths lists, for each fault point the runs reached and never
+// faulted (cov.Unfaulted), the blocks no run ran in its callers: the
+// error handling a fault there would run. Raise the kind's rate, or script
+// it, before reading them as dead.
+func UntriedErrorPaths(m *Map, s *qcover.Summary, cov *qenv.Coverage) []ErrorPath {
+	var out []ErrorPath
+	for _, p := range cov.Unfaulted() {
+		for _, site := range p.Sites {
+			for fn, callers := range m.Callers {
+				if !strings.HasSuffix(fn, "."+site) && !strings.HasSuffix(fn, ")."+site) {
+					continue
+				}
+				for _, caller := range sortedKeys(callers) {
+					var blocks []qcover.Block
+					for _, b := range s.Blocks {
+						if b.Func == caller && s.Hit[b.ID] == 0 {
+							blocks = append(blocks, b)
+						}
+					}
+					if len(blocks) > 0 {
+						out = append(out, ErrorPath{Kind: p.Kind, Site: site, Caller: caller, Blocks: blocks})
+					}
+				}
+			}
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Kind+out[i].Caller < out[j].Kind+out[j].Caller })
+	return out
 }
 
 func isOwn(f *ssa.Function, own map[*types.Package]bool) bool {

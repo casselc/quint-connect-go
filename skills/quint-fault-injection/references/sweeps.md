@@ -1,0 +1,35 @@
+# Sweep the configuration space: covering arrays (`qsweep`, `qtest.SweepExplore`)
+
+When the product of configurations grows (isolation level × sizes ×
+which fault kinds happen), sweep pairwise rows instead of the product:
+
+```go
+space := []qsweep.Factor{{Name: "iso", Values: []string{"ser", "si", "rc"}}, qsweep.Ints("stock", 1, 2, 3).Constant("STOCK"),
+	qsweep.Bool("crash"), qsweep.Bool("rpc.provider")}
+qtest.SweepExplore(t, binding, qtest.Sweep{Factors: space, Explore: qtest.ExploreConfig{Seeds: 20},
+	Expect: func(r qsweep.Row) []qtest.Expectation { ... }}, // nil: Conforms
+	func(r qsweep.Row, c qenv.Chooser) { app.Run(qenv.Without(c, offKinds(r)...), cfgOf(r)) })
+```
+
+- Every pair of factor values is in some row (`Strength: 3` for
+  triples), in about as many rows as the two largest factors' product.
+  `Allow` rules rows out, and pairs only those rows have are not
+  required.
+- Fault kinds as `Bool` factors, turned off with `qenv.Without`, give
+  swarm testing with a guarantee: every pair of kinds runs together, and
+  each without the others masking it.
+- A row's sizes need the model's matching constants: name the constant
+  on the factor (`.Constant("STOCK")`) and each row is checked with its
+  value. When every run fails at step 1, the report names the binding's
+  constants: the usual cause.
+- Expect per row: say where a mutant's bug is real. Checkout's
+  `NoIdempotencyKey` sweep splits it into its two bugs: one in every row,
+  and one only where the provider's responses are lost: rows without
+  provider faults claim `qtest.Violates("settledCorrectly")` and
+  `qtest.None(qtest.Violates("chargedAtMostOnce"))`.
+- Orders of faults: a `qenv.Script` per ordered pair (`{a, b}`) imposes
+  both orders of every pair, and `Remaining` names an order the system
+  cannot produce. `qsweep.Sequences` (every order of t events in few
+  sequences) fits only events that recur through a run, such as crashes
+  and partitions: a Script waits for each kind in turn, and a phase that
+  has passed does not come back.

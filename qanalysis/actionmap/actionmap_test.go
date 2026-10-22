@@ -2,10 +2,12 @@ package actionmap_test
 
 import (
 	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/casselc/quint-connect-go/qanalysis/actionmap"
 	"github.com/casselc/quint-connect-go/qcover"
+	"github.com/casselc/quint-connect-go/qenv"
 )
 
 const fix = "example.com/actionmapfixture/shop"
@@ -65,5 +67,32 @@ func TestCompare(t *testing.T) {
 	}
 	if !reflect.DeepEqual(gaps, want) {
 		t.Errorf("gaps\n%#v\nwant\n%#v", gaps, want)
+	}
+}
+
+// Dead code and untried error paths. unused is called by nothing (Helper
+// is exported, a root of a library). The runs reached the charge fault
+// point and never faulted it, so the refund branch of its caller, which no
+// run ran, is an error path the exploration never tried.
+func TestDeadAndUntriedErrorPaths(t *testing.T) {
+	m, err := actionmap.Static("../testdata/actionmap", "./...")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(m.Dead, fix+".unused") || slices.Contains(m.Dead, fix+".Helper") {
+		t.Errorf("dead %v; want unused and not Helper", m.Dead)
+	}
+	if !m.Callers[fix+".(Shop).charge"][fix+".(Shop).Place"] {
+		t.Errorf("callers of charge: %v", m.Callers[fix+".(Shop).charge"])
+	}
+	qenv.DeclareFault("pay", "charge")
+	cov := qenv.CoverageOf([][]qenv.Choice{{{Kind: "fault.pay", N: 2, Value: 0}}})
+	s := &qcover.Summary{Runs: 1, Hit: map[int]int{0: 1}, Blocks: []qcover.Block{
+		{Func: fix + ".(Shop).Place", Line: 22, ID: 0},
+		{Func: fix + ".(Shop).Place", Line: 25, ID: 1},
+	}}
+	paths := actionmap.UntriedErrorPaths(m, s, cov)
+	if len(paths) != 1 || paths[0].Kind != "pay" || paths[0].Caller != fix+".(Shop).Place" || len(paths[0].Blocks) != 1 || paths[0].Blocks[0].ID != 1 {
+		t.Fatalf("untried error paths %+v", paths)
 	}
 }

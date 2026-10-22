@@ -154,3 +154,17 @@ the rest, each after the U items it depends on.
   P7 (the skills restructure) is next.
 - Choreo (DESIGN §30): examples/twophase, a Choreo model with named
   transitions; no toolkit change needed.
+- C1, C5: done (DESIGN §31): qlint, qanalysis (quintvet, golangci plugin,
+  quintaction), actionmap comparing static reach with A1's coverage.
+- U8 (P7): done (DESIGN §32): `quint-start`, references on demand, one
+  verdicts reference.
+- B3, B4: done (DESIGN §33): `qmeta.Watch`; `qenv.Profile` (pprof,
+  hand-encoded, no dependency).
+- C2: done (DESIGN §34): `NewNative(c, nil)` in a synctest bubble, as is.
+- C3: done (DESIGN §34): `qcover.ReadGoCover`, `Compare`, `quintgo cover`.
+- C4: done (DESIGN §35): `qobs.SlogHandler`.
+- D4: done (DESIGN §36): `qtrace.Filter`, `quintgo steps -out`.
+- D5, D3: done (DESIGN §37): `sktrace.Lint`; `Lifetimes`, `Quantiles`,
+  kubesim `PodTimes`. KWOK Stages from a trace: deferred (no kwok here).
+- A1's classifications: done (DESIGN §37): `actionmap` `Dead`,
+  `UntriedErrorPaths`.

@@ -32,6 +32,9 @@ type Sim struct {
 	MaxSteps int
 	// Log, if set, receives one line per fault and crash.
 	Log func(string)
+	// Profile, if set, accumulates the virtual time tasks spend waiting at
+	// each seam, by stack (Profile.WriteTo: pprof's format).
+	Profile *Profile
 	// NemesisEvery, if set, makes a nemesis (a crash) a choice once per
 	// period of virtual time, at the first step after each period ends,
 	// rather than at every scheduling step. A per-step rate means more
@@ -316,6 +319,10 @@ func (t *task) wait(ready func() bool, deadline time.Time) {
 		t.waitNative(ready, deadline)
 		return
 	}
+	var waited func()
+	if s.Profile != nil {
+		waited = s.Profile.waited(t.name, s.now, func() time.Time { return s.now })
+	}
 	t.waiting, t.ready, t.deadline, t.notified = true, ready, deadline, false
 	if ready != nil {
 		s.pred = append(s.pred, t)
@@ -323,7 +330,10 @@ func (t *task) wait(ready func() bool, deadline time.Time) {
 	if !deadline.IsZero() {
 		heap.Push(&s.timers, timer{at: deadline, id: t.id, t: t, gen: t.gen})
 	}
-	t.park()
+	t.park() // a killed task does not return: its wait is not counted
+	if waited != nil {
+		waited()
+	}
 	t.ready, t.deadline = nil, time.Time{}
 }
 

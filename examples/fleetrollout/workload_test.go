@@ -2,6 +2,7 @@ package fleetrollout_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/casselc/quint-connect-go/examples/fleetrollout"
 	"github.com/casselc/quint-connect-go/examples/fleetrollout/rollout"
@@ -42,5 +43,25 @@ func TestRolloutUnderProductionWorkload(t *testing.T) {
 		t.Errorf("%d scale steps over %d runs: the workload did not reach the fleet", scales, len(x.Runs))
 	}
 	explore(t, fleetrollout.Config{Workload: tr, Mutation: rollout.IgnoreObservedGeneration, NoCrashes: true}, 20).
+		Expect(t, qtest.Violates("withinBudget"))
+}
+
+// Pods that take as long as a production trace's: the CronJob trace's
+// lifetimes (30 s and 45 s), 60 times faster, as the options of a pod's
+// readiness. Rollouts take longer and status lags further behind; the
+// faithful controller still conforms, and trusting a stale status is
+// still caught.
+func TestRolloutWithMeasuredPodTimes(t *testing.T) {
+	qtest.RequireQuint(t)
+	tr, err := sktrace.ReadFile("../../sktrace/testdata/cronjob.sktrace")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var pods []time.Duration
+	for _, d := range sktrace.Quantiles(tr.Lifetimes(""), 3) {
+		pods = append(pods, d/60)
+	}
+	explore(t, fleetrollout.Config{PodTimes: pods}, 20).Expect(t, qtest.Conforms())
+	explore(t, fleetrollout.Config{PodTimes: pods, Mutation: rollout.IgnoreObservedGeneration, NoCrashes: true}, 20).
 		Expect(t, qtest.Violates("withinBudget"))
 }

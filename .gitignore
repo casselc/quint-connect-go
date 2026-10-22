@@ -4,3 +4,4 @@
 !**/testdata/**/*.itf.json
 .hegel/
 /quintgo
+.claude/worktrees/

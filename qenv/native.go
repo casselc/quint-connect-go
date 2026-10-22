@@ -59,6 +59,10 @@ type native struct {
 	// ccond is the waits' condition on a cooperative runtime (nopLocker):
 	// Broadcast wakes them all in one step of the runtime
 	ccond *sync.Cond
+	// running are the tasks' goroutines (without a Platform): Close waits
+	// for them, so none outlives the simulation (a testing/synctest bubble
+	// fails if one does)
+	running sync.WaitGroup
 }
 
 // nopLocker is the Locker of ccond: a cooperative runtime runs one
@@ -148,7 +152,13 @@ func (t *task) frozen() {
 }
 
 func (s *Sim) spawnNative(t *task, fn func(ctx context.Context)) {
+	if !s.nat.coop {
+		s.nat.running.Add(1)
+	}
 	body := func() {
+		if !s.nat.coop {
+			defer s.nat.running.Done()
+		}
 		id := goid()
 		own(id, s, t)
 		live.Add(1)
@@ -202,8 +212,19 @@ func (t *task) yieldNative() {
 }
 
 func (t *task) sleepNative(d time.Duration) {
-	t.sim.nat.release()
-	time.Sleep(d)
+	n := t.sim.nat
+	n.release()
+	if n.coop {
+		time.Sleep(d)
+	} else {
+		// a sleep ends at Close too, which waits for every task
+		tm := time.NewTimer(d)
+		select {
+		case <-tm.C:
+		case <-n.closed:
+			tm.Stop()
+		}
+	}
 	t.resume()
 }
 
@@ -332,4 +353,7 @@ func (s *Sim) closeNative() {
 	}
 	close(s.nat.closed)
 	s.nat.release()
+	if !s.nat.coop {
+		s.nat.running.Wait()
+	}
 }

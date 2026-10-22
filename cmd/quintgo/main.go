@@ -29,6 +29,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/casselc/quint-connect-go/binding"
 	"github.com/casselc/quint-connect-go/convert"
@@ -61,6 +62,8 @@ func main() {
 		err = runConvert(os.Args[2:])
 	case "skills":
 		err = runSkills(os.Args[2:])
+	case "cover":
+		err = runCover(os.Args[2:])
 	default:
 		usage()
 	}
@@ -76,11 +79,14 @@ func usage() {
   quintgo scaffold -spec model.qnt -module M
   quintgo lint     -binding b.yaml [-src DIR] [-sim DIR]
   quintgo lint     -sim DIR | -weave DIR
-  quintgo steps    FILE.jsonl...
+  quintgo steps    [-actors a,b] [-actions a,b] [-since T] [-until T] [-pseudonymize f,g] [-binding b.yaml]
+                   [-out steps.jsonl] FILE...   list, or select and sanitize (QUINTGO_SALT) into a step log
   quintgo validate [-binding b.yaml] [-dir OUT] [-backend rust|typescript] [-format auto|otlp|steps|itf]
                    [-spec M.qnt -module M -instance I] [-novars]
                    [-convert rules.yaml] [-invariants a,b] [-noitf] FILE...
   quintgo itf      -binding b.yaml -out DIR FILE...      recorded steps -> model-level ITF per actor
+  quintgo cover    -covdir D1,D2 [-sim summary.json]     a real environment's coverage (binaries built with -cover),
+                   against a simulation's (qcover.Summary JSON): what ran only for real, only simulated
   quintgo convert  -rules r.yaml [-out steps.jsonl] FILE...   an app's OTLP/JSON spans -> step log (see package convert)
 
   quintgo skills   [list | install [-target agents,claude,github,cursor|all] [-user] [-dir DIR] [-force]]
@@ -234,6 +240,14 @@ func readSteps(files []string, rules *convert.Rules) ([]qtrace.Step, error) {
 func steps(args []string) error {
 	fset := flag.NewFlagSet("steps", flag.ExitOnError)
 	conv := fset.String("convert", "", "convert OTLP/JSON spans with this rule file")
+	out := fset.String("out", "", "write the selected, sanitized steps to this step log instead of listing them")
+	actors := fset.String("actors", "", "keep these actors (comma-separated path.Match patterns)")
+	actions := fset.String("actions", "", "keep these actions (comma-separated patterns)")
+	since := fset.String("since", "", "keep steps recorded at or after this RFC 3339 time")
+	until := fset.String("until", "", "keep steps recorded before this RFC 3339 time")
+	pseud := fset.String("pseudonymize", "", "fields whose values become salted pseudonyms (arguments, obs.<name>, actor)")
+	bpath := fset.String("binding", "", "keep only the fields this binding reads (and drop error texts)")
+	quint := fset.String("quint", "quint", "quint binary (with -binding)")
 	fset.Parse(args)
 	rules, err := loadRules(*conv)
 	if err != nil {
@@ -242,6 +256,45 @@ func steps(args []string) error {
 	all, err := readSteps(fset.Args(), rules)
 	if err != nil {
 		return err
+	}
+	f := qtrace.Filter{Actors: qtrace.Fields(*actors), Actions: qtrace.Fields(*actions),
+		Pseudonymize: qtrace.Fields(*pseud), Salt: os.Getenv("QUINTGO_SALT")}
+	for _, t := range []struct {
+		s  string
+		to *time.Time
+	}{{*since, &f.Since}, {*until, &f.Until}} {
+		if t.s != "" {
+			if *t.to, err = time.Parse(time.RFC3339, t.s); err != nil {
+				return fmt.Errorf("steps: %w", err)
+			}
+		}
+	}
+	if len(f.Pseudonymize) > 0 && f.Salt == "" {
+		fmt.Fprintln(os.Stderr, "quintgo: QUINTGO_SALT is not set: pseudonyms can be reversed by guessing the values")
+	}
+	if *bpath != "" {
+		b, err := binding.Load(*bpath)
+		if err != nil {
+			return err
+		}
+		m, err := binding.LoadModel(*quint, b.SpecPath(), b.Module)
+		if err != nil {
+			return err
+		}
+		f.Keep = b.UsedFields(m)
+	}
+	all = f.Apply(all)
+	if *out != "" {
+		w, err := os.Create(*out)
+		if err != nil {
+			return err
+		}
+		if err := qtrace.WriteJSONL(w, all); err != nil {
+			w.Close()
+			return err
+		}
+		fmt.Printf("%d steps written to %s\n", len(all), *out)
+		return w.Close()
 	}
 	traces, issues := qtrace.Reconstruct(all)
 	for _, i := range issues {

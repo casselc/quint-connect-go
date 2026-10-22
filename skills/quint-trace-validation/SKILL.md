@@ -24,6 +24,7 @@ then works through the following stages:
 |---|---|---|
 | Explicit | `qobs.Record(ctx, "deposit", err, "account", a, "amount", n, "obs.balance", bal)` | anywhere; ~20 ns when no recorder is installed |
 | Annotation | `//quint:action action:deposit account:acct amount:n obs.balance:b.bal` on a function, built woven: `qweave go build` (this repository's weaver, an overlay), `go run github.com/DataDog/orchestrion go build`, or in gosim (a `gosim.tool.go` naming qobs) | function-shaped steps, no code change in plain builds |
+| Structured logs | `slog.New(qobs.NewSlogHandler(next))`, then `slog.InfoContext(ctx, "deposited", "quint.action", "deposit", "account", a, ...)`: records with `quint.action` are steps, every record still reaches `next` | a service that already logs what it did |
 | Existing OTel spans | a `convert` rule file mapping span names and attributes to actions | code you cannot change, or telemetry you already have |
 
 Keys in `Record` and annotations:
@@ -84,6 +85,17 @@ Then lint: `quintgo lint -binding bank.binding.yaml -src ./pkg`. It checks
 the binding against `quint typecheck` and the annotations against the
 binding.
 
+In the editor and in CI, the same checks run as analyzers (qanalysis):
+- `quintvet ./...` (built from `qanalysis/cmd/quintvet`, or
+  `go vet -vettool=$(which quintvet)`) runs the simulation, weaving and
+  annotation checks; `-quintaction.binding app.binding.yaml` adds the
+  binding's. In golangci-lint, enable the `quintgo` module plugin.
+- An annotation's expressions run on return: use parameters, the
+  receiver and named results. quintaction names a local it sees.
+- `actionmap -coverage summary.json ./...` (the summary of a woven
+  coverage run) lists per action what its code can reach but no run ran,
+  and what its steps ran that it cannot reach (callers' and setup code).
+
 ## 3. Check
 
 - In a test:
@@ -105,6 +117,21 @@ binding.
   `-convert rules.yaml` for plain app spans. Exit status: 0 OK,
   1 violation, 2 tool error.
 - Converted spans: `quintgo convert -rules bank.convert.yaml spans.jsonl > steps.jsonl`.
+
+### Production logs: select and sanitize first
+
+```sh
+QUINTGO_SALT=$SECRET quintgo steps -actors 'checkout-*' -since 2026-10-01T00:00:00Z \
+  -pseudonymize account,customer -binding app.binding.yaml -out clean.jsonl spans.jsonl
+quintgo validate -noitf -binding app.binding.yaml clean.jsonl
+```
+
+- `-binding` keeps only the fields the binding reads, and drops error
+  texts: what a check needs, nothing more.
+- Pseudonyms keep equality, so interned ids (`intern:`) still work. A
+  model constant naming concrete ids (`ACCOUNTS: Set("alice", ...)`) must
+  name the pseudonyms instead (`qtrace.Filter.Pseudonym`), or intern the
+  field.
 
 ## 4. Read the report
 

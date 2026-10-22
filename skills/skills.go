@@ -15,10 +15,11 @@ import (
 	"strings"
 )
 
-//go:embed */SKILL.md
+//go:embed */SKILL.md */references/*.md
 var files embed.FS
 
-// FS holds the skills: <name>/SKILL.md.
+// FS holds the skills: <name>/SKILL.md, and the references a skill loads
+// when a task needs them, <name>/references/*.md.
 func FS() fs.FS { return files }
 
 // Skill is one embedded skill.
@@ -104,7 +105,7 @@ func TargetDirs(root string, names []string) ([]string, error) {
 	return out, nil
 }
 
-// Install writes every skill to dir/<name>/SKILL.md. Existing files are
+// Install writes every skill to dir/<name>/SKILL.md, with its references. Existing files are
 // left alone unless force is set. It returns the paths written.
 func Install(dir string, force bool) ([]string, error) {
 	var written []string

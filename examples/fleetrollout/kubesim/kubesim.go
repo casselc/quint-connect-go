@@ -55,6 +55,11 @@ type Cluster struct {
 	Client client.Client
 	raw    client.WithWatch
 	sim    *qenv.Sim
+	// PodTimes, if set, are the options of the time a replaced pod takes
+	// to become ready ("sched.kube.pod"; the first, nominal, the shortest):
+	// a production trace's (sktrace.Quantiles of its Lifetimes, scaled).
+	// Unset: 100 to 300 ms.
+	PodTimes []time.Duration
 }
 
 var scheme = func() *runtime.Scheme {
@@ -238,7 +243,11 @@ func (c *Cluster) deploymentController(ctx context.Context) {
 			if err := c.raw.Status().Update(ctx, d); err != nil {
 				break
 			}
-			qenv.Sleep(ctx, time.Duration(1+c.sim.Choose("sched.kube.pod", 3))*100*time.Millisecond)
+			if len(c.PodTimes) > 0 {
+				qenv.Sleep(ctx, c.PodTimes[c.sim.Choose("sched.kube.pod", len(c.PodTimes))])
+			} else {
+				qenv.Sleep(ctx, time.Duration(1+c.sim.Choose("sched.kube.pod", 3))*100*time.Millisecond)
+			}
 		}
 	}
 }

@@ -29,6 +29,9 @@ type Config struct {
 	// times faster (default 60: a trace's minute in a second).
 	Workload *sktrace.Trace
 	Speed    float64
+	// PodTimes are the members' pod readiness options (kubesim.Cluster):
+	// e.g. a trace's lifetimes, Speed times faster.
+	PodTimes []time.Duration
 }
 
 // Target is the image rolled out; members start at web:v1.
@@ -45,7 +48,9 @@ func Run(c qenv.Chooser, cfg Config) (*kubesim.Fleet, error) {
 	defer s.Close()
 	f := &kubesim.Fleet{}
 	for i := 1; i <= cfg.Members; i++ {
-		f.Members = append(f.Members, kubesim.NewCluster(s, fmt.Sprintf("m%d", i), "web:v1"))
+		m := kubesim.NewCluster(s, fmt.Sprintf("m%d", i), "web:v1")
+		m.PodTimes = cfg.PodTimes
+		f.Members = append(f.Members, m)
 	}
 	if cfg.Workload != nil {
 		if cfg.Speed == 0 {

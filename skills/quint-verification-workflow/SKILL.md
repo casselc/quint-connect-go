@@ -123,6 +123,9 @@ the failing step.
 | tool error (exit 2) | the binding or the model doesn't fit the steps (a missing field, a type error in a template) | the message names the step, the template and the signature |
 | conforms, but the environment's checker fails | the model assumes more of the environment than it gives | the recording misses steps that matter |
 
+Every verdict, its expectation and its claims over many runs are in
+[`references/verdicts.md`](references/verdicts.md).
+
 Don't loosen a check to get green. If the model is wrong, change it
 deliberately and say why in the commit and the README.
 

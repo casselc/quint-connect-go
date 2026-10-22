@@ -2239,7 +2239,7 @@ and 134 (`TestTwoOrbits`). So:
   the waiting part is most of the orbit.
 
 **S6, duplicates.** The simulation lint moved from qenv to
-`internal/lint`: gosim translates everything a simulated package imports,
+`internal/lint` (then `qlint`, §31): gosim translates everything a simulated package imports,
 and qenv pulled go/ast, go/parser and go/token into every translation.
 `Explored.Faults` reuses `Recorder.Faults`. Kept: qload's step counter,
 which samples per tick inside the simulation (merging it with
@@ -2308,3 +2308,182 @@ What the example taught:
 - Of three mutants, the model's traces (connect) catch one (committing on
   the first vote); the two that need a late decision or a crash show
   only in explored runs: the same split as bank's, now on a protocol.
+
+## 31. Analyzers and the static action map (C1, C5)
+
+**Analyzers (C1).** `quintgo lint -sim` and `-weave` were directory
+walks; the analyzers wrap the same per-file checks (`qlint.SimFile`,
+`WovenFile`), so the CLI and quintvet agree finding for finding, and
+`quintgo lint` stays std-only. x/tools went into a new module,
+qanalysis, not qweave: qweave is a build tool with no dependency on the
+core, the analyzers need the core's binding and lint packages, and a
+golangci-lint plugin is a dependency of its own that a weaver should not
+carry. quintaction adds what the CLI could not check without types: an
+annotation's expressions may use only parameters, the receiver and named
+results, since the advice records on return, at the top of the body,
+where locals are out of scope. With `-binding` it runs
+`binding.LintAnnotations` per annotation (loading the model once per
+process: it runs quint). Run on edgepublish with its binding it reports
+the same as the CLI: `probe`'s `woven` action is not in the model (the
+weaving probe; left as is).
+
+gopls cannot load third-party analyzers; editors get them through
+golangci-lint (the module plugin `quintgo`) or `go vet -vettool`.
+
+**Static action map (C5).** A1 says which code each step ran; the map
+says which code each action can run. Sites are `//quint:action`
+functions and functions calling `qobs.Record` with a constant action
+(checkout records in `OnCommit` closures, so a site's closures count as
+the site). Reachability is a VTA call graph from the sites, stopping at
+functions outside the loaded packages. Without the stop, every closure
+handed to qenv's commit hooks was reachable from every other, and cancel
+reached PlaceOrder. Names follow qcover (`pkg.(T).M`, closures under their
+declaration), so the two maps compare function by function.
+
+On checkout (30 crashy seeds at SI):
+- `Deploy` is run by the first step of every task: setup, attributed to
+  the task's next step (A1's rule), and reachable from no site;
+- markPaid's steps run `RunPayments` and `inbox.Receive`, which `pay`
+  does not reach: code that leads to a step lives in the site's callers,
+  which downward reachability cannot see;
+- `settle`'s site is the run driver (`RunOn`), so it reaches everything,
+  and all of it runs under other actions: a driver-recorded step says
+  nothing about code;
+- nothing reachable from a shop site went unrun.
+
+Deviation: "blocks" reachable was planned; the map is by function. qcover
+blocks carry their function, and an SSA block is not a qcover block (the
+weaver splits at statements, SSA at control flow), so blocks would need a
+position join for little gain over A1's never-run list.
+
+## 32. Skills restructured (U8, P7)
+
+Eight skills had grown to 1,500 lines, the fault-injection one to 411:
+an agent loading it for a first exploration read weaving, gosim, sweeps,
+fuzzing, coverage and mutants too. Now:
+- `quint-start` is the entry: a question-to-tool table naming the skill
+  to load next (and the same table heads the README);
+- quint-fault-injection keeps the workflow (seams, recording, deploy,
+  explore and shrink, the real environment) in 202 lines, and its
+  mechanics are references loaded when the task needs them
+  (`references/fuzzing.md`, `fault-points.md`, `coverage-and-mutants.md`,
+  `sweeps.md`, `weaving.md`, `gosim.md`, `workloads.md`);
+- verdicts, expectations and claims over runs are one reference
+  (`quint-verification-workflow/references/verdicts.md`) the other skills
+  link to, instead of each restating them.
+
+`quintgo skills install` installs the references with the skills, and a
+test checks every relative link between them resolves among the
+installed files.
+
+## 33. A flight recorder on alert, and a virtual-time profile (B3, B4)
+
+**B3.** The alert rule (§16, `Region.Rules`) says a system is in a state
+it is unlikely to leave in time; it cannot say what the code was doing.
+Go's flight recorder (`runtime/trace.FlightRecorder`, Go 1.25) keeps the
+last seconds of execution trace in memory. `qmeta.Watch` samples qrole's
+(u, v) on the real clock, and once the state has been in the region for
+`For` samples it writes the recorder's window out (at most once per
+`Gap`): the storm's first seconds, with every goroutine's blocking and
+scheduling. It is a production tool; the lint does not flag its ticker
+because its file does not import qenv. One flight recorder may run per
+process.
+
+**B4.** A CPU profile of a simulation shows the scheduler: virtual time
+costs nothing. `qenv.Profile` records, at every wait of a task (Sleep,
+Wait, a Signal: calls, locks, queues all wait through them), the stack
+and the virtual time until the task ran again, and writes pprof's format.
+The roadmap put it in a module of its own for pprof's protobuf; the five
+message types it needs are hand-encoded instead (`pbuf`), so the core
+takes no dependency. Two details: a return address is looked up as
+itself (`CallersFrames` steps back to the call, inlined frames included;
+handing it the call's address attributed an inlined call to its
+neighbour), and a wait a crash cuts off is not counted (the killed task
+never returns from park). The native runtime does not record it.
+
+## 34. A real environment's coverage, and synctest (C3, C2)
+
+**C3.** Go's `-cover` counters are global to a process and written to
+`GOCOVERDIR` at exit: a real environment's binaries (Maelstrom nodes, a
+kwok controller, an HTTP server) can report what they ran, but not under
+which step. What a real environment can say is the comparison with the
+simulation: `qcover.ReadGoCover` merges the runs' data with `go tool
+covdata textfmt`, and `Compare` matches a simulation's blocks (by file
+and line; Go's files are import paths, qcover's module-relative) over the
+files the binaries contain. Code that ran for real and in no simulated
+run is where the simulation's verdicts are silent: the doubles never take
+that path. `quintgo cover -covdir ... -sim summary.json` prints both lists.
+
+**C2.** The review's advice held: qenv's native runtime with no platform
+(`NewNative(c, nil)`) waits with `time.Sleep`, `time.AfterFunc` and a
+`sync.Cond`, all of which a `testing/synctest` bubble fakes and counts as
+blocking. Checkout runs in a bubble unchanged (`TestNativeInSynctest`):
+80 s of its timeouts, retries and redeliveries pass on the bubble's clock
+in a few seconds, with real goroutines and Go's scheduler. The schedule
+is Go's, so a run is not reproducible from its seed (its faults still
+are the chooser's); it is for timing behaviour, next to qenv's own
+scheduler for interleavings. No runtime interface was needed.
+
+## 35. Structured logs as a step source (C4)
+
+Many services already log what they did, with `log/slog`'s attributes.
+`qobs.SlogHandler` wraps the application's handler: a record with the
+attribute `quint.action` is also a step, recorded into the run of the
+record's context, its other attributes the step's fields as `Record`
+takes them (`obs.*`, `order.*`, arguments; groups join with "."), and an
+`error` attribute its error. Every record still reaches the wrapped
+handler, at that handler's level; a step is recorded at any level, since
+the model needs every step and the log only what it keeps. Unlike
+`convert` for spans, there are no rules: logs are written by the
+application, so it can name the action, which a span's library cannot.
+
+## 36. Selecting and sanitizing step logs (D4)
+
+A production log is checked by people who should not see customers'
+identifiers, and is mostly steps a check does not need. `qtrace.Filter`
+selects (actors and actions by pattern, a time window: an actor is a
+trace, so selecting by actor keeps whole runs) and sanitizes:
+- pseudonyms for chosen fields: a salted SHA-256 prefix, the same for the
+  same value, so the binding's interning and the model's comparisons
+  mean what they did. Unsalted pseudonyms of guessable values (account
+  names) are reversible; the CLI warns without `QUINTGO_SALT`;
+- minimizing: with a binding, every argument and observation the binding
+  does not read is dropped, and error texts with them
+  (`Binding.UsedFields`, the same field analysis the annotation lint
+  uses).
+
+A model constant listing concrete identifiers must list their pseudonyms
+(`Filter.Pseudonym`), as examples/bank's `TestSanitizedRunConforms`
+does; interning the field avoids the question. `quintgo steps -out`
+applies a filter and writes a step log for `quintgo validate`.
+
+## 37. Scenario lint, measured pod times, dead code and untried error paths (D5, D3, A1)
+
+**D5.** A replayed trace assumes a cluster: its first event applies pods
+into a namespace it never created (all three of SimKube's example traces
+do), owners may arrive after their pods, and a trace that starts mid-run
+deletes objects it never applied. `sktrace.Trace.Lint(env)` checks each
+event against a target that starts as `env` (namespaces, served kinds)
+and says what to create or skip; a replay that ignored these fails at the
+API server, or replays less than the trace recorded.
+
+**D3.** kubesim's pods became ready after 100 to 300 ms by a schedule
+choice. A trace's pod lifetimes (`Lifetimes`, from its index) give a
+measured distribution; `Quantiles(ds, n)` makes n options of it, shortest
+first, so option 0 stays nominal and Hegel's shrinking still moves toward
+fast pods. fleetrollout's `Config.PodTimes` uses the CronJob trace's 30 s
+and 45 s pods, 60 times faster: the faithful controller conforms and the
+stale-status mutant is still caught. Deferred: KWOK Stage resources from
+the same quantiles for the kwok demo, since kwok is not available here to
+check a generated Stage against.
+
+**A1, the rest.** Two classifications of code no run ran, both in
+qanalysis/actionmap, which has the call graph:
+- `Map.Dead`: own functions no root reaches (main, init, the exported API
+  of library packages): dead, as `deadcode` reports, under qcover's names;
+- `UntriedErrorPaths`: for a fault point the runs reached and never
+  faulted (`Coverage.Unfaulted`), the blocks no run ran in its callers,
+  where the fault's error is handled. A fault point is at its function's
+  entry, so its error path is in the callers: qcover alone, without a
+  call graph, could not place it. Read these as untried before reading
+  them as dead: raise the kind's rate or script it.
