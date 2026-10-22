@@ -1261,3 +1261,201 @@ runtime.
 A machine that crashes stops without running deferred code, so §13's
 interrupted steps cannot arise. A step is sent to the host when it is
 recorded.
+
+## 15. Where gosim and a weaver of our own take the toolkit
+
+§14 showed that gosim can run a whole program with every choice made by
+qenv's Chooser. This section is the plan that follows from it:
+- rebase qenv onto runtimes, so that the same deployment runs on qenv's
+  scheduler or on gosim;
+- turn gosim's translator into a weaver of our own;
+- use the weaver's annotations to tie simulation, load, the CTMC and
+  production telemetry together.
+
+### 15.1 One deployment, several runtimes
+
+qenv is two things in one package:
+- a scheduler: tasks, virtual time, signals, processes, choices;
+- doubles written against it: `Store` with its isolation profiles,
+  `Queue`, lossy `Service` calls, kubesim.
+
+The doubles reach the scheduler through a narrow seam:
+- the context-level functions (`qenv.Go`, `Now`, `Sleep`, `Wait`,
+  `WaitUntil`, `Signal`);
+- `Process`, for crashes;
+- `Choose` and `Fault`.
+
+Put that seam behind an interface, a runtime, with three
+implementations:
+
+| runtime | tasks, time, waits | processes | choices | for |
+|---|---|---|---|---|
+| qenv's scheduler (today) | simulated tasks, virtual time | frozen tasks, `OnCrash` | the Chooser | exploration, Hegel, load: a run in milliseconds |
+| native, in gosim | `go`, `time`, channels: simulated by gosim | gosim machines (`Machine.Crash`, `Restart`) | `gosimruntime.Choose`, so the same Chooser on the host | fidelity: the standard library, dependencies, the network |
+| native, on the wall clock | the same code, unsimulated | OS processes, or none | a seeded or random chooser | soak tests and demos against real time |
+
+The native runtime is plain Go, so it belongs in core. gosim contributes
+only two things, the choice function and machines, through two hooks
+that the gosim adapter installs from a `sim` build. Core never imports
+gosim.
+
+A deployment written once (checkout's `Deploy`, crossdb's cloud,
+fleetrollout's API servers) then runs on all three runtimes, with the
+same model and binding:
+- on gosim, crossdb's clock translation (`ToVirtual`, `ToReal`) is
+  unnecessary, because crossplane-runtime's own `time.Now` is virtual;
+- fleetrollout's interceptors can become real HTTP between machines.
+
+The predicate `Wait` is the one operation without a native counterpart.
+The doubles that use it (the queue, call results, keyed locks) should move
+to `Signal`, which maps onto a channel. `Wait` stays, polling on the
+native runtimes.
+
+What does not move:
+- qenv's scheduler: Hegel and qload need its speed;
+- the doubles' contract profiles, because a real database rarely shows
+  write skew on demand;
+- trace validation of real environments.
+
+### 15.2 A weaver of our own
+
+gosim's translator already does the hard part of a weaver. It loads the
+whole program with types (`go/packages`), rewrites it with `dst` and
+keeps the comments. It rewrites more than Orchestrion can:
+- channels and `select`;
+- `go` statements;
+- the standard library and dependencies.
+
+Factor it into a pass framework with two front ends:
+- **translation**, for gosim: the passes run before gosim's own;
+- **`-toolexec`**, for ordinary builds, as Orchestrion does: each
+  package is rewritten on its way to the compiler, so the same aspects
+  reach production binaries.
+
+Orchestrion parity is the floor:
+- **join points:** function declarations (by name, signature,
+  receiver, directive), calls, struct literals, imports and directives;
+- **advice:** wrap an expression, prepend or append statements, inject
+  declarations, add a struct field, replace a body;
+- **aspect files:** read Orchestrion's YAML format, so its existing
+  integrations (net/http, database/sql, gRPC) are available.
+
+Types make our weaver better than parity where Orchestrion's matching
+is syntactic, which caused the escapes §13 lists:
+- method values (`return mu.RUnlock`) are woven: bind the receiver
+  when the value is made;
+- promoted calls through an embedded `sync.Mutex` are matched by the
+  method's own type;
+- calls through an interface get a dynamic check;
+- channel sends, receives and `select` become join points, so
+  `qenv/weave` covers channels on qenv's fast runtime, the case §13
+  left undone.
+
+Then `quintgo lint -weave` has nothing left to report.
+
+The weaver lives in its own module, with gosim's translator, because it
+depends on `dst` and `x/tools`; core stays light. The fork needs a home
+of its own first (§15.5).
+
+### 15.3 Annotations that serve the model, the load model and production
+
+Today one annotation, `//quint:action`, makes a function a model step.
+With a weaver in both front ends, every annotation means one thing in
+production and one in a simulation, from the same source.
+
+**Actions (exists, extended).**
+- `//quint:action` records on return, as now. It can also record a
+  `begin` at entry, which makes an interrupted action explicit. A crash
+  between the two leaves a started, never completed action. The model
+  can take that as a possible effect, instead of the step being
+  discarded (§13).
+- Every action is also a metric: a counter by action and outcome, and a
+  latency histogram, under the OTel names that qload's `Series` already
+  uses (`writeManifest/ok`). A goodput assertion in a load test and a
+  dashboard in production then read the same numbers.
+
+**Load roles.** Two annotations give the CTMC its parameters:
+- `//quint:serve name:checkout` on a handler, or on a worker's loop, is
+  the server side of `qload`'s model;
+- `//quint:call service:payments` on a call site is the client side.
+
+The weaver instruments them to measure the quantities `qmeta.Params`
+needs, live:
+- the arrival rate and the service rate;
+- the concurrency (the CTMC's `u`);
+- the timeouts;
+- retries in flight, the orbit, the CTMC's `v`. No dashboard has `v`
+  today, and it is what tells a slow system from a metastable one.
+
+`qmeta.Calibrate` fits the chain to the trajectories from simulated runs.
+The same fit works from production's.
+
+**Alarms from the chain.** `qmeta` computes, for every state `(u, v)`,
+the expected time to return to the healthy set (`HittingTimes`).
+- The states whose time exceeds a bound form the region a system does
+  not come back from by itself. Its boundary in `(u, v)` is an alert
+  threshold with a derivation, not a guess.
+- The smallest trigger that crosses it (`FindTrigger`) is the headroom
+  to report: how big a spike, how long a dip.
+- The healthy baseline (`Experiment.Healthy`) and `Recovery.Judge`'s
+  tolerance give the normal band.
+
+All of these can be generated as alerting rules over the woven metrics.
+They should come with the policy they assume, so a change to the retry
+budget in code shows up as a changed alert.
+
+**Faults.**
+- `//quint:fault kind:rpc.loss` on a call site is a fault point.
+- In a simulation, the weaver wraps it in
+  `Choose("fault.rpc.loss", n)`, injecting an error of the call's own
+  result type. Option 0 is no fault, so shrinking removes the fault.
+- In production it compiles to nothing, or to an opt-in chaos hook.
+- Either way it is a list: a run can report which fault points it
+  exercised and which it never reached. That is coverage of faults, not
+  lines.
+
+Fault points also give `connect` a way to drive a whole program. A Quint
+trace's crash and partition actions answer the fault choices, through a
+Chooser built from the trace, while the schedule stays nominal.
+
+**Context and ordering.**
+- The weaver can propagate model identity across RPCs as OTel baggage
+  (`//quint:actor` on a type): actor, process, payload ids.
+- It can propagate Lamport clocks, stamping on send and merging on
+  receive, as the Maelstrom runtime does by hand.
+- Distributed step logs then merge without per-protocol plumbing.
+- Deadline propagation, the mitigation checkout's load tests showed to
+  recover, can be inserted and its remaining budget recorded on every
+  call.
+
+**From the model to the code.**
+- The weaver knows every annotated site, so it can list the model's
+  actions that have none, and annotated sites that name actions the
+  model lacks. That is the binding lint, from the code side.
+- The model's actions with weights become `qload`'s workload, the
+  model's types its argument generators.
+
+### 15.4 The loop this closes
+
+1. The Quint model fixes what may happen. Annotations put its actions,
+   load roles and fault points on the code.
+2. qenv's runtime explores the code fast under faults, Hegel shrinks
+   the failures, and the CTMC ranks the policies.
+3. gosim runs the same deployment, the standard library and network
+   included, to confirm what qenv found. A shrunk trigger replays there.
+4. Production runs the same annotations as telemetry. Its steps are
+   checked against the model, its metrics fit the chain, and its alerts
+   come from the chain's recovery region.
+5. A production trigger the chain did not predict, or a step the model
+   rejects, is a new test, back at step 2.
+
+### 15.5 Phases
+
+| phase | work | depends on |
+|---|---|---|
+| 0 | the fork in a repository of its own, with CI; choices in chunks from the host (§14's cost) | a repository |
+| 1 | the runtime interface, the native runtime and the gosim adapter; checkout's tests on qenv and on gosim | — |
+| 2 | the pass framework in the translator; `//quint:action` as a pass, so the edgepublish publisher runs in gosim without Orchestrion | 0 |
+| 3 | the `-toolexec` front end; Orchestrion aspect files; method values, promoted calls and channels woven | 2 |
+| 4 | load roles and action metrics; calibration from production; alerting rules from the chain | 3 |
+| 5 | fault points and fault coverage; a Quint trace as a Chooser | 2 |
