@@ -364,9 +364,9 @@ func batched(t *testing.T, cfg Config, body func(ht *hegel.T, rec *Recorder), op
 	}
 	seed := cfg.Seed
 	if seed == 0 {
-		seed = time.Now().UnixNano() & 0x7fffffff
+		seed = time.Now().UnixNano() & 0x7fffffff //qenv:ok a random first seed for the rounds, outside any simulation
 	}
-	start := time.Now()
+	start := time.Now() //qenv:ok the rounds' real time budget
 	record := func(ht *hegel.T) []qtrace.Step {
 		rec := NewRecorder(ht, cfg.Recorder...)
 		if cfg.Global {
@@ -381,7 +381,7 @@ func batched(t *testing.T, cfg Config, body func(ht *hegel.T, rec *Recorder), op
 	}
 	total := 0
 	for r := 0; r < rounds; r++ {
-		if cfg.Budget > 0 && r > 0 && time.Since(start) > cfg.Budget {
+		if cfg.Budget > 0 && r > 0 && time.Since(start) > cfg.Budget { //qenv:ok the rounds' real time budget
 			t.Logf("quinthegel: time budget %v used after %d rounds", cfg.Budget, r)
 			break
 		}
@@ -439,5 +439,5 @@ func batched(t *testing.T, cfg Config, body func(ht *hegel.T, rec *Recorder), op
 	}
 	q, hits := cc.Stats()
 	t.Logf("quinthegel: %d distinct runs in bulk, all satisfy the model (~%d quint processes, %d verdicts from the cache, %v)",
-		total, q, hits, time.Since(start).Round(time.Millisecond))
+		total, q, hits, time.Since(start).Round(time.Millisecond)) //qenv:ok reported real time
 }
