@@ -1,0 +1,14 @@
+# Recorded pipeline steps as calls of model/streams.qnt. Every parameter
+# is the step field of its name, so no action needs templates: publish
+# when the writer is told a record landed, read when a consumer receives
+# one, apply at the projection's commit, commit where the log takes it.
+# The same binding checks runs on the simulated log, Kafka and Kinesis.
+spec: model/streams.qnt
+module: streams
+actions:
+  publish: {}
+  read: {}
+  apply: {}
+  commit: {}
+  settle: {}
+invariants: [appliedAtMostOnce, perKeyOrder, committedApplied, settledCorrectly]
