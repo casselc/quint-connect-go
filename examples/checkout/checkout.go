@@ -44,7 +44,9 @@ type Deployment struct {
 	Provider *qenv.Store
 	PaySvc   *qenv.Service[shop.PayReq, string]
 	PayQueue *qenv.Queue
-	api      *qenv.Service[apiReq, string]
+	// ShipQueue carries "paid" events to shipping.
+	ShipQueue *qenv.Queue
+	api       *qenv.Service[apiReq, string]
 }
 
 type apiReq struct{ Op, Order string }
@@ -99,7 +101,7 @@ func Deploy(s *qenv.Sim, cfg Config) *Deployment {
 	paySvc := qenv.NewService(s, "provider", nil, provider.Handle)
 	paySvc.Capacity = cfg.Provider
 	qPay, qShip := qenv.NewQueue(s, "payments"), qenv.NewQueue(s, "shipping")
-	d.PaySvc, d.PayQueue = paySvc, qPay
+	d.PaySvc, d.PayQueue, d.ShipQueue = paySvc, qPay, qShip
 	d.Shop = &shop.Shop{DB: d.DB, Broker: broker{qPay, qShip}, Payments: payments{paySvc}, Mutation: cfg.Mutation,
 		PaymentWorkers: cfg.PaymentWorkers, PaymentRetry: cfg.PaymentRetry, RedeliveryDelay: cfg.RedeliveryDelay}
 	crash := !cfg.NoCrashes

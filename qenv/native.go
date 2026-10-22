@@ -14,15 +14,26 @@ import (
 // simulated, every choice made by the Chooser on the host; on their own
 // they are real, for soak tests and demos.
 //
-// Tasks keep qenv's semantics, one at a time, through a lock that the
-// running task holds and gives up at every seam (Yield, Sleep, a wait). A
-// wait is a condition variable broadcast whenever a task gives up the lock
-// after running, so predicate waits (Wait) and Signals need nothing else.
+// A wait is a condition variable, broadcast at every seam (Yield, Sleep, a
+// wait, Notify, a task's end), so predicate waits (Wait) and Signals need
+// nothing else. Tasks keep qenv's semantics, one at a time between seams:
+//   - with a Platform, the runtime's (gosim runs one goroutine at a time
+//     and switches only where one blocks), so the code under test may take
+//     its own locks. qenv takes none there: waits are a sync.Cond with no
+//     lock. A real lock shared across machines can be lost to a crash (a
+//     mutex handed to a waiter whose machine then stops stays locked), and
+//     a broadcast must be one step: a loop of channel sends switches
+//     goroutines at each send, and a waiter that re-registers meanwhile is
+//     forgotten;
+//   - without, on the wall clock, through that lock, which the running task
+//     holds and gives up at every seam. Code under test that blocks on its
+//     own locks or channels can deadlock there: run it with a Platform.
 
 // A Platform runs each process of a native simulation on a machine of its
 // own, so that a crash stops all of the process's goroutines at once and
 // none of their deferred code runs (gosim's machines). Without one, the
-// tasks of a crashed process stop at their next seam.
+// tasks of a crashed process stop at their next seam. A Platform's runtime
+// must run one goroutine at a time, switching only where one blocks.
 type Platform interface {
 	// Machine starts a machine running main. Crash stops it, and Restart,
 	// after a Crash, runs main again.
@@ -44,7 +55,22 @@ type native struct {
 	plat   Platform
 	closed chan struct{}
 	nemOn  bool // the nemesis task is running
+	coop   bool // a Platform's cooperative runtime: no lock, ccond below
+	// ccond is the waits' condition on a cooperative runtime (nopLocker):
+	// Broadcast wakes them all in one step of the runtime
+	ccond *sync.Cond
 }
+
+// nopLocker is the Locker of ccond: a cooperative runtime runs one
+// goroutine at a time, so a readiness check and the Wait after it are one
+// step without a lock.
+type nopLocker struct{}
+
+func (nopLocker) Lock()   {}
+func (nopLocker) Unlock() {}
+
+// broadcast wakes every parked wait (cooperative).
+func (n *native) broadcast() { n.ccond.Broadcast() }
 
 // spawnQueue is how many tasks a process's machine can be handed before it
 // runs them: tasks are started on the process's own machine, by its main
@@ -63,41 +89,61 @@ const spawnQueue = 1 << 16
 // makes fault choices nominal but not the runtime's schedule.
 func NewNative(c Chooser, p Platform) *Sim {
 	s := New(c)
-	n := &native{plat: p, closed: make(chan struct{})}
+	n := &native{plat: p, closed: make(chan struct{}), coop: p != nil}
 	n.cond = sync.NewCond(&n.mu)
+	n.ccond = sync.NewCond(nopLocker{})
 	s.nat = n
-	s.now = time.Now()
+	s.now = nativeNow()
 	s.start = s.now
-	n.mu.Lock()
+	if !n.coop {
+		n.mu.Lock()
+	}
 	return s
 }
+
+// nativeNow is the time on the native runtime, without a monotonic
+// reading: times read on different gosim machines compare by their wall
+// clock, which is gosim's one clock. A monotonic reading is relative to an
+// origin in the time package's globals, which are per machine there, so
+// deadlines passed between machines would compare wrongly.
+func nativeNow() time.Time { return time.Now().Round(0) }
 
 // Native reports whether s runs on the native runtime.
 func (s *Sim) Native() bool { return s.nat != nil }
 
-// release gives up the lock after running: whatever a waiter waits for may
-// have changed.
+// release is a seam: whatever a waiter waits for may have changed. Without
+// a Platform it gives up the lock the running task holds.
 func (n *native) release() {
+	if n.coop {
+		n.broadcast()
+		return
+	}
 	n.cond.Broadcast()
 	n.mu.Unlock()
 }
 
-// resume takes the lock back after a seam. A task of a crashed process
-// stops here.
+// resume takes the lock back after a seam (without a Platform). A task of a
+// crashed process stops here.
 func (t *task) resume() {
-	t.sim.nat.mu.Lock()
+	if !t.sim.nat.coop {
+		t.sim.nat.mu.Lock()
+	}
 	if t.killed {
 		t.frozen()
 	}
 }
 
-// frozen holds a killed task, as a crash does, until Close unwinds it.
-// Called with the lock held; it returns only by panicking, with it held.
+// frozen holds a killed task, as a crash does, until Close unwinds it. It
+// returns only by panicking, with the lock as it found it.
 func (t *task) frozen() {
 	n := t.sim.nat
-	n.mu.Unlock()
+	if !n.coop {
+		n.mu.Unlock()
+	}
 	<-n.closed
-	n.mu.Lock()
+	if !n.coop {
+		n.mu.Lock()
+	}
 	panic(killed{})
 }
 
@@ -107,7 +153,9 @@ func (s *Sim) spawnNative(t *task, fn func(ctx context.Context)) {
 		own(id, s, t)
 		live.Add(1)
 		defer func() { disown(id, s); live.Add(-1) }()
-		s.nat.mu.Lock()
+		if !s.nat.coop {
+			s.nat.mu.Lock()
+		}
 		defer func() {
 			if r := recover(); r != nil {
 				if _, ok := r.(killed); !ok {
@@ -140,9 +188,7 @@ func (s *Sim) spawnNative(t *task, fn func(ctx context.Context)) {
 // tasks handed to the process, on this machine.
 func (s *Sim) machineMain(p *Process) func() {
 	return func() {
-		s.nat.mu.Lock()
-		q := p.queue
-		s.nat.mu.Unlock()
+		q := p.queue // the incarnation it boots
 		for f := range q {
 			go f()
 		}
@@ -165,11 +211,15 @@ func (t *task) sleepNative(d time.Duration) {
 // the wait (Notify), or deadline passes (zero: none).
 func (t *task) waitNative(ready func() bool, deadline time.Time) {
 	n := t.sim.nat
+	if n.coop {
+		t.waitCoop(ready, deadline)
+		return
+	}
 	t.waiting, t.notified = true, false
 	gen := t.gen
 	var tm *time.Timer
 	if !deadline.IsZero() {
-		tm = time.AfterFunc(time.Until(deadline), func() {
+		tm = time.AfterFunc(deadline.Sub(nativeNow()), func() {
 			n.mu.Lock()
 			n.cond.Broadcast()
 			n.mu.Unlock()
@@ -184,10 +234,39 @@ func (t *task) waitNative(ready func() bool, deadline time.Time) {
 		if ready != nil && ready() {
 			break
 		}
-		if !deadline.IsZero() && !time.Now().Before(deadline) {
+		if !deadline.IsZero() && !nativeNow().Before(deadline) {
 			break
 		}
 		n.cond.Wait()
+		if t.killed {
+			t.frozen()
+		}
+	}
+	if t.waiting && t.gen == gen {
+		t.waiting = false
+		t.gen++
+	}
+}
+
+// waitCoop is waitNative on a cooperative runtime: the task waits on
+// ccond until a broadcast, its deadline, or a crash.
+func (t *task) waitCoop(ready func() bool, deadline time.Time) {
+	n := t.sim.nat
+	t.waiting, t.notified = true, false
+	gen := t.gen
+	if !deadline.IsZero() {
+		tm := time.AfterFunc(deadline.Sub(nativeNow()), n.broadcast)
+		defer tm.Stop()
+	}
+	n.broadcast() // this task ran before waiting (as in waitNative)
+	for t.waiting && t.gen == gen {
+		if ready != nil && ready() {
+			break
+		}
+		if !deadline.IsZero() && !nativeNow().Before(deadline) {
+			break
+		}
+		n.ccond.Wait()
 		if t.killed {
 			t.frozen()
 		}
@@ -217,7 +296,9 @@ func (s *Sim) runNative(d time.Duration) error {
 	}
 	s.nat.release()
 	time.Sleep(d)
-	s.nat.mu.Lock()
+	if !s.nat.coop {
+		s.nat.mu.Lock()
+	}
 	if s.panicked != nil {
 		p := s.panicked
 		s.panicked = nil

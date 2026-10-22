@@ -157,7 +157,7 @@ func (s *Sim) Fault(kind string, n int) int { return s.Choose("fault."+kind, n) 
 // Now is the virtual time (on the native runtime, the time package's).
 func (s *Sim) Now() time.Time {
 	if s.nat != nil {
-		return time.Now()
+		return nativeNow()
 	}
 	return s.now
 }
@@ -333,6 +333,9 @@ func (s *Sim) enqueue(t *task) {
 		t.gen++
 	}
 	if s.nat != nil {
+		if s.nat.coop {
+			s.nat.release() // wake it now: the notifier holds no lock
+		}
 		return // it wakes when the notifier gives up the lock
 	}
 	if !t.queued && !t.done && !t.killed {
