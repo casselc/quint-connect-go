@@ -53,90 +53,26 @@ cfg := qload.Config{
 r := qmeta.Recovers(cfg, 9, qmeta.Trigger{ExtraRate: 5, Duration: time.Minute}, 5*time.Minute)
 ```
 
-- Put the real retry library behind `qload.Retrier`:
-  `Request(now)` per new request and `Retry(n, now) (wait, ok)`. Any time
-  it needs is the argument `now` (virtual), never `time.Now`;
-  `x/time/rate` limiters take it (`ReserveN(now, 1).DelayFrom(now)`).
-- Controllers are closed loops: set `Population` (objects) and `Think`
-  (poll interval). An open-loop abstraction counts a failing object's
-  polls on top of its retries and finds storms that cannot happen.
-- Triggers: `ExtraRate` (load spike) or `Slowdown` (capacity dip, the
-  realistic one for a dependency). Start them after the steady state
-  (`Trigger.Start`; a closed loop needs one poll interval).
-- Results are probabilities. Count recoveries over several seeds; in
-  the metastable region, a run's escape is a coin toss.
-  `qmeta.Mostly(sys, tr, n)` takes the majority, `Count` and `Runs`
-  give the runs. A `Recovery` prints its verdict and a `Warning` when
-  the goodput before the trigger was far below the offered load: an
-  unhealthy baseline (set `Experiment.Healthy`).
+- Put the real retry library behind `qload.Retrier`, on virtual time.
+- Controllers are closed loops: set `Population` and `Think`, or the
+  simulation finds storms that cannot happen.
+- Results are probabilities: count recoveries over seeds
+  (`qmeta.Mostly`), and set a healthy baseline.
+- The chain assumes exponential service: measure the handler
+  (`qmeta.Measure`) and simulate with measured times when it is not.
 
-### Measured service times
-
-The chain assumes exponential service. Measure the handler alone (a
-benchmark's latencies) with `qmeta.Measure(samples)`:
-- `Mu()` gives the chain's rate;
-- `CV` is 1 for exponential service;
-- `Exponential()` says whether the chain's numbers can be trusted.
-
-If not, simulate with the measured times (`qload.ServerConfig{Service:
-svc.Draw}`). Constant service at the same mean made a full queue
-absorbing: when the queue holds more than μ × timeout, every request in
-it times out (retrystorm `TestServiceTimeShape`: 6 of 6 seeds recover
-with exponential service, 0 of 6 with constant).
-
-`qrole.Labels(true)` puts pprof labels on the roles, so a CPU profile
-splits by server and service (`go tool pprof -tagfocus
-quint.serve=api`).
-
-### A production workload as the load
-
-A SimKube trace (`sktrace.ReadFile`) is a real cluster's objects over
-time. Its rates (`Rates`, `Starts`) or a gauge (`Gauge(tick,
-sktrace.Replicas)`) become a load shape: `qload.Piecewise(time.Minute,
-0.2, replicas...)` is 0.2 requests/s per desired replica, minute by
-minute. Compare policies against a cluster's own scale-up, not only
-synthetic spikes (examples/retrystorm `TestProductionScaleUp`).
+Read [references/simulation.md](references/simulation.md) when writing
+the simulation: the Retrier contract, closed loops, triggers, measured
+service times, production workloads from a SimKube trace.
 
 ## 2b. Or run the application itself (`qload.Experiment`)
 
-qload's servers and clients are an abstraction. To put the real system
-under load, give its dependency a capacity, keep everything else real,
-and let the experiment drive it:
-
-```go
-x := qload.Experiment{
-	Rate: 3, Healthy: 3, // or Population + Think for a closed loop (a controller's objects)
-	Deploy: func(env *qload.Env) func(ctx context.Context, i int) {
-		svc := qenv.NewService(env.Sim, "provider", nil, handler)
-		rnd := env.Rand("provider.service")         // a seeded stream, not the Chooser
-		svc.Capacity = &qenv.Capacity{Workers: 1, Queue: 50, Slowdown: env.Trigger.Factor(),
-			Time: func() time.Duration { return time.Duration(rnd.ExpFloat64() / 5 * float64(time.Second)) }}
-		env.Probe("backlog", queue.Pending)
-		return func(ctx context.Context, i int) { app.PlaceOrder(ctx, i) }
-	},
-	Sink: mem, // optional: the same steps, to check against the model
-}
-r := qmeta.Assess(x, "markPaid", qmeta.Trigger{Slowdown: 3, Duration: time.Minute}, 5*time.Minute, seed)
-ok, first := qmeta.Mostly(qmeta.Of(x, "markPaid", 5*time.Minute), trigger, 3)   // seeds in parallel
-```
-
-- **Goodput is a model step's rate.** The app's own recorded steps are
-  counted per tick (`r.Series.Rate("markPaid", from, to)`), so
-  performance and correctness come from one run:
-  `qtest.Validate(t, binding, mem.Steps(), qtest.Constants(...)).Expect(t, qtest.Conforms())`.
-- **Set `Healthy`.** A system that collapsed before the trigger would
-  otherwise "recover" to its collapsed goodput. With 8 consumers, the
-  checkout shop collapses on its own, and that bug was hidden this way.
-- **The verdict allows for noise.** Recovery means goodput is back to at
-  least 90% of healthy, give or take two standard errors over the
-  100-second window. At a few requests per second, a plain 90% threshold
-  fails a healthy run one time in ten.
-- **Faults in load runs.** `Experiment.Faults` injects them, and crashes
-  are a rate per virtual second (`NemesisEvery`).
-
-Look for loops around the retry loop. A broker's redelivery, a client's
-retry or a controller's requeue each retries too. A budget on the inner
-loop alone does nothing, as checkout's consumers showed.
+To put the real system under load, give its dependency a capacity, keep
+everything else real, and count a model step's rate as goodput
+(`qmeta.Assess`, `qmeta.Of`). Set `Healthy`; look for loops around the
+retry loop (a broker's redelivery, a controller's requeue). Read
+[references/experiment.md](references/experiment.md) when deploying an
+application into an Experiment.
 
 ## 3. Search: Hegel (`quinthegel.FindTrigger`)
 
@@ -155,59 +91,14 @@ simulations, so keep it out of `-short`.
 
 ## 4. Alert: the chain's region over the app's own load roles (`qrole`)
 
-Mark the roles in code, once, and the same gauges serve the simulation,
-the calibration and production:
-
-```go
-//quint:serve name:api          // a handler: u, from arrival to response
-func (s *Server) Handle(ctx context.Context, r Req) (Resp, error)
-
-//quint:operation service:api   // all attempts and waits of one operation
-func (c *Client) Do(ctx context.Context) error
-
-//quint:call service:api        // one attempt
-func (c *Client) attempt(ctx context.Context) error
-```
-
-- Weave with qweave (the tool file imports `qrole`), or call
-  `qrole.Serve/Operation/Call` and defer the returned function with the
-  error. v (the orbit) is operations minus calls in flight: no knowledge of
-  the retry policy is needed.
-- In a run, give each simulation its registry (`qrole.WithRoles`) and
-  probe `roles.Queue(name)` and `roles.Orbit(service)` (`env.Probe`). In
-  production, `roles.Instrument(meter)` exports the gauges
-  (`quint.serve.inflight`, `quint.orbit`).
-- Calibrate on the series: `qmeta.CalibrateTimeout(p,
-  qmeta.Trajectories(obs, []float64{5, 10, 20}, 10))`. Hold λ (measured as
-  the rate of new operations): fitting it to a storm drives it to μ, where
-  nothing recovers. `fit.Warning()` says when the fit got there anyway.
-- `roles.Orbit` is the waiting part of the chain's v (requests between
-  attempts); the chain's own v also holds attempts in flight that will
-  time out, known only in hindsight (`qload.Sample.Orbit` vs `Waiting`).
-  Under immediate retries the gauge stays at 0 through a storm: the
-  alert sees u alone there.
-- `qmeta.Watch{Region, State, Snapshot}` runs in production next to the
-  rule: once (u, v) has been in the region `For` samples, it writes the
-  runtime's flight recorder (the last seconds of execution trace) to
-  `Snapshot`; `go tool trace` shows what every goroutine was doing as the
-  storm began.
-- Where a simulated storm's latency goes: set `env.Sim.Profile =
-  qenv.NewProfile()` in `Deploy`, then `Profile.WriteTo` a file and
-  `go tool pprof -top -cum` it: each wait at a seam, by stack, weighted by
-  virtual time (`-tagfocus task=<kind>` for one kind of task).
-- `region := qmeta.New(fit).Region(healthy, 120)` is the states with less
-  than even odds of being healthy within 2 minutes (`RecoveryWithin`). Not
-  the mean hitting time: near a storm it is dominated by rare tips into
-  it, and alerts on states that drain in a second.
-- `region.Rules(qmeta.RuleConfig{Server: "api", Service: "api"},
-  "u <= 10")` is a Prometheus rule group, with the chain's parameters in
-  its annotations: commit it, and a policy change shows up as its diff.
-  No region (a budget): the rule cannot fire.
-- `qrole.NewMetricsSink(meter, next)` counts every `//quint:action` by
-  outcome (`quint.steps`): goodput and error ratio with no instrumentation
-  of its own.
-
-See examples/retrystorm (`alerts.go`, `TestAlertsFromTheChain`).
+Mark the roles once (`//quint:serve`, `//quint:operation`,
+`//quint:call`), calibrate the chain on their gauges with λ held
+(`qmeta.CalibrateTimeout`), and turn the region of states unlikely to
+recover within a bound (`Region`, by `RecoveryWithin`, not the mean
+hitting time) into a Prometheus rule group (`Rules`) committed with the
+code. Read [references/alerts.md](references/alerts.md) when marking
+roles, calibrating, or writing the rules and the flight recorder
+(`qmeta.Watch`).
 
 ## Correctness of the mechanism stays with Quint
 

@@ -27,25 +27,14 @@ then works through the following stages:
 | Structured logs | `slog.New(qobs.NewSlogHandler(next))`, then `slog.InfoContext(ctx, "deposited", "quint.action", "deposit", "account", a, ...)`: records with `quint.action` are steps, every record still reaches `next` | a service that already logs what it did |
 | Existing OTel spans | a `convert` rule file mapping span names and attributes to actions | code you cannot change, or telemetry you already have |
 
-Keys in `Record` and annotations:
-- `actor`, `process`, `thread`, `outcome` override the step's identity;
-- `when:ok|error`: record only on success or only on failure;
-- `obs.<name>`: an observation of the state after the step;
-- `order.<domain>`: a logical clock;
-- anything else is an argument.
-
-The final `error` is the outcome. An error can classify itself with a
-`QuintOutcome() string` method (e.g. `"ambiguous"`).
-
 **Record at the moment the step takes effect**, while holding the lock that
-orders it, and before spawning work that depends on it.
+orders it, and before spawning work that depends on it. The step's final
+`error` is its outcome; `obs.<name>` keys are observations of the state
+after it.
 
-Sinks (`qobs.NewRecorder(sink)`, installed with `qobs.SetGlobal`):
-- `MemorySink` for tests;
-- `FileSink("steps.jsonl")` for a native step log;
-- `NewOTelSink(tp)` for span events. Use a TracerProvider that never
-  samples them out: a dropped step is a reported gap;
-- `Tee{...}` to send steps to several sinks.
+Read [references/emitting.md](references/emitting.md) for the keys a step
+takes (identity, `when:`, `order.<domain>`), outcomes an error can name,
+and the sinks.
 
 ## 2. Write the binding
 
@@ -68,34 +57,15 @@ actions:
 invariants: [noOverdraft]
 ```
 
-Rules:
-- A parameter with no template is the step field of its name, rendered as
-  a Quint literal. Set, list and map parameters (type aliases included)
-  are converted from the recorded JSON by `toSet`, `toList` and `toMap`.
-  Give a template only to map a field differently, e.g.
-  `args: { o: '{{.outcome}}' }`. An action that needs nothing else can
-  be `name: {}`.
-- A failed step whose templates ignore `{{.outcome}}` must be mapped in
-  the action's `outcomes` (`skip`, or `call` to replay it as a success).
-  The tool refuses to guess.
-- To also emit a model-level ITF in-process, write argument templates as
-  Quint literals (no operator calls). `expect` may be any Quint boolean.
+A parameter with no template is the step field of its name; give a
+template only to map a field differently, and map every failed outcome
+the templates ignore (`skip` or `call`). Then lint:
+`quintgo lint -binding bank.binding.yaml -src ./pkg` (binding vs model,
+annotations vs binding, literal `qobs.Record` actions vs model).
 
-Then lint: `quintgo lint -binding bank.binding.yaml -src ./pkg`. It checks
-the binding against `quint typecheck`, the annotations against the
-binding, and the literal action of every `qobs.Record` call against the
-model (a misspelled action gets a did-you-mean).
-
-In the editor and in CI, the same checks run as analyzers (qanalysis):
-- `quintvet ./...` (built from `qanalysis/cmd/quintvet`, or
-  `go vet -vettool=$(which quintvet)`) runs the simulation, weaving and
-  annotation checks; `-quintaction.binding app.binding.yaml` adds the
-  binding's. In golangci-lint, enable the `quintgo` module plugin.
-- An annotation's expressions run on return: use parameters, the
-  receiver and named results. quintaction names a local it sees.
-- `actionmap -coverage summary.json ./...` (the summary of a woven
-  coverage run) lists per action what its code can reach but no run ran,
-  and what its steps ran that it cannot reach (callers' and setup code).
+Read [references/binding.md](references/binding.md) when writing
+templates (collections, outcomes, ITF), or setting up the analyzers
+(quintvet, golangci-lint, actionmap).
 
 ## 3. Check
 
@@ -120,20 +90,9 @@ In the editor and in CI, the same checks run as analyzers (qanalysis):
   1 violation, 2 tool error.
 - Converted spans: `quintgo convert -rules bank.convert.yaml spans.jsonl > steps.jsonl`.
 
-### Production logs: select and sanitize first
-
-```sh
-QUINTGO_SALT=$SECRET quintgo steps -actors 'checkout-*' -since 2026-10-01T00:00:00Z \
-  -pseudonymize account,customer -binding app.binding.yaml -out clean.jsonl spans.jsonl
-quintgo validate -noitf -binding app.binding.yaml clean.jsonl
-```
-
-- `-binding` keeps only the fields the binding reads, and drops error
-  texts: what a check needs, nothing more.
-- Pseudonyms keep equality, so interned ids (`intern:`) still work. A
-  model constant naming concrete ids (`ACCOUNTS: Set("alice", ...)`) must
-  name the pseudonyms instead (`qtrace.Filter.Pseudonym`), or intern the
-  field.
+Production logs are selected and sanitized before they are checked
+(`quintgo steps -binding ... -pseudonymize ...`): read
+[references/production-logs.md](references/production-logs.md).
 
 ## 4. Read the report
 
@@ -155,31 +114,7 @@ a bug. When a verdict surprises you, check the binding first.
 
 ## Patterns from the example apps
 
-- **Concurrent services** (`examples/kvstore`). Record each step inside the
-  critical section that orders it. For spans, stamp a linearization index
-  (`kv.op`) and make it an ordering key in the convert rules
-  (`order: { op: attr:kv.op }`). Otherwise concurrent requests are
-  ordered by span end time, which is not the order their effects took.
-- **Restarts** (`examples/jobqueue`). Give every incarnation its own
-  `process`, and let the binding's `restart:` insert the model's restart.
-  Make operations that race a restart retry on the new incarnation, so
-  nothing is recorded under a dead one.
-- **Properties the design does not promise.** Leave them out of the
-  binding's `invariants` and check them on demand:
-  `quintgo validate -invariants exactlyOnce`, or
-  `Checker.WithInvariants`. "Conforms, invariant FAIL" then says when
-  and where a real run hit the design's limit.
-- **Distributed systems** (`examples/glomers`):
-  - Record each node's steps with the node as `thread` and a Lamport
-    clock as `order.lamport`, carried in messages. Per-node step logs
-    then merge correctly: `quintgo validate n1.jsonl n2.jsonl ...`.
-  - Record a shared service's operations where they take effect, at the
-    service, not at the client that hears back later.
-  - Record collections (sets of values, vectors) as slices or maps.
-    They travel as JSON, and `toSet`, `toList` and `toMap` turn them into
-    Quint values in templates.
-- **Model the environment you run on.** If the code depends on a
-  service's guarantees (seq-kv's consistency), the model must not assume
-  stronger ones. Check against the real environment too: examples/glomers
-  shows two counter designs that passed a too-strong model and failed
-  Maelstrom.
+Concurrent services, restarts, properties the design does not promise,
+distributed systems with Lamport clocks, and modelling the environment
+you run on: read [references/patterns.md](references/patterns.md) before
+instrumenting one of those.

@@ -42,35 +42,22 @@ func TestBankAgainstModel(t *testing.T) {
 }
 ```
 
-- **Modes:**
-  - `Batched` is the usual choice: rounds of unchecked generation, bulk
-    checks (many runs per quint process), and on a failure a replay of
-    the round in `Each` mode, so Hegel shrinks it.
-    - All passing, it costs about what `After` does (3.4 s against 22 s
-      for `Each` on 40 cases).
-    - Set `Rounds` or `Budget` to keep exploring, and `Seed` to
-      reproduce.
-    - The body must be deterministic in Hegel's draws.
-  - `Each` checks every case, so a violation is a Hegel failure and Hegel
-    shrinks it against the model. A `CaseChecker` caches verdicts, so
-    shrinking runs quint far less than once per candidate.
-  - `After` checks the distinct runs in bulk after Hegel finishes. It is
-    the cheapest, but shrinks nothing.
-  - `Off` records only.
-- **`Global: true`** installs each case's recorder as the global qobs
-  recorder, for implementation-side `qobs.Record` or woven code. Rules
-  can also call `rec.Step(action, err, kv...)`. Every step becomes a Hegel
-  note, so the shrunk run prints as model actions.
+- **Modes:** `Batched` is the usual choice (bulk checks, replayed in
+  `Each` on a failure so Hegel shrinks it); `Each` checks every case;
+  `After` checks once at the end and shrinks nothing. `Global: true`
+  installs each case's recorder for implementation-side or woven
+  steps. Read [references/modes.md](references/modes.md) for the
+  modes' costs and options, generators and budgets.
 - **Expected failures** (a mutant, a known bug): use
   `quinthegel.FindViolation`. It checks every case with the verdict
   cache, lets Hegel shrink, fails the test if every case passes, and
-  returns the shrunk run to assert on:
+  returns the shrunk run; state how it must show with `Expect`:
   ```go
   v := quinthegel.FindViolation(t, quinthegel.Config{Binding: "bank.binding.yaml", Global: true},
   	func(tc hegel.TestCase, _ *quinthegel.Recorder) {
   		hegel.RunStateful(tc, &machine{bank: New(accounts, WithMutation(SelfTransfer))})
   	}, hegel.WithTestCases(50), hegel.WithSeed(3))
-  if v.Last().Action != "transfer" { t.Fatalf("...%s", quinthegel.Render(v.Steps)) }
+  v.Expect(t, qtest.Rejects("transfer"))
   ```
   (`hegel.Test` cannot express "expected to fail". `FindViolation`
   wraps `hegel.Run`, `CaseChecker` and the TooSlow suppression.) Hegel
@@ -79,13 +66,6 @@ func TestBankAgainstModel(t *testing.T) {
   (`QUINTGO_VERBOSE=1` shows them always). A System shrinks the same way:
   `quinthegel.Shrink(t, sys).Expect(t, qtest.Rejects("apply"))`, and
   `.Expect(t, qtest.Conforms())` states that Hegel finds nothing.
-- **Generators.** Draw invalid inputs too: unknown ids, non-positive
-  amounts, duplicates. Map refused calls to `outcomes: { error: skip }` in
-  the binding. A refused call is then no model step, but a wrongly
-  accepted one becomes a step the model rejects.
-- **Budget.** Keep `WithTestCases` modest (20–50) and
-  `WithStatefulStepCount` around 8–15 in `Each` mode. Skip the long
-  shrinking tests under `testing.Short()`.
 
 ## Model drives, Hegel varies
 
@@ -117,15 +97,7 @@ report):
 
 ## Pitfalls
 
-- Hegel runs cases sequentially. With `hegel.WithConcurrency`, the rules
-  of one case share its recorder. Record under the lock that orders the
-  effect, so the recording order is the effect order.
-- A test case that records nothing is vacuously fine: `AllowEmpty`, and
-  `CaseChecker` treats it as OK.
-- `hegel-go` needs Go ≥ 1.26.1. Its engine is embedded (no Python, no
-  server), and runs offline after the first download.
-- For distributed systems, embed `hegelnet.Network` (examples/glomers)
-  in the machine. Hegel then schedules deliveries, losses, partitions
-  and timers next to the client requests. Settle at the end of each case
-  (heal, quiesce, record `settle`), so properties conditioned on
-  quiescence are checked.
+Concurrency within a case, empty cases, the Go version, and faults for
+distributed systems (`hegelnet.Network`): read
+[references/pitfalls.md](references/pitfalls.md) before writing a
+machine for concurrent or distributed code.

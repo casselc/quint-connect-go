@@ -78,3 +78,28 @@ func TestSkillLinksResolve(t *testing.T) {
 		return nil
 	})
 }
+
+// Skills teach the current API: an identifier deprecated in the code (or
+// a report format it no longer prints) would send agents to it.
+func TestSkillsAvoidDeprecated(t *testing.T) {
+	deprecated := []struct{ text, instead string }{
+		{"qtest.Check(", "qtest.Validate(...).Expect"},
+		{"qtest.RecordAndCheck", "qtest.Record(...).Expect"},
+		{"qtest.Explore(", "qtest.System{...}.Explore"},
+		{"qtest.SweepExplore", "System.Sweep"},
+		{"Explored", "qtest.Run"},
+		{"step [", `"step N" (reports number steps from 1)`},
+	}
+	_ = fs.WalkDir(FS(), ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(p, ".md") {
+			return err
+		}
+		b, _ := fs.ReadFile(FS(), p)
+		for _, dep := range deprecated {
+			if strings.Contains(string(b), dep.text) {
+				t.Errorf("%s mentions %s, which is deprecated: use %s", p, dep.text, dep.instead)
+			}
+		}
+		return nil
+	})
+}

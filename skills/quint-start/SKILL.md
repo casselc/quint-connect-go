@@ -19,6 +19,10 @@ references when the task needs them.
 | Which code did no run reach, and does the model constrain the code that ran? | `qweave -cover`, `qweave -mutate`, `System.Mutate`, `x.Evidence()` | quint-fault-injection (its coverage reference) |
 | Does it recover after a load spike or a slow dependency? | `qmeta` chain, `qload` simulation, `quinthegel.FindTrigger`, alert rules | quint-metastability |
 | My system is an HTTP server, a gRPC service, or Kafka/Kinesis consumers and publishers | the seams and examples: kvstore, grpcledger (`simgrpc`), streams (a simulated log, kfake) | quint-fault-injection (its services reference) |
+| My code is a whole program (goroutines, sockets, timers), not written against qenv's seams | run it unchanged on gosim (`qgosim`): the scheduler, network and clock simulated, choices from qenv | quint-fault-injection (its gosim reference) |
+| I cannot change the code to record steps or use seams | weave it: `//quint:action` and qenv's sync/goroutine aspects, with `qweave go test` or Orchestrion | quint-fault-injection (its weaving reference), quint-trace-validation |
+| My system is a Kubernetes controller or a Crossplane provider | simulated API servers (fleetrollout's kubesim, crossdb's interceptors), then real kwok or kind clusters, one model | quint-fault-injection (examples/fleetrollout, examples/crossdb) |
+| Seeds and Hegel found nothing; I want coverage-guided search | `System.Fuzz` (the run's choices from the fuzzer's bytes, the model the oracle) | quint-fault-injection (its fuzzing reference) |
 | My model is written in Choreo | name each transition (`choreo::step_with`), then any workflow | quint-model-for-go (Choreo section) |
 | I am starting a component or an example, or setting up CI | the end-to-end workflow and triage | quint-verification-workflow |
 | A test failed: whose bug is it? | the verdict table and triage | quint-verification-workflow (its verdicts reference) |
@@ -36,6 +40,20 @@ quintgo validate -noitf -binding m.binding.yaml run.jsonl
 
 The smallest simulated example is `examples/hello` (a counter, a lossy
 network, a retrying client, one mutant): read it before the bigger ones.
+Its shape is every simulated test's:
+
+```go
+func system(m Mutation) qtest.System {
+	return qtest.System{Binding: "hello.binding.yaml", Run: func(c qenv.Chooser) error { return Run(c, m) }}
+}
+
+func TestNoDedupe(t *testing.T) {
+	qtest.RequireQuint(t)
+	system(NoDedupe).Explore(t, qtest.ExploreConfig{Seeds: 30}).Expect(t, qtest.Some(qtest.Rejects("apply")))
+	quinthegel.Shrink(t, system(NoDedupe)).Expect(t, qtest.Rejects("apply")) // Hegel, shrunk to one fault
+	system(Faithful).Explore(t, qtest.ExploreConfig{Seeds: 30}).Expect(t, qtest.Conforms())
+}
+```
 
 In Go tests, `qtest.RequireQuint(t)` skips without quint; state what
 each test expects with `qtest.Expect` and its claims, never by matching

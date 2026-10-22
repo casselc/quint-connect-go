@@ -73,8 +73,9 @@ document the gap (as glomers does for the scheme model).
   everything passes, and it shrinks on failure.
 - **Mutants.**
   `v := quinthegel.FindViolation(t, cfg, body, hegel.WithSeed(n))`
-  returns the shrunk run. Assert on its shape (`v.Last().Action`,
-  `v.Summary`). Skip it under `testing.Short()`: shrinking runs quint
+  returns the shrunk run; state how it shows with
+  `v.Expect(t, qtest.Rejects("transfer"))`, not by reading its
+  summary (`quinthegel.Shrink(t, sys)` for a System). Skip it under `testing.Short()`: shrinking runs quint
   dozens of times.
 - **Faults.** For distributed code, embed `hegelnet.Network`, or your
   own fault rules, so Hegel schedules losses, partitions, timers and
