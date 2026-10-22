@@ -23,19 +23,42 @@ type Bytes struct {
 	OnFault func(kind string, v int)
 	buf     []byte
 	ended   bool
+	err     error
 }
 
+// BytesVersion is the version of the byte rule. EncodeChoices writes it in
+// a header, so a corpus entry encoded by another rule is recognised
+// (Err), not replayed as another run.
+const BytesVersion = 1
+
+// header marks an encoded run: 0xff, "qc", the version.
+var header = []byte{0xff, 'q', 'c', BytesVersion}
+
 // FromBytes makes choices from data (a fuzz input, a corpus entry) at the
-// given rates.
+// given rates. An encoded run's header (EncodeChoices) is skipped; one of
+// another version makes every choice nominal and is reported by Err.
 func FromBytes(data []byte, rates Rates) *Bytes {
 	rest := data
-	return &Bytes{Rates: rates, Next: func(n int) []byte {
+	var err error
+	if len(rest) >= len(header) && rest[0] == header[0] && rest[1] == header[1] && rest[2] == header[2] {
+		if rest[3] != BytesVersion {
+			err = fmt.Errorf("qenv: choices encoded by byte rule version %d, not %d: encode the run again (EncodeChoices) from its choices", rest[3], BytesVersion)
+			rest = nil
+		} else {
+			rest = rest[len(header):]
+		}
+	}
+	return &Bytes{Rates: rates, err: err, Next: func(n int) []byte {
 		n = min(n, len(rest))
 		out := rest[:n]
 		rest = rest[n:]
 		return out
 	}}
 }
+
+// Err is why the bytes cannot be replayed (an encoding of another
+// version), or nil.
+func (b *Bytes) Err() error { return b.err }
 
 func (b *Bytes) byte() int {
 	if len(b.buf) == 0 && !b.ended {
@@ -89,9 +112,10 @@ func (b *Bytes) Entropy(n int) []byte {
 // makes the recorded choices again: a recorded run, or a shrunk Hegel
 // failure (quinthegel.Violation.Choices), as a fuzz corpus entry. A fault
 // of a kind whose rate is 0 cannot be encoded, and neither can entropy
-// chunks; both are reported.
+// chunks; both are reported. The bytes start with a header naming the
+// byte rule's version (BytesVersion).
 func EncodeChoices(choices []Choice, rates Rates) ([]byte, error) {
-	var out []byte
+	out := append([]byte(nil), header...)
 	for _, c := range choices {
 		switch {
 		case c.Kind == "entropy":

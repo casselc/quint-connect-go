@@ -19,6 +19,7 @@ type (
 	// Recorder logs a run's choices; see choice.Recorder.
 	Recorder = choice.Recorder
 	Bytes    = choice.Bytes
+	Replayer = choice.Replayer
 	// Profile is where a simulation's virtual time goes (qenv/profile).
 	Profile = profile.Profile
 )
@@ -51,7 +52,7 @@ func EntropyOf(c Chooser) func(n int) []byte { return choice.EntropyOf(c) }
 func NewSeeded(seed uint64) *Seeded { return choice.NewSeeded(seed) }
 
 // Replay is choice.Replay.
-func Replay(choices []Choice) Chooser { return choice.Replay(choices) }
+func Replay(choices []Choice) *Replayer { return choice.Replay(choices) }
 
 // Swarm is choice.Swarm.
 func Swarm(c Chooser, kinds ...string) Chooser { return choice.Swarm(c, kinds...) }

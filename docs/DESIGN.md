@@ -2676,3 +2676,13 @@ one it is nominal), and one kind has one option list. Scripts were a
 strict order: a fault whose phase had passed blocked all later ones.
 Each kind's faults are now in order and kinds independent, with
 `Follows` for an order across kinds.
+
+**Replay (V12).** A replay that diverged panicked in whichever task asked
+for the choice, so an exploration with a stale recording died instead of
+saying why. A Replayer now stops at the first divergence (the choice's
+index, the steps before it, what was recorded and what was asked) and
+makes every later choice nominal; the exploration reports the
+divergence as the run's error. An encoded run (a fuzz corpus entry)
+starts with the byte rule's version: a raw fuzz input has no header and
+is choices as it is, and an entry of another version is an error with
+its fix, not another run.

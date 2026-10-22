@@ -166,6 +166,9 @@ func explore(t testing.TB, bindingPath string, cfg ExploreConfig, scenario func(
 			}
 			r := qobs.NewRecorder(sink, c.Recorder...)
 			err := scenario(qenv.WithContext(rec, qobs.WithRecorder(ctx, r)))
+			if err == nil {
+				err = chooserErr(ch)
+			}
 			x.Runs[i] = &Run{Seed: seed, Steps: mem.Steps(), Choices: rec.Choices, Interrupted: r.Interrupted(), Code: code, Err: err}
 			if sc, ok := qenv.As[*qenv.Script](ch); ok {
 				x.Runs[i].Unscripted = sc.Remaining()
@@ -474,4 +477,16 @@ func (x *Exploration) describe(t testing.TB, r *Run) string {
 		fmt.Fprintf(&b, "  reproduce: QUINTGO_SEED=%d go test -run '^%s$'\n", r.Seed, strings.ReplaceAll(x.test, "/", "$/^"))
 	}
 	return b.String()
+}
+
+// chooserErr is why a run's chooser could not make the choices it was
+// given: a replay that diverged, bytes of another encoding.
+func chooserErr(c qenv.Chooser) error {
+	if r, ok := qenv.As[*qenv.Replayer](c); ok && r.Err() != nil {
+		return r.Err()
+	}
+	if b, ok := qenv.As[*qenv.Bytes](c); ok && b.Err() != nil {
+		return b.Err()
+	}
+	return nil
 }

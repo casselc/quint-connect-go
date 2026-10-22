@@ -290,7 +290,9 @@ names what it needs.
 - **V12. Replay stability** (needs V11). Choice streams carry a format
   version (a corpus header); `qenv.Replay` reports a divergence (step,
   expected kind, got) as an error; then `Service.CrashWindow` on by
-  default.
+  default. *Done:* `Replayer.Err` (Explore reports it as the run's
+  error), `EncodeChoices`' version header (`Bytes.Err` on another);
+  CrashWindow's default is R2's, as R2 says.
 - **V13. Evidence, completed** (P8's rest, P2/P4/P6's leftovers). Names
   the kinds and untried pairs and explains "one way"; `System.Mutate`
   returns Evidence; `Evidence` and `qcover.Summary` as JSON under

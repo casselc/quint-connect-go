@@ -241,7 +241,11 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
 - qenv runs are deterministic only if all nondeterminism goes through the
   Chooser: code under test must use `qenv.Go`, `qenv.Now`, `qenv.Sleep` and
   the doubles, and iterate maps in sorted order where the order matters.
-  `qenv.Replay` panics on the first divergence.
+  `qenv.Replay` stops at the first divergence and reports it (`Err`, the
+  run's error in an exploration). `EncodeChoices` writes the byte
+  rule's version (`choice.BytesVersion`): bump it when the rule changes,
+  and old corpus entries fail with the fix instead of replaying another
+  run.
 - A fault point's options are nominal, then its errors in the order
   named, then the crash (`qenv.FaultPoint`, which declares them as its
   kind: the errors' FaultName or text, and `crash`, nominal outside a

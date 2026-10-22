@@ -150,7 +150,7 @@ func EntropyOf(c Chooser) func(n int) []byte {
 				x.Choices = append(x.Choices, Choice{Kind: "entropy", N: n, Bytes: b})
 				return b
 			}
-		case *replay:
+		case *Replayer:
 			return x.entropy
 		case Entropy:
 			return x.Entropy
@@ -297,34 +297,52 @@ func (r *Recorder) Faults() []Choice {
 // that asks for a different kind or option count than was recorded is not
 // deterministic (it reads time, maps or goroutines outside the simulation):
 // Replay panics, naming the first difference.
-func Replay(choices []Choice) Chooser { return &replay{cs: choices} }
+func Replay(choices []Choice) *Replayer { return &Replayer{cs: choices} }
 
-type replay struct {
-	cs []Choice
-	i  int
+// A Replayer makes recorded choices again (Replay). At the first choice
+// that is not the one recorded (another kind, another number of options:
+// the run is not deterministic, or the code changed since) it stops
+// replaying, makes every later choice nominal, and keeps the divergence
+// (Err), which an exploration reports as the run's error.
+type Replayer struct {
+	cs  []Choice
+	i   int
+	err error
 }
 
-func (r *replay) Choose(kind string, n int) int {
-	if r.i >= len(r.cs) {
+// Err is the divergence, or nil if the run asked for the recorded choices.
+func (r *Replayer) Err() error { return r.err }
+
+// Choose implements Chooser.
+func (r *Replayer) Choose(kind string, n int) int {
+	if r.err != nil || r.i >= len(r.cs) {
 		return 0
 	}
 	c := r.cs[r.i]
 	if c.Kind != kind || c.N != n {
-		panic(fmt.Sprintf("qenv: replay diverged at choice %d: recorded %s/%d, asked %s/%d (the run is not deterministic)", r.i, c.Kind, c.N, kind, n))
+		r.diverged(fmt.Sprintf("%s/%d", kind, n))
+		return 0
 	}
 	r.i++
 	return c.Value
 }
 
+func (r *Replayer) diverged(asked string) {
+	c := r.cs[r.i]
+	r.err = fmt.Errorf("qenv: replay diverged at choice %d (after %d steps): recorded %s/%d, asked %s: the run is not deterministic "+
+		"(a map iterated unsorted, a goroutine or clock outside qenv) or the code changed since it was recorded", r.i, c.Step, c.Kind, c.N, asked)
+}
+
 // entropy replays a recorded chunk of entropy: the same simulation asks for
 // the same chunks at the same points.
-func (r *replay) entropy(n int) []byte {
-	if r.i >= len(r.cs) {
+func (r *Replayer) entropy(n int) []byte {
+	if r.err != nil || r.i >= len(r.cs) {
 		return make([]byte, n)
 	}
 	c := r.cs[r.i]
 	if c.Kind != "entropy" || c.N != n {
-		panic(fmt.Sprintf("qenv: replay diverged at choice %d: recorded %s/%d, asked for %d bytes of entropy (the run is not deterministic)", r.i, c.Kind, c.N, n))
+		r.diverged(fmt.Sprintf("%d bytes of entropy", n))
+		return make([]byte, n)
 	}
 	r.i++
 	return c.Bytes
