@@ -153,7 +153,44 @@ func (s *Store) Write(ctx context.Context, k, v string) error
   kind, declared or a double's, with the runs that reached it and the
   options taken. A declared point no run reached (`Unreached`) is a
   failure path the exploration never tried, whatever the line coverage
-  says. Raise its rate, or make a scenario reach it.
+  says. Raise its rate, or make a scenario reach it. `Pairs`, `Untried`
+  and `OneWay` say which pairs of fault kinds ran together, and in which
+  orders: fault-handling bugs are often two faults together.
+
+## 4a'. Sweep the configuration space: covering arrays (`qsweep`, `qtest.SweepExplore`)
+
+When the product of configurations grows (isolation level × sizes ×
+which fault kinds happen), sweep pairwise rows instead of the product:
+
+```go
+space := []qsweep.Factor{{Name: "iso", Values: []string{"ser", "si", "rc"}}, qsweep.Ints("stock", 1, 2, 3),
+	qsweep.Bool("crash"), qsweep.Bool("rpc.provider")}
+qtest.SweepExplore(t, binding, qtest.Sweep{Factors: space, Explore: qtest.ExploreConfig{Seeds: 20},
+	Opts:   func(r qsweep.Row) []qtest.Option { return []qtest.Option{qtest.Constants(map[string]string{"STOCK": r.Get("stock")})} },
+	Expect: func(r qsweep.Row) []qtest.Expectation { ... }}, // nil: Conforms
+	func(r qsweep.Row, c qenv.Chooser) { app.Run(qenv.Without(c, offKinds(r)...), cfgOf(r)) })
+```
+
+- Every pair of factor values is in some row (`Strength: 3` for
+  triples), in about as many rows as the two largest factors' product.
+  `Allow` rules rows out, and pairs only those rows have are not
+  required.
+- Fault kinds as `Bool` factors, turned off with `qenv.Without`, give
+  swarm testing with a guarantee: every pair of kinds runs together, and
+  each without the others masking it.
+- A row's sizes need the model's matching constants (`Opts`): a row with
+  another stock than the binding's fails every run otherwise.
+- Expect per row: say where a mutant's bug is real. Checkout's
+  `NoIdempotencyKey` sweep splits it into its two bugs: one in every row,
+  and one only where the provider's responses are lost. "No run of this
+  row violates X" is a check of the reports (`sw.Runs[i].Runs[j].Report`):
+  `Expect` with several expectations wants one run that shows them all.
+- Orders of faults: a `qenv.Script` per ordered pair (`{a, b}`) imposes
+  both orders of every pair, and `Remaining` names an order the system
+  cannot produce. `qsweep.Sequences` (every order of t events in few
+  sequences) fits only events that recur through a run, such as crashes
+  and partitions: a Script waits for each kind in turn, and a phase that
+  has passed does not come back.
 
 ## 4b. Code you cannot rewrite against seams: weave it
 

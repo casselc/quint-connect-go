@@ -38,6 +38,7 @@ qenv/fault/   the //quint:fault aspect: fault points (qenv.FaultPoint) with the 
 qgosim/       separate module: qenv and whole programs in gosim (the fork: branch gosim-fork, ./fetch-gosim.sh)
 qweave/       separate module: weaves Orchestrion aspects with types into a go -overlay (cmd/qweave); also gosim's
 qload/ qmeta/ load simulation (open/closed-loop clients, servers, triggers); CTMC, recovery property, alert rules
+qsweep/       covering arrays (pairwise and t-way rows with constraints, sequence covering); qtest.SweepExplore runs them
 qrole/        load roles (//quint:serve, //quint:operation, //quint:call; aspects in orchestrion.yml): u and v as gauges
 cmd/quintgo/  CLI
 skills/       agent skills, the source of truth (embedded by package skills;
@@ -160,6 +161,12 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   nemesis by name (`nemesis.crash.<process>`): the scheduler asks a
   chooser with `ChooseNemesis` instead of choosing among enabled
   nemeses by index, which no trace can name.
+- A Script imposes its faults in strict order, each waiting for its kind:
+  a fault of a phase that has passed (checkout's API faults happen only
+  while orders are placed) blocks every later one. Script ordered pairs,
+  and keep `qsweep.Sequences` for events that recur. `qenv.Without` and
+  `Swarm` keep the run's context outermost, where `New` finds it; a
+  wrapper of a `WithContext` chooser must too.
 - Option 0 of every qenv choice is nominal (no fault, canonical order).
   Keep that convention in new doubles: it is what makes Hegel's shrinking
   remove faults.

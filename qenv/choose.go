@@ -96,6 +96,8 @@ func EntropyOf(c Chooser) func(n int) []byte {
 		}
 	case *replay:
 		return c.entropy
+	case *swarm:
+		return EntropyOf(c.c) // it filters faults only
 	case Entropy:
 		return c.Entropy
 	}
@@ -228,7 +230,26 @@ func Swarm(c Chooser, kinds ...string) Chooser {
 	for _, k := range kinds {
 		s.off[k] = c.Choose("swarm."+k, 2) == 0
 	}
+	return s.keep()
+}
+
+// keep puts the run's context back outside the swarm, where New finds it.
+func (s *swarm) keep() Chooser {
+	if cc, ok := s.c.(ctxChooser); ok {
+		s.c = cc.Chooser
+		return ctxChooser{s, cc.ctx}
+	}
 	return s
+}
+
+// Without turns the given fault kinds (prefixes, as in Swarm) off for a
+// whole run: a sweep's row says which kinds are on (qtest.SweepExplore).
+func Without(c Chooser, kinds ...string) Chooser {
+	s := &swarm{c: c, off: map[string]bool{}}
+	for _, k := range kinds {
+		s.off[k] = true
+	}
+	return s.keep()
 }
 
 type swarm struct {

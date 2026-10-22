@@ -3,6 +3,7 @@ package qenv
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -109,6 +110,9 @@ func (p *PointCoverage) Faulted() int {
 type Coverage struct {
 	Runs   int
 	Points []*PointCoverage // by kind
+	// faulted are each run's faulted kinds, in the order of their first
+	// fault (Pairs)
+	faulted [][]string
 }
 
 // CoverageOf computes the coverage of runs from their choices (a
@@ -126,8 +130,10 @@ func CoverageOf(runs [][]Choice) *Coverage {
 	for kind, sites := range DeclaredFaults() {
 		get(kind).Sites = sites
 	}
+	cov := &Coverage{Runs: len(runs)}
 	for _, run := range runs {
 		seen := map[string]bool{}
+		var order []string
 		for _, c := range run {
 			if !IsFault(c.Kind) {
 				continue
@@ -142,9 +148,12 @@ func CoverageOf(runs [][]Choice) *Coverage {
 				seen[p.Kind] = true
 				p.Runs++
 			}
+			if c.Value != 0 && !slices.Contains(order, p.Kind) {
+				order = append(order, p.Kind)
+			}
 		}
+		cov.faulted = append(cov.faulted, order)
 	}
-	cov := &Coverage{Runs: len(runs)}
 	for _, p := range byKind {
 		cov.Points = append(cov.Points, p)
 	}
@@ -169,6 +178,74 @@ func (c *Coverage) Unfaulted() []*PointCoverage {
 	var out []*PointCoverage
 	for _, p := range c.Points {
 		if p.Reached > 0 && p.Faulted() == 0 {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// A PairCoverage is how runs combined two fault kinds: the runs that
+// faulted both, and those whose first fault of A came before B's and the
+// reverse. Bugs of fault handling are often bugs of two faults together
+// (a crash during the retry after a lost response).
+type PairCoverage struct {
+	A, B                     string
+	Together, AFirst, BFirst int
+}
+
+// Pairs is the coverage of each pair of kinds that runs faulted (A < B).
+func (c *Coverage) Pairs() []PairCoverage {
+	var kinds []string
+	for _, p := range c.Points {
+		if p.Faulted() > 0 {
+			kinds = append(kinds, p.Kind)
+		}
+	}
+	at := map[[2]string]*PairCoverage{}
+	var out []*PairCoverage
+	for i, a := range kinds {
+		for _, b := range kinds[i+1:] {
+			pc := &PairCoverage{A: a, B: b}
+			at[[2]string{a, b}] = pc
+			out = append(out, pc)
+		}
+	}
+	for _, order := range c.faulted {
+		for i, x := range order {
+			for _, y := range order[i+1:] {
+				if pc, ok := at[[2]string{x, y}]; ok {
+					pc.Together++
+					pc.AFirst++
+				} else if pc, ok := at[[2]string{y, x}]; ok {
+					pc.Together++
+					pc.BFirst++
+				}
+			}
+		}
+	}
+	res := make([]PairCoverage, len(out))
+	for i, pc := range out {
+		res[i] = *pc
+	}
+	return res
+}
+
+// Untried are the pairs of faulted kinds no run faulted together.
+func (c *Coverage) Untried() []PairCoverage {
+	var out []PairCoverage
+	for _, p := range c.Pairs() {
+		if p.Together == 0 {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// OneWay are the pairs faulted together, but only ever in one order.
+func (c *Coverage) OneWay() []PairCoverage {
+	var out []PairCoverage
+	for _, p := range c.Pairs() {
+		if p.Together > 0 && (p.AFirst == 0 || p.BFirst == 0) {
 			out = append(out, p)
 		}
 	}
@@ -201,6 +278,12 @@ func (c *Coverage) String() string {
 			fmt.Fprintf(&b, " (%s)", strings.Join(p.Sites, ", "))
 		}
 		b.WriteByte('\n')
+	}
+	if pairs := c.Pairs(); len(pairs) > 0 {
+		fmt.Fprintf(&b, "  pairs of faulted kinds: %d, %d never together, %d in one order only\n", len(pairs), len(c.Untried()), len(c.OneWay()))
+		for _, p := range c.Untried() {
+			fmt.Fprintf(&b, "    never together: %s + %s\n", p.A, p.B)
+		}
 	}
 	return b.String()
 }

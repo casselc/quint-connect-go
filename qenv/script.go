@@ -114,6 +114,8 @@ func nemesisOf(c Chooser) func(enabled []string) int {
 				return v
 			}
 		}
+	case *swarm:
+		return nemesisOf(c.c)
 	case nemesisChooser:
 		return c.ChooseNemesis
 	}

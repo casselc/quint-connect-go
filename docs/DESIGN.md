@@ -1755,3 +1755,71 @@ restarts once:
   conforms;
 - the mutant that keeps its count in memory follows the same traces, and
   the model rejects its restart (`Mismatch("restart")`).
+
+## 16. Covering arrays (`qsweep`, `qtest.SweepExplore`)
+
+Explorations sample the schedule and the faults. Configurations were a
+product written by hand: checkout's isolation levels × mutants, three
+sizes × three levels, and so on. Most failures need only a few factors to
+interact, so rows in which every pair of factor values appears find what
+the product would, at a fraction of its runs (Kuhn et al.; Microsoft's
+PICT).
+
+**Generation.** `qsweep.Cover` enumerates the allowed rows of the space
+and picks, greedily, the row covering most uncovered t-way tuples, until
+none is left.
+- A constraint is a Go function of a whole row, and tuples that only
+  ruled-out rows contain are not required. That is the hard part of
+  PICT's constraint language, for free.
+- It finds 9 rows for four 3-valued factors pairwise (the optimum) and 33
+  for three-way (27 is optimal).
+- The space is bounded (`MaxSpace`, 2M rows), far above what a test
+  sweeps.
+
+**Sweeps.** `qtest.SweepExplore` explores each row as a subtest, with
+per-row options (the model's constants for the row's sizes) and per-row
+expectations.
+- Fault kinds are factors (`qsweep.Bool`), turned off with `qenv.Without`.
+  Swarm testing chooses them at random. A covering array guarantees that
+  every pair of kinds runs together, and that each runs without the
+  others masking it.
+- `Without` and `Swarm` had to keep the run's context outermost: `New`
+  finds it only on the chooser it is given.
+
+**Pair coverage.** `qenv.Coverage` now keeps each run's faulted kinds in
+the order of their first fault:
+- `Pairs` counts, for each two kinds, the runs that faulted both and in
+  each order;
+- `Untried` lists the pairs never together;
+- `OneWay` lists the pairs seen in one order only.
+Checkout's random exploration (60 seeds) had every pair together and six
+in one order only.
+
+**Orders.** A `qenv.Script` per ordered pair imposes both orders, on a
+seeded schedule. All 30 orders of checkout's six kinds happen, and every
+run conforms.
+- A sequence covering array (`qsweep.Sequences`: every order of t events
+  as a subsequence of few sequences) did not fit checkout. A Script
+  imposes its faults strictly in turn, and the API's faults happen only
+  while orders are placed, so a sequence of all six never completes.
+- Sequences suit events that recur through a run, such as crashes and
+  partitions.
+
+**What the checkout sweep found.**
+- The faithful shop conforms on all 13 pairwise rows of the 432
+  combinations of isolation × orders × stock × crashes × three fault
+  families (260 runs).
+- `NoIdempotencyKey` captures with a fresh key on every attempt, and it
+  is two bugs:
+  - a cancellation's void cannot find the charge, in every row, with or
+    without faults;
+  - a double charge, which needs lost provider responses: some run of
+    every row with them charges twice, and no run of a row without them
+    does.
+
+  The mutants table expected only the second. `Expect(Violates(x))`
+  passes on the first run violating x, so the first bug never showed
+  there. The README did name both.
+- Rows with other stocks than the binding's failed every run until the
+  sweep passed the model the row's `STOCK`: sizes are factors of the
+  model too.

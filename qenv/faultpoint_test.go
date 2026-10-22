@@ -66,3 +66,42 @@ func TestFaultPoints(t *testing.T) {
 		t.Error(err)
 	}
 }
+
+// Pairs count the runs that faulted two kinds together, by which came
+// first; Untried names the pairs no run combined.
+func TestFaultPairs(t *testing.T) {
+	ch := func(kind string, v int) qenv.Choice { return qenv.Choice{Kind: "fault." + kind, N: 2, Value: v} }
+	cov := qenv.CoverageOf([][]qenv.Choice{
+		{ch("a", 1), ch("b", 0), ch("b", 1)},
+		{ch("b", 1), ch("a", 1), ch("a", 1)},
+		{ch("c", 1), ch("a", 0)},
+	})
+	got := map[string]qenv.PairCoverage{}
+	for _, p := range cov.Pairs() {
+		got[p.A+p.B] = p
+	}
+	if p := got["ab"]; p.Together != 2 || p.AFirst != 1 || p.BFirst != 1 {
+		t.Errorf("a+b: %+v", p)
+	}
+	if u := cov.Untried(); len(u) != 2 || u[0].A+u[0].B != "ac" || u[1].A+u[1].B != "bc" {
+		t.Errorf("untried %+v", u)
+	}
+	if len(cov.OneWay()) != 0 {
+		t.Errorf("one way %+v", cov.OneWay())
+	}
+}
+
+// Without turns kinds off and keeps the run's context where New finds it.
+func TestWithout(t *testing.T) {
+	type key struct{}
+	ctx := context.WithValue(context.Background(), key{}, "run")
+	all := qenv.NewSeeded(1)
+	all.Rates = qenv.Rates{Default: 1}
+	c := qenv.Without(qenv.WithContext(all, ctx), "fault.test.off")
+	if qenv.ContextOf(c).Value(key{}) != "run" {
+		t.Fatal("the context is lost")
+	}
+	if c.Choose("fault.test.off.x", 2) != 0 || c.Choose("fault.test.on", 2) == 0 {
+		t.Error("the wrong kinds are off")
+	}
+}
