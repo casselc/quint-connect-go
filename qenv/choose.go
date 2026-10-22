@@ -41,11 +41,46 @@ type ctxChooser struct {
 // context.Background(): what a run driven by c elsewhere (in gosim) records
 // into.
 func ContextOf(c Chooser) context.Context {
-	if cc, ok := c.(ctxChooser); ok {
+	if cc, ok := As[ctxChooser](c); ok {
 		return cc.ctx
 	}
 	return context.Background()
 }
+
+// A Wrapper is a chooser over another (a Recorder, a swarm, a Script over
+// its Base, a user's own): the package sees through it with Unwrap, so a
+// wrapper keeps what the chooser it wraps carries (the run's context, its
+// entropy, nemeses by name).
+type Wrapper interface {
+	Chooser
+	Unwrap() Chooser
+}
+
+// As finds the first chooser of type T in c's chain: c, then what it
+// wraps (Wrapper), and so on.
+func As[T any](c Chooser) (T, bool) {
+	for c != nil {
+		if t, ok := c.(T); ok {
+			return t, true
+		}
+		w, ok := c.(Wrapper)
+		if !ok {
+			break
+		}
+		c = w.Unwrap()
+	}
+	var zero T
+	return zero, false
+}
+
+// Unwrap implements Wrapper.
+func (c ctxChooser) Unwrap() Chooser { return c.Chooser }
+
+// Unwrap implements Wrapper.
+func (r *Recorder) Unwrap() Chooser { return r.C }
+
+// Unwrap implements Wrapper.
+func (s *swarm) Unwrap() Chooser { return s.c }
 
 // IsFault reports whether a choice kind is a fault choice.
 func IsFault(kind string) bool { return strings.HasPrefix(kind, "fault.") }
@@ -88,23 +123,28 @@ type Entropy interface {
 // EntropyOf returns c's source of entropy, through the wrappers of this
 // package (WithContext, Recorder, Replay), or nil if it has none.
 func EntropyOf(c Chooser) func(n int) []byte {
-	switch c := c.(type) {
-	case ctxChooser:
-		return EntropyOf(c.Chooser)
-	case *Recorder:
-		if e := EntropyOf(c.C); e != nil {
+	for c != nil {
+		switch x := c.(type) {
+		case *Recorder: // records the chunks it passes on
+			e := EntropyOf(x.C)
+			if e == nil {
+				return nil
+			}
 			return func(n int) []byte {
 				b := e(n)
-				c.Choices = append(c.Choices, Choice{Kind: "entropy", N: n, Bytes: b})
+				x.Choices = append(x.Choices, Choice{Kind: "entropy", N: n, Bytes: b})
 				return b
 			}
+		case *replay:
+			return x.entropy
+		case Entropy:
+			return x.Entropy
 		}
-	case *replay:
-		return c.entropy
-	case *swarm:
-		return EntropyOf(c.c) // it filters faults only
-	case Entropy:
-		return c.Entropy
+		w, ok := c.(Wrapper)
+		if !ok {
+			return nil
+		}
+		c = w.Unwrap()
 	}
 	return nil
 }
@@ -249,15 +289,6 @@ func Swarm(c Chooser, kinds ...string) Chooser {
 	for _, k := range kinds {
 		s.off[k] = c.Choose("swarm."+k, 2) == 0
 	}
-	return s.keep()
-}
-
-// keep puts the run's context back outside the swarm, where New finds it.
-func (s *swarm) keep() Chooser {
-	if cc, ok := s.c.(ctxChooser); ok {
-		s.c = cc.Chooser
-		return ctxChooser{s, cc.ctx}
-	}
 	return s
 }
 
@@ -268,7 +299,7 @@ func Without(c Chooser, kinds ...string) Chooser {
 	for _, k := range kinds {
 		s.off[k] = true
 	}
-	return s.keep()
+	return s
 }
 
 type swarm struct {

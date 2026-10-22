@@ -113,21 +113,29 @@ type nemesisChooser interface{ ChooseNemesis(enabled []string) int }
 // nemesisOf returns c's choice of a nemesis by name, through the wrappers
 // of this package (a Recorder records it as "fault.nemesis"), or nil.
 func nemesisOf(c Chooser) func(enabled []string) int {
-	switch c := c.(type) {
-	case ctxChooser:
-		return nemesisOf(c.Chooser)
-	case *Recorder:
-		if by := nemesisOf(c.C); by != nil {
+	for c != nil {
+		switch x := c.(type) {
+		case *Recorder: // records the choice it passes on
+			by := nemesisOf(x.C)
+			if by == nil {
+				return nil
+			}
 			return func(enabled []string) int {
 				v := by(enabled)
-				c.Choices = append(c.Choices, Choice{Kind: "fault.nemesis", N: len(enabled) + 1, Value: v})
+				x.Choices = append(x.Choices, Choice{Kind: "fault.nemesis", N: len(enabled) + 1, Value: v})
 				return v
 			}
+		case nemesisChooser:
+			return x.ChooseNemesis
 		}
-	case *swarm:
-		return nemesisOf(c.c)
-	case nemesisChooser:
-		return c.ChooseNemesis
+		w, ok := c.(Wrapper)
+		if !ok {
+			return nil
+		}
+		c = w.Unwrap()
 	}
 	return nil
 }
+
+// Unwrap implements Wrapper: a Script keeps its Base's context.
+func (s *Script) Unwrap() Chooser { return s.Base }

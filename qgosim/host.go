@@ -113,6 +113,9 @@ type entropic struct {
 
 func (c entropic) Entropy(n int) []byte { return c.e(n) }
 
+// Unwrap implements qenv.Wrapper.
+func (c entropic) Unwrap() qenv.Chooser { return c.Chooser }
+
 // Run runs the gosim test named test, in the package pkg (an import path),
 // with c making every choice of the run (from c's entropy, if it has any:
 // qenv.EntropyOf), and returns the steps it recorded

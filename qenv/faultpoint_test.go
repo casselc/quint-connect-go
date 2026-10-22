@@ -105,3 +105,40 @@ func TestWithout(t *testing.T) {
 		t.Error("the wrong kinds are off")
 	}
 }
+
+// counting is a user's chooser wrapper: it implements Unwrap and nothing
+// else, and the run's context, entropy and nemeses by name still reach the
+// simulation through it.
+type counting struct {
+	qenv.Chooser
+	n int
+}
+
+func (c *counting) Choose(kind string, n int) int { c.n++; return c.Chooser.Choose(kind, n) }
+func (c *counting) Unwrap() qenv.Chooser        { return c.Chooser }
+
+func TestWrappersSeeThrough(t *testing.T) {
+	type key struct{}
+	ctx := context.WithValue(context.Background(), key{}, "run")
+	w := &counting{Chooser: qenv.WithContext(qenv.NewSeeded(1), ctx)}
+	s := qenv.New(w)
+	var seen any
+	s.Process("p", false, func(ctx context.Context) { seen = ctx.Value(key{}) })
+	if err := s.Run(time.Second); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	if seen != "run" {
+		t.Error("the context does not reach the tasks through a user's wrapper")
+	}
+	if qenv.EntropyOf(w) == nil {
+		t.Error("the seeded chooser's entropy is hidden by the wrapper")
+	}
+	sc := &qenv.Script{Base: qenv.WithContext(qenv.Nominal{}, ctx)}
+	if qenv.ContextOf(sc).Value(key{}) != "run" {
+		t.Error("a Script loses its Base's context")
+	}
+	if r, ok := qenv.As[*qenv.Seeded](w); !ok || r == nil {
+		t.Error("As does not find the seeded chooser")
+	}
+}

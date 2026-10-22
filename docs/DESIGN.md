@@ -2095,3 +2095,19 @@ runnable". A task killed while it waits keeps its deadline and rightly
 never runs again. The check excluded killed tasks in its timer clause but
 not in the deadline clause. The fix is to the check, not the scheduler;
 `TestSelfCheckUnderCrashes` keeps it.
+
+## 24. Chooser wrappers see through (U5, S2)
+
+`EntropyOf` and `nemesisOf` switched on the package's own wrapper types,
+and `New` and `ContextOf` looked only at the outermost chooser. So a
+user's wrapper, or a `Script` over a `Base` carrying the run's context,
+hid the context, the entropy (gosim runs about 9× slower without it) and
+nemeses by name. `Swarm` and `Without` had to re-hoist the context by
+hand.
+
+A wrapper now implements `Unwrap() Chooser` (`qenv.Wrapper`), as
+`WithContext`, `Recorder`, the swarm, `Script` (over its `Base`) and
+qgosim's entropy wrapper do. `As[T](c)` finds the first `T` in the chain,
+and the lookups walk it. A Recorder still intercepts what it passes on,
+to record it. The hand re-hoisting is gone, and so is the gotcha that a
+wrapper of a `WithContext` chooser must keep the context outermost.

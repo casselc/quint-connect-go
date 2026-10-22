@@ -125,7 +125,7 @@ var Epoch = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 // New returns a simulation whose choices c makes.
 func New(c Chooser) *Sim {
 	base := context.Background()
-	if cc, ok := c.(ctxChooser); ok {
+	if cc, ok := As[ctxChooser](c); ok { // through any wrapper
 		base = cc.ctx
 	}
 	s := &Sim{c: c, base: base, now: Epoch, start: Epoch, back: make(chan struct{}), MaxSteps: 100000,

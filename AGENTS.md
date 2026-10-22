@@ -177,9 +177,11 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
 - A Script imposes its faults in strict order, each waiting for its kind:
   a fault of a phase that has passed (checkout's API faults happen only
   while orders are placed) blocks every later one. Script ordered pairs,
-  and keep `qsweep.Sequences` for events that recur. `qenv.Without` and
-  `Swarm` keep the run's context outermost, where `New` finds it; a
-  wrapper of a `WithContext` chooser must too.
+  and keep `qsweep.Sequences` for events that recur.
+- A chooser that wraps another implements `Unwrap() qenv.Chooser`
+  (`qenv.Wrapper`): `New`, `ContextOf`, `EntropyOf` and nemeses by name
+  look through the chain (`qenv.As[T]`). A wrapper without it hides the
+  run's context and entropy.
 - Option 0 of every qenv choice is nominal (no fault, canonical order).
   Keep that convention in new doubles: it is what makes Hegel's shrinking
   remove faults.
