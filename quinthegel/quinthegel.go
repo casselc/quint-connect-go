@@ -177,8 +177,6 @@ type Config struct {
 	Keep string
 	// AllowEmpty accepts test cases that record no steps.
 	AllowEmpty bool
-	// Parallel bounds concurrent quint processes in After mode (0: GOMAXPROCS).
-	Parallel int
 	// Batched mode: the number of rounds (default 1), each of the test
 	// cases hegel.WithTestCases asks for, with its own seed; and an
 	// optional time budget that stops starting rounds once exceeded.
@@ -268,13 +266,14 @@ func Test(t *testing.T, cfg Config, body func(ht *hegel.T, rec *Recorder), opts 
 		t.Logf("quinthegel: %d runs checked with quint, %d decided from earlier verdicts", q, hits)
 	}
 	if cfg.Mode == After && len(runs) > 0 {
-		CheckAll(t, checker, runs, cfg.Parallel)
+		CheckAll(t, checker, runs)
 	}
 }
 
-// CheckAll validates runs in parallel and fails t, listing each violating
+// CheckAll validates runs in parallel (the checker's quint processes,
+// GOMAXPROCS at a time) and fails t, listing each violating
 // run's steps and verdict.
-func CheckAll(t testing.TB, c *validate.Checker, runs [][]qtrace.Step, parallel int) []*validate.Report {
+func CheckAll(t testing.TB, c *validate.Checker, runs [][]qtrace.Step) []*validate.Report {
 	t.Helper()
 	reps, errs := c.CheckBatch(context.Background(), runs, 0)
 	bad := 0

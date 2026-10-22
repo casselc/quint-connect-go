@@ -370,7 +370,9 @@ recorder opt-in.
   `Shrink` runs the System's Opts and the exploration's rates; the shrunk
   run's faults and a replay hint in Hegel's log; qload keeps `Sim.Run`'s
   error; `Recovers` judges against the offered load; `quinthegel.Config.Parallel`
-  (ignored) gone.
+  (ignored) gone. Done, but `Shrink` with Opts and rates, which needs W4's
+  `System.Rates` and goes with it; `Mostly`'s tie (half recovering counts
+  as recovering) is documented, not changed.
 - **W2. The global recorder opt-in.** `qtest.Record` and quinthegel install
   it only with `qtest.Global()`; installs restore by identity and a second
   concurrent one fails; with no default global, an escaped step means one.

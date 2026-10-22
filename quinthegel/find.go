@@ -131,8 +131,20 @@ func FindViolation(t testing.TB, cfg Config, body func(tc hegel.TestCase, rec *R
 	if found.Report, err = c.Check(context.Background(), found.Steps); err != nil {
 		t.Fatalf("quinthegel: checking the shrunk run: %v", err)
 	}
-	t.Logf("quinthegel: %d runs checked with quint, %d decided from earlier verdicts; shrunk run:\n%s%s",
-		q, hits, Render(found.Steps), found.Summary)
+	faults := ""
+	if len(found.Choices) > 0 {
+		var fs []string
+		for _, c := range found.Faults() {
+			fs = append(fs, c.String())
+		}
+		faults = "faults: none\n"
+		if len(fs) > 0 {
+			faults = "faults: " + strings.Join(fs, ", ") + "\n"
+		}
+		faults += "replay it outside Hegel: qenv.Replay(v.Choices)\n"
+	}
+	t.Logf("quinthegel: %d runs checked with quint, %d decided from earlier verdicts; shrunk run:\n%s%s%s",
+		q, hits, Render(found.Steps), faults, found.Summary)
 	return found
 }
 

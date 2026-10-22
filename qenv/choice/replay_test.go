@@ -41,3 +41,14 @@ func TestEncodedRunsAreVersioned(t *testing.T) {
 		t.Fatal("raw bytes")
 	}
 }
+
+// A rate's kind covers itself and the kinds below it, not every kind its
+// name prefixes: "fault.log" once set the rate of "fault.login".
+func TestRatesCoverKindsBelow(t *testing.T) {
+	r := Rates{Default: 0.1, Kinds: map[string]float64{"fault.log": 0.5, "fault.log.append": 0.9}}
+	for kind, want := range map[string]float64{"fault.log": 0.5, "fault.log.read": 0.5, "fault.log.append": 0.9, "fault.login": 0.1} {
+		if got := r.Of(kind); got != want {
+			t.Errorf("Of(%s) = %v, want %v", kind, got, want)
+		}
+	}
+}

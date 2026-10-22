@@ -199,11 +199,17 @@ func (r Rates) Set(kind string, p float64) Rates {
 func (r Rates) Of(kind string) float64 {
 	best, rate := -1, r.Default
 	for k, v := range r.Kinds {
-		if strings.HasPrefix(kind, k) && len(k) > best {
+		if covers(k, kind) && len(k) > best {
 			best, rate = len(k), v
 		}
 	}
 	return rate
+}
+
+// covers reports whether a kind prefix covers kind: itself, or a kind
+// below it ("fault.rpc" covers "fault.rpc.x", not "fault.rpcx").
+func covers(prefix, kind string) bool {
+	return kind == prefix || strings.HasPrefix(kind, prefix+".")
 }
 
 // DefaultRates inject a fault at one fault choice in twenty, except a
@@ -296,7 +302,8 @@ func (r *Recorder) Faults() []Choice {
 // Replay repeats recorded choices, then makes every later choice 0. A run
 // that asks for a different kind or option count than was recorded is not
 // deterministic (it reads time, maps or goroutines outside the simulation):
-// Replay panics, naming the first difference.
+// Replay stops there and reports it (Replayer.Err), naming the first
+// difference.
 func Replay(choices []Choice) *Replayer { return &Replayer{cs: choices} }
 
 // A Replayer makes recorded choices again (Replay). At the first choice
@@ -378,7 +385,7 @@ type swarm struct {
 func (s *swarm) Choose(kind string, n int) int {
 	if IsFault(kind) {
 		for k, off := range s.off {
-			if off && strings.HasPrefix(kind, k) {
+			if off && covers(k, kind) {
 				return 0
 			}
 		}

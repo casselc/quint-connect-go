@@ -29,7 +29,8 @@ type Recovery struct {
 	Series  *Series  // an Experiment's
 	// Err is why the run could not be judged: an Experiment without a
 	// Healthy goodput, whose baseline would be whatever the system did
-	// before the trigger (a collapsed system "recovers" to its collapse).
+	// before the trigger (a collapsed system "recovers" to its collapse),
+	// or a simulation that failed before its horizon.
 	Err error
 }
 
@@ -85,9 +86,9 @@ func (r Recovery) Warning() string {
 
 // Recovers runs cfg (whose client rate is replaced by base, plus the
 // trigger) and checks the recovery property: within `within` after the
-// stressor ends, goodput is back to at least 90% of what it was before it.
-// A metastable system fails it: the stressor is gone, the degradation is
-// not.
+// stressor ends, goodput is back to at least 90% of the offered rate base
+// (the healthy goodput of an open loop below capacity). A metastable system
+// fails it: the stressor is gone, the degradation is not.
 func Recovers(cfg Config, base float64, tr Trigger, within time.Duration) Recovery {
 	if tr.Start == 0 {
 		tr.Start = 100 * time.Second
@@ -98,7 +99,7 @@ func Recovers(cfg Config, base float64, tr Trigger, within time.Duration) Recove
 	cfg.Horizon = end + within + Window
 	m := Simulate(cfg)
 	goodput := func(s Sample) float64 { return float64(s.Successes) }
-	r := Recovery{Trigger: tr, Metrics: m, Offered: base,
+	r := Recovery{Trigger: tr, Metrics: m, Offered: base, Baseline: base, Err: m.Err,
 		Before: m.Mean(tr.Start-Window, tr.Start, goodput),
 		After:  m.Mean(end+within, cfg.Horizon, goodput)}
 	r.Judge()
@@ -125,8 +126,9 @@ func (r *Recovery) Judge() {
 // Assess runs an experiment with seed through tr and judges its recovery:
 // the rate of the goodput action (a model step: "markPaid") over the
 // Window after `within` past the trigger's end, against the experiment's
-// Healthy goodput or, if unknown, the Window before the trigger. tr.Start defaults to Window; start it later for a closed loop,
-// which takes a think time to reach its steady state.
+// Healthy goodput (required: without it the Recovery's Err says so).
+// tr.Start defaults to Window; start it later for a closed loop, which
+// takes a think time to reach its steady state.
 func Assess(x Experiment, goodput string, tr Trigger, within time.Duration, seed uint64) Recovery {
 	if tr.Start == 0 {
 		tr.Start = Window
@@ -138,7 +140,7 @@ func Assess(x Experiment, goodput string, tr Trigger, within time.Duration, seed
 	}
 	after := tr.End() + within
 	series := x.Run(seed, tr, after+Window)
-	r := Recovery{Trigger: tr, Series: series, Baseline: x.Healthy, Offered: x.Rate,
+	r := Recovery{Trigger: tr, Series: series, Baseline: x.Healthy, Offered: x.Rate, Err: series.Err,
 		Before: series.Rate(goodput, tr.Start-Window, tr.Start),
 		After:  series.Rate(goodput, after, after+Window)}
 	r.Judge()
@@ -207,8 +209,11 @@ func Count(sys System, tr Trigger, n int) int {
 	return ok
 }
 
-// Mostly reports whether most of seeds 1..n recover from the trigger,
-// with the lowest-seeded run that did not (if any).
+// Mostly reports whether at least half of seeds 1..n recover from the
+// trigger (a tie counts as recovering: Search looks for triggers that
+// mostly fail), with the lowest-seeded run that did not (if any). A run
+// that could not be judged (Recovery.Err) did not recover: the returned
+// run then carries its error.
 func Mostly(sys System, tr Trigger, n int) (bool, Recovery) {
 	stuck, first := 0, Recovery{}
 	for _, r := range Runs(sys, tr, n) {

@@ -216,3 +216,20 @@ func TestScriptPartialOrder(t *testing.T) {
 		t.Errorf("following: got %v, remaining %v", got, sc.Remaining())
 	}
 }
+
+// A scripted kind may be named as the chooser sees it, with the "fault."
+// prefix (a recorded choice's Kind): it once never matched, and the fault
+// never happened.
+func TestScriptPrefixedKind(t *testing.T) {
+	sc := &qenv.Script{Faults: []qenv.Scripted{{Kind: "fault.test.prefixed", Option: 1}}}
+	s := qenv.New(sc)
+	var err error
+	s.Spawn("writer", func(ctx context.Context) { err = qenv.FaultPoint(ctx, "test.prefixed", false, errUnavailable) })
+	if rerr := s.Run(time.Minute); rerr != nil {
+		t.Fatal(rerr)
+	}
+	s.Close()
+	if err == nil {
+		t.Error("the scripted fault did not happen")
+	}
+}

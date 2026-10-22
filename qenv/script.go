@@ -61,7 +61,7 @@ func (s *Script) due(kind string) int {
 		s.done = make([]bool, len(s.Faults))
 	}
 	for i, f := range s.Faults {
-		if f.Kind != kind || s.done[i] {
+		if strings.TrimPrefix(f.Kind, "fault.") != kind || s.done[i] {
 			continue
 		}
 		for _, j := range f.Follows {

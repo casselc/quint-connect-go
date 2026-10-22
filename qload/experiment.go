@@ -128,6 +128,9 @@ type Series struct {
 	// goroutine started with go): the run is strict, and its counts miss
 	// them (qobs.Escaped).
 	Escaped []string
+	// Err is the simulation's error (Sim.Run's), if it did not run to
+	// its horizon: its points stop there.
+	Err error
 }
 
 // Count is the number of steps of an action recorded in [from, to) (by
@@ -248,7 +251,7 @@ func (x Experiment) Run(seed uint64, tr Trigger, horizon time.Duration) *Series 
 			series.Points = append(series.Points, p)
 		}
 	})
-	_ = s.Run(horizon)
+	series.Err = s.Run(horizon)
 	_, series.Escaped = qobs.Escaped(mark)
 	return series
 }

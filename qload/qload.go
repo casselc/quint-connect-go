@@ -319,6 +319,9 @@ type Sample struct {
 // Metrics accumulates a run's counters and samples them.
 type Metrics struct {
 	Samples []Sample
+	// Err is the simulation's error (Sim.Run's), if it did not run to
+	// its horizon: its samples stop there.
+	Err error
 
 	arrivals, retries, successes, timeouts, rejected, failed, completions int
 	tick                                                                  time.Duration
@@ -422,7 +425,7 @@ func Simulate(cfg Config) *Metrics {
 			m.sample(s.Elapsed(), sv)
 		}
 	})
-	_ = s.Run(cfg.Horizon)
+	m.Err = s.Run(cfg.Horizon)
 	m.fill()
 	return m
 }

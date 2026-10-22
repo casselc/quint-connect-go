@@ -83,7 +83,8 @@ type ExploreConfig struct {
 	// runs. A step lands in its run if it is recorded through a context of
 	// the run or from a goroutine of the simulation (its tasks, the one
 	// that created it); one recorded from a goroutine started with `go`
-	// has nowhere to go and panics (qobs.Strict).
+	// has nowhere to go and fails the exploration (qobs.Strict,
+	// qobs.Escaped).
 	Parallel int
 	// Coverage collects each run's code coverage, by step (qcover; the
 	// code must be woven with qweave -cover): Exploration.CodeCoverage.
@@ -180,7 +181,7 @@ func explore(t testing.TB, bindingPath string, cfg ExploreConfig, scenario func(
 		}()
 	}
 	wg.Wait()
-	if n, msgs := qobs.Escaped(mark); len(msgs) > 0 {
+	if n, msgs := qobs.Escaped(mark); n > mark {
 		t.Errorf("quintgo: %d steps were recorded from outside the runs while they ran (a test in parallel may have recorded some); the first:\n%s", n-mark, msgs[0])
 	}
 	for i, r := range x.Runs {
@@ -244,7 +245,11 @@ func explore(t testing.TB, bindingPath string, cfg ExploreConfig, scenario func(
 	}
 	if len(todo) > 0 {
 		reps, errs := cc.CheckBatch(context.Background(), todo, 0)
-		for i, j := range at {
+		for i := range x.Runs { // in seed order: an error names the first seed it hit
+			j, ok := at[i]
+			if !ok {
+				continue
+			}
 			if errs[j] != nil {
 				t.Fatalf("quintgo: seed %d: %v", x.Runs[i].Seed, errs[j])
 			}

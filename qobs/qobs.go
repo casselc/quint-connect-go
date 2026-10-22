@@ -146,6 +146,7 @@ func SetGlobal(r *Recorder) { global.Store(r) }
 // Global returns the installed recorder, or nil.
 func Global() *Recorder { return global.Load() }
 
+
 var recorderKey = qrun.NewKey[*Recorder]("recorder")
 
 // WithRecorder returns a context whose steps Record sends to r rather than
@@ -236,13 +237,19 @@ var escaped struct {
 const maxEscaped = 1000
 
 // Escaped returns the number of steps that escaped strict runs so far,
-// and the messages of those after mark (an earlier count): a strict run
-// takes the count when it starts and reports what escaped while it ran.
+// and messages of those after mark (an earlier count): a strict run takes
+// the count when it starts and reports what escaped while it ran. Compare
+// the counts: past the first 1000 escapes the messages are not kept, and
+// since then holds one that says so.
 func Escaped(mark int) (n int, since []string) {
 	escaped.Lock()
 	defer escaped.Unlock()
 	if mark < len(escaped.msgs) {
 		since = append(since, escaped.msgs[mark:]...)
+	}
+	if escaped.n > mark && len(since) == 0 {
+		since = []string{fmt.Sprintf("qobs: %d steps had no recorder (their messages are past the first %d kept): "+
+			"a goroutine started with `go` is outside the simulation; start it with qenv.Go", escaped.n-mark, maxEscaped)}
 	}
 	return escaped.n, since
 }
