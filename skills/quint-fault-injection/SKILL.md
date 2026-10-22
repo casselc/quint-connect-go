@@ -218,6 +218,15 @@ t.Log(x.CodeCoverage()) // never run, run by no step, outcomes that ran the same
   apart and the code does not. That is fine when the outcome is the
   environment's (a lost response), and a question when it is the code's.
 
+## 4a''''. One report: `x.Evidence()`
+
+`t.Log(x.Evidence())` (an exploration, or a sweep's `Swept`) says in a few
+lines what the runs show: verdicts by reason, fault kinds faulted and
+pairs together (and those never faulted), the code run (with
+`Coverage: true`), and mutants killed (set `Mutants` from
+`sys.Mutate`). Read it after a green test: it is what "conforms" leaves
+unsaid.
+
 ## 4a'''. What the model constrains: mutants (`qweave -mutate`, `System.Mutate`)
 
 ```sh

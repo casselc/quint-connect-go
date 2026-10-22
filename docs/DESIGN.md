@@ -2250,3 +2250,20 @@ host packages or a gosim build of examples/gosim.
 **S5, one hook entry.** Superseded: B1 put the pprof labels in qrole's
 one `track`, which Serve, Operation and Call share; a hook package would
 add an indirection for three call sites.
+
+## 29. One evidence report (U8, P8)
+
+A green exploration said "every run conforms" and nothing about what the
+runs did. Its other reports (fault coverage, code coverage, a sweep's
+rows, mutants) were separate calls with separate formats. `Evidence`
+puts them in one: verdicts by reason ("violates chargedAtMostOnce",
+"rejects ship", "mismatch after place"), fault kinds faulted and pairs
+together, rows, code and mutants, each part present when its data is.
+`Exploration.Evidence` and `Swept.Evidence` make it; a mutation report is
+added by the caller (`Mutants`), since `System.Mutate` runs explorations
+of its own.
+
+The review's other parts of P8 wait: coverage gaps as expectations
+(`Reaches`, `NoSurvivors`) need a decision on what a test may demand of
+chance (a pair of kinds is reached in most seeds, not all), and a JSON
+form next to `QUINTGO_KEEP` needs the reports' types to marshal.

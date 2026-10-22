@@ -55,9 +55,8 @@ func TestFaithfulSweep(t *testing.T) {
 		t.Skip("sweeps hundreds of runs")
 	}
 	sw := shopSystem.Sweep(t, qtest.Sweep{Factors: space, Explore: qtest.ExploreConfig{Seeds: 20, Rates: crashy}}, deploy(shop.Faithful))
-	cov := sw.Coverage()
-	t.Log(cov)
-	if u := cov.Untried(); len(u) > 0 {
+	t.Log(sw.Evidence())
+	if u := sw.Coverage().Untried(); len(u) > 0 {
 		t.Errorf("fault kinds never together: %v", u)
 	}
 }

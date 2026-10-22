@@ -149,3 +149,6 @@ the rest, each after the U items it depends on.
 - U7: done (DESIGN §28): the chain's v is the hindsight orbit, qrole's the
   waiting part (`Sample.Waiting`, `TestTwoOrbits`); the lint out of qenv
   (`internal/lint`); S5 superseded by B1.
+- U8 (P8): one evidence report (DESIGN §29): `Exploration.Evidence`,
+  `Swept.Evidence`. Coverage gaps as expectations and a JSON form wait;
+  P7 (the skills restructure) is next.
