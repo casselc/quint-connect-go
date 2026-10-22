@@ -2612,5 +2612,12 @@ could not say; each is fixed where it belongs:
   scheduling point there; opt-in, since it changes the choices of runs
   recorded before it. grpcledger's `TestCrashAfterCommit` shows crashes
   alone exposing a missing dedupe with it.
-- **Long failing runs are slow to validate** (17 to 30 s for 160 to 500
-  steps, the streams example measured): open; see §41 if profiled.
+- **Long failing runs seemed slow to validate** (17 to 30 s for 160 to
+  500 steps, measured while four agents shared the machine). Measured
+  alone: a failing run costs one more quint run, the detail module (each
+  step's expectation, ITF for the failing checks), about 3 s of quint's
+  startup whatever its length (bank, 300 steps: 3.1 s conforming, 6.3 s
+  failing; each quint invocation 3.3 to 3.5 s with or without ITF);
+  streams' no-dedupe mutant, 20 seeds, 8 failing, validates in 13 s. All
+  of a batch's failing runs share one detail run, so the cost is per
+  batch, not per run. Nothing to fix; a machine under load multiplies it.
