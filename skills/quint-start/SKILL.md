@@ -18,6 +18,7 @@ references when the task needs them.
 | Is it correct under crashes, lost responses, redelivery, isolation levels? | `qenv` simulation, `qtest.System` (`Explore`, `Sweep`, `Fuzz`), `quinthegel.Shrink` | quint-fault-injection |
 | Which code did no run reach, and does the model constrain the code that ran? | `qweave -cover`, `qweave -mutate`, `System.Mutate`, `x.Evidence()` | quint-fault-injection (its coverage reference) |
 | Does it recover after a load spike or a slow dependency? | `qmeta` chain, `qload` simulation, `quinthegel.FindTrigger`, alert rules | quint-metastability |
+| My system is an HTTP server, a gRPC service, or Kafka/Kinesis consumers and publishers | the seams and examples: kvstore, grpcledger (`simgrpc`), streams (a simulated log, kfake) | quint-fault-injection (its services reference) |
 | My model is written in Choreo | name each transition (`choreo::step_with`), then any workflow | quint-model-for-go (Choreo section) |
 | I am starting a component or an example, or setting up CI | the end-to-end workflow and triage | quint-verification-workflow |
 | A test failed: whose bug is it? | the verdict table and triage | quint-verification-workflow (its verdicts reference) |

@@ -52,6 +52,10 @@ examples/glomers      Gossip Glomers on a Maelstrom runtime + simulator (maelstr
                       cmd/* run under real Maelstrom (maelstrom.sh)
 examples/kvstore      app: HTTP KV service with CAS (kvserver, kvload); concurrency, span conversion
 examples/jobqueue     app: at-least-once queue with leases and restarts; design-level verdicts
+examples/grpcledger   separate module: gRPC ledger; simgrpc (any generated gRPC service in qenv: ServiceRegistrar + ClientConnInterface),
+                      real tier over bufconn with otelgrpc spans converted to steps (ledger.convert.yaml); cmd/ledger-real
+examples/streams      separate module: outbox publisher + consumers on Kafka (franz-go, kfake), Kinesis (AWS SDK,
+                      kinesisfake) and a simulated log (simlog: partitions, idempotent producer, group, fencing); one binding
 examples/twophase     app: two-phase commit on qenv against a Choreo model (vendored choreo.qnt); named transitions, connect and Explore
 examples/checkout     app: checkout saga on qenv (isolation levels, outbox, idempotency, crashes); cmd/checkout-sim; under load (load.go)
 examples/fleetrollout separate module: multicluster-runtime controller, simulated (kubesim) and on kwok (kwok-demo.sh)
@@ -87,6 +91,9 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   `go vet -tags sim`.
 - qanalysis (its own module): `cd qanalysis && go test ./...` (the checkout
   comparison weaves and explores checkout: skipped with -short, needs quint).
+- grpcledger and streams (their own modules): `cd examples/<name> && go test ./...`.
+  grpcledger's generated protobuf code is checked in; regenerate with buf
+  (no protoc: see its README).
 - fleetrollout (its own module): `cd examples/fleetrollout && go test ./...`;
   `./kwok-demo.sh` needs kwokctl and kwok on PATH (`go install
   sigs.k8s.io/kwok/cmd/{kwokctl,kwok}@v0.7.0`), no Docker (binary runtime).
@@ -173,6 +180,20 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   that calls back (qenv's commit hooks) is one call-graph node for every
   closure handed to it, and going through it made cancel "reach"
   PlaceOrder.
+- A step's observed values may be negative (an overdraft's balance): never
+  use -1 as "not observed". Pass the observation or nothing.
+- `quint` reserves `to` (and other built-in names): a parameter named `to`
+  fails to parse (QNT101). grpcledger's model says `src`/`dest`.
+- A crashable process whose restart redoes its whole job (a publisher that
+  republishes everything) livelocks a run under per-step crash rates:
+  every restart adds work at the same virtual instant. Give it durable
+  progress (an outbox it clears on acknowledgement), as a real one has.
+- `qenv.Wait` and `Signal.Wait` panic outside a simulation. A seam whose
+  completion callbacks run on a real client's goroutines (kgo's promises)
+  needs its wait in the seam (`Writer.Flush`), not in the application.
+- A model that learns a log from its reads checks Kafka, Kinesis and a
+  simulated log with one binding (examples/streams): the consumer is the
+  one place every tier can record.
 - Long replays are split into `.then` segments of 20 (`binding.segmentSteps`):
   Quint's Rust evaluator rejects chains nested much past 50. A disabled
   last step is reported by quint as QNT511 at the run's own line, and a

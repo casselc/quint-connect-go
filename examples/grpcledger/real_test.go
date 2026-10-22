@@ -51,13 +51,17 @@ func TestRealSpansConform(t *testing.T) {
 
 // The bugs the simulation finds, from a real server's spans: the missing
 // dedupe once responses are lost, the overdraft from the load alone.
+// The real server's interleaving varies with the machine's load, so the
+// same bug shows as a step the model cannot take or, when the commits
+// interleave otherwise, as a balance the model does not have.
 func TestRealMutants(t *testing.T) {
 	qtest.RequireQuint(t)
 	for _, c := range []struct {
 		m    ledger.Mutation
 		lose float64
 		want qtest.Expectation
-	}{{ledger.NoDedupe, 0.3, reapplied}, {ledger.NoFundsCheck, 0, qtest.Rejects("transfer")}} {
+	}{{ledger.NoDedupe, 0.3, qtest.AnyOf(reapplied, qtest.Mismatch(""))},
+		{ledger.NoFundsCheck, 0, qtest.AnyOf(qtest.Rejects("transfer"), qtest.Mismatch("transfer"))}} {
 		t.Run(c.m.String(), func(t *testing.T) {
 			steps := realSteps(t, grpcledger.RealConfig{Mutation: c.m, Seed: 1, LoseResponse: c.lose})
 			qtest.Expect(t, qtest.Validate(t, binding, steps).Report, c.want)

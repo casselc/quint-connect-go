@@ -2487,3 +2487,108 @@ qanalysis/actionmap, which has the call graph:
   entry, so its error path is in the callers: qcover alone, without a
   call graph, could not place it. Read these as untried before reading
   them as dead: raise the kind's rate or script it.
+
+## 38. gRPC services, simulated and for real (examples/grpcledger)
+
+A gRPC service is checked the way checkout is, with one new seam:
+`simgrpc` (examples/grpcledger/simgrpc, ~150 lines), which runs any
+generated service inside qenv.
+- `Server` implements `grpc.ServiceRegistrar`, so the generated
+  `RegisterXServer` registers the real handlers. `Conn` implements
+  `grpc.ClientConnInterface`, so `NewXClient` works unchanged.
+- A call is protobuf-marshalled and crosses a `qenv.Service`, whose faults
+  (dropped or duplicated request, lost response) and process crashes are
+  qenv choices. simgrpc adds one kind of its own: a connection refused
+  before sending.
+- Transport outcomes become the status codes a real client sees:
+  - no response in the connection's virtual Timeout: `DeadlineExceeded`,
+    outcome unknown;
+  - a full queue: `ResourceExhausted`;
+  - a refused connection: `Unavailable`.
+- Handler errors pass through as their status, and outgoing metadata
+  arrives as incoming metadata.
+- Streams, peers and the transport's own retries are not simulated. The
+  client's retry policy lives in the client (`ledger.Client`), so both
+  tiers run it.
+
+The real tier serves the same handlers on a `grpc.Server` with otelgrpc.
+At the commit, the server stamps its own span with the step
+(`ledger.action`, fields, `ledger.seq` for commit order). The convert
+rules (`ledger.convert.yaml`) then make the spans the steps, which is how a
+production gRPC service would be checked from traces it already exports.
+`quintgo validate -convert` checks them from the command line
+(`run-demo.sh`).
+
+What the example found:
+- **The example's own first draft deadlocked.** Lock order was src, then
+  dest; the faithful exploration's seed 22 recorded no steps. The
+  simulation had found a real bug, but Explore said only "does not show
+  the run conforms" with an empty report.
+- **No crash window between commit and response.** A sweep row with
+  crashes on and the network faults off conformed under `NoDedupe`.
+- **Refusals are steps.** The model allows a refusal only when funds are
+  short, so a ledger that wrongly refuses is caught too. (Checkout's open
+  question, refused orders that record no step, is the same design point.)
+
+Deviations from the brief:
+- Unary RPCs only; NewStream returns `Unimplemented` in the simulation.
+- The client's retry is in the client, not a gRPC service-config
+  retryPolicy: the transport's retries cannot run over simgrpc, and a
+  policy in code runs in both tiers.
+- `SplitTxn` is checked in the simulation only. With MemDB's one lock per
+  transaction, the real interleaving is a race the load rarely hits.
+- No protoc on the machine: buf v1.50.0 compiles the proto, with
+  protoc-gen-go v1.36.12 and protoc-gen-go-grpc v1.6.0. The generated
+  code is checked in and the regeneration command reproduces it byte for
+  byte.
+
+## 39. Streams on Kafka and Kinesis (examples/streams)
+
+A publisher relays a transactional outbox to a partitioned log;
+consumers apply records to a projection, deduplicated by a per-key
+version, and commit offsets after a batch. One model, one binding and
+three logs: qenv's simulated log, Kafka through franz-go, and Kinesis
+through the AWS SDK.
+
+**The model learns the log from reads.** A broker's appends are not
+observable in every tier. A real cluster has no hook, and recording at
+the producer's acknowledgement misses records whose acknowledgement was
+lost. So the model takes the log from the consumers' `read(partition,
+offset, key, n)`: the first read of an offset learns its record, later
+reads must agree, and an offset past what was read is not a step. The
+properties are over the projection (`apply`), the commits (`commit`) and
+what the publisher was told (`publish`). The binding has no templates.
+
+**A simulated partitioned log, not qenv.Queue.** qenv's Queue is
+per-message acknowledgement with redelivery, and has no offsets,
+partitions or groups. simlog (in the example module) is Kafka's contract:
+- an idempotent producer client: sequence numbers per partition, the log
+  rejecting out-of-order and dropping duplicates, 5 requests in flight;
+- commits with lost requests and acknowledgements;
+- rewinds;
+- a consumer group with generations, eager rebalances and fencing;
+- evictions as nemeses at any step (mid-batch: the zombie keeps
+  applying while the new owner re-reads; the serializable projection and
+  the version keep it idempotent).
+
+It belongs in core only if a second example needs it. Kinesis's contract
+is a subset (no idempotence, no groups), so it could serve that too.
+
+**Findings while building it.**
+- An argument named `seq` collides with the step's own field in binding
+  templates (proposed core fix below).
+- A publisher that republished everything on restart livelocked runs at
+  per-step crash rates; the outbox fixed it, as it would in production.
+- On a nominal run a plain test of the projection sees only `off-by-one`.
+  The other three bugs need a fault, and the model names the property
+  each breaks. `commit-first` needs no crash for the model:
+  `committedApplied` fails at the commit itself.
+
+**Deviations.**
+- The real tiers inject no faults: kfake and the fake Kinesis run
+  nominally. Their value is that the real clients, the adapters and the
+  model agree.
+- Kinesis runs one consumer owning every shard. Leases are the KCL's,
+  with DynamoDB, and out of scope.
+- Kinesis needed a fake endpoint (four calls of the JSON 1.1 protocol),
+  not a Docker image (none needed: in process, like kfake).

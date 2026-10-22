@@ -210,3 +210,61 @@ jobs:
           DROP=0.1 kind/demo.sh
           KILL=1 kind/demo.sh
           if MUTATION=no-client-token DROP=0.3 N=6 kind/demo.sh; then echo "mutant passed"; exit 1; fi
+
+  grpcledger:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: examples/grpcledger
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: examples/grpcledger/go.mod
+          cache-dependency-path: examples/grpcledger/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install quint
+        run: ../../ci/install-quint.sh
+      - name: gofmt, vet, simulation lint
+        run: |
+          test -z "$(gofmt -l . | tee /dev/stderr)"
+          go vet ./...
+          go run -C ../.. ./cmd/quintgo lint -sim examples/grpcledger
+      - name: test (simulated through simgrpc, and a real grpc.Server)
+        run: go test -count=1 -timeout 30m ./...
+      - name: demo (real server, otelgrpc spans converted and validated)
+        run: |
+          ./run-demo.sh
+          if MUTATION=no-dedupe ./run-demo.sh; then echo "mutant passed"; exit 1; fi
+
+  streams:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: examples/streams
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: examples/streams/go.mod
+          cache-dependency-path: examples/streams/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install quint
+        run: ../../ci/install-quint.sh
+      - name: gofmt, vet, simulation lint
+        run: |
+          test -z "$(gofmt -l . | tee /dev/stderr)"
+          go vet ./...
+          go run -C ../.. ./cmd/quintgo lint -sim examples/streams
+      - name: test (simulated log with QENV_CHECK, Kafka on kfake, Kinesis on a fake endpoint)
+        run: |
+          QENV_CHECK=1 go test -short -count=1 ./...
+          go test -count=1 -timeout 30m ./...
+      - name: fuzzing the faithful pipeline
+        run: go test -run '^$' -fuzz FuzzFaithful -fuzztime 30s .
+      - name: demo
+        run: ./run-demo.sh

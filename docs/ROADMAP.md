@@ -168,3 +168,6 @@ the rest, each after the U items it depends on.
   kubesim `PodTimes`. KWOK Stages from a trace: deferred (no kwok here).
 - A1's classifications: done (DESIGN §37): `actionmap` `Dead`,
   `UntriedErrorPaths`.
+- Examples beyond the roadmap: examples/grpcledger (gRPC, simgrpc,
+  otelgrpc spans; DESIGN §38) and examples/streams (Kafka, Kinesis, a
+  simulated log; DESIGN §39). HTTP is examples/kvstore.

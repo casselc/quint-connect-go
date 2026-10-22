@@ -407,6 +407,8 @@ which bug.
 
 | App | What it is | What it shows |
 |---|---|---|
+| [`examples/grpcledger`](examples/grpcledger) | separate module: a gRPC ledger (idempotent transfers) with generated code, simulated through `simgrpc` (generated client and server unchanged; lost/duplicated requests, lost responses, refused connections, crashes) and served for real (otelgrpc spans converted to steps) | `NoDedupe` only with faults, `NoFundsCheck` from any load, `SplitTxn` (lost update) as a `Mismatch`; sweep of which faults expose the missing dedupe; Hegel shrink to one duplicated request |
+| [`examples/streams`](examples/streams) | separate module: an outbox publisher and idempotent consumers on Kafka (franz-go, kfake) and Kinesis (AWS SDK, in-process fake), and a simulated partitioned log with lost produces/commits, rewinds, evictions mid-batch and crashes; one model and binding for all three | `commit-first`, `no-dedupe`, `non-idempotent-producer`, `off-by-one` |
 | [`examples/twophase`](examples/twophase) | two-phase commit: a coordinator and participants with durable stores over a lossy network, checked against a [Choreo](https://github.com/informalsystems/choreo) model | a Choreo model with named transitions (`choreo::step_with`) bound, explored, shrunk and driving the code (connect); a coordinator that commits early, a participant that gives up after voting, a decision kept in memory |
 | [`examples/checkout`](examples/checkout) | a checkout saga: orders, payments with idempotency keys and voids, shipping, cancellation, a transactional outbox | fault injection with `qenv`: crashable services, a database at three isolation levels, an at-least-once broker, a lossy network; which bug is a bug at which isolation level (lost update, write skew); a double charge; a lost event; Hegel shrinking a write skew; under load, too many payment consumers collapse on their own, a retry budget is bypassed by broker redelivery, deadline propagation recovers, and idempotency keys hold through the storm |
 | [`examples/fleetrollout`](examples/fleetrollout) | a multicluster-runtime controller rolling a Deployment across member clusters within a budget (own module) | the same controller simulated (fake clients behind interceptors: status lag, lost responses, crashes) and on three real kwok clusters (`kill -9` included), checked by one evidence-based model; `observedGeneration` and in-memory-state bugs caught in both |
@@ -423,6 +425,8 @@ which bug.
 examples/glomers/maelstrom.sh                   # under real Maelstrom, then quintgo on the nodes' step logs
 examples/kvstore/run-demo.sh                    # MUTATION=stale-cas | revision-on-conflict
 examples/jobqueue/run-demo.sh                   # MUTATION=ack-any-lease | forget-done
+examples/grpcledger/run-demo.sh                 # a real grpc.Server, otelgrpc spans converted; MUTATION=no-dedupe | no-funds-check
+examples/streams/run-demo.sh                    # Kafka (kfake), Kinesis (fake endpoint), simulated log; MUTATION=commit-first | no-dedupe | ...
 examples/twophase/run-demo.sh                   # MUTATION=early-commit | impatient | volatile-decision
 examples/checkout/run-demo.sh                   # MUTATION=no-locks | lock-without-write | no-idempotency-key | dual-write
 examples/fleetrollout/kwok-demo.sh              # MUTATION=ignore-observed-generation | in-memory-progress, KILL=1
