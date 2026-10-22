@@ -149,9 +149,9 @@ func (s *Shop) emit(tx qenv.Txn, ev Event) {
 // PlaceOrder reserves qty units of sku for a new order. It is idempotent
 // in id: a client retrying after a timeout gets the same order.
 func (s *Shop) PlaceOrder(ctx context.Context, id, sku string, qty int) error {
-	created := false
+	created, soldOut := false, false
 	err := qenv.Retry(ctx, s.DB, 10, func(tx qenv.Txn) error {
-		created = false
+		created, soldOut = false, false
 		// lock the stock row first, then check for the order: under read
 		// committed a concurrent retry of this call is then seen
 		v, _, err := s.read(tx, "stock/"+sku)
@@ -163,7 +163,12 @@ func (s *Shop) PlaceOrder(ctx context.Context, id, sku string, qty int) error {
 		}
 		stock, _ := v.(int)
 		if stock < qty {
-			return ErrSoldOut
+			// A refusal is a step (the model's refuse), recorded when the
+			// read-only transaction commits: an error here would roll back
+			// and drop the hook, and the stock check would go unchecked.
+			tx.OnCommit(func() { qobs.Record(ctx, "refuse", nil, "order", id, "qty", qty, "obs.stock", stock) })
+			soldOut = true
+			return nil
 		}
 		tx.Put("stock/"+sku, stock-qty)
 		tx.Put("order/"+id, Order{ID: id, SKU: sku, Qty: qty})
@@ -174,6 +179,9 @@ func (s *Shop) PlaceOrder(ctx context.Context, id, sku string, qty int) error {
 	})
 	if err == nil && created && s.Mutation == DualWrite {
 		qenv.Go(ctx, "publish", func(ctx context.Context) { s.Broker.Publish(ctx, Event{Type: "placed", Order: id}) })
+	}
+	if err == nil && soldOut {
+		return ErrSoldOut
 	}
 	return err
 }

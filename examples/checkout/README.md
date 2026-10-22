@@ -26,7 +26,9 @@ A line-of-business app checked against its model under fault injection.
     and the provider kept exactly the money of the shipped ones.
 
   Overselling, and shipping or cancelling an order twice, are steps the
-  model cannot take.
+  model cannot take. Refusing an order is a step (`refuse`), enabled only
+  when the stock cannot cover it: a shop that refuses an order it could
+  fill is rejected too, where before a refusal recorded nothing.
 - **Steps** are recorded with `Txn.OnCommit`, at the commit where each one
   takes effect. The provider records its own charges and refunds the same
   way.

@@ -36,6 +36,16 @@ module checkout {
     doubleCharge' = doubleCharge, settled' = settled,
   }
 
+  // A new order that the stock cannot cover is refused, and nothing
+  // changes. Refusing is a step so that the shop's stock check is
+  // constrained both ways: without it, a shop that refused orders it
+  // could fill (or filled none) recorded nothing the model could reject.
+  action refuse(order: str, qty: int): bool = all {
+    not(orders.keys().contains(order)), qty > 0, stock < qty,
+    stock' = stock, orders' = orders, paid' = paid, shipped' = shipped, cancelled' = cancelled,
+    charges' = charges, refunds' = refunds, doubleCharge' = doubleCharge, settled' = settled,
+  }
+
   // The provider charges a placed order. A second charge is allowed (it
   // happens) but remembered: chargedAtMostOnce is the property.
   action charge(order: str): bool = all {
@@ -96,7 +106,7 @@ module checkout {
   action step = {
     nondet order = Set("o1", "o2", "o3").oneOf()
     nondet qty = 1.to(2).oneOf()
-    any { place(order, qty), charge(order), refund(order), markPaid(order), ship(order), cancel(order) }
+    any { place(order, qty), refuse(order, qty), charge(order), refund(order), markPaid(order), ship(order), cancel(order) }
   }
 }
 
