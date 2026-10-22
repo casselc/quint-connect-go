@@ -72,6 +72,29 @@ jobs:
       - name: demo
         run: OUT=$RUNNER_TEMP/demo ./run-demo.sh
 
+  gosim:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: examples/gosimbroadcast
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: examples/gosimbroadcast/go.mod
+          cache-dependency-path: examples/gosimbroadcast/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install quint
+        run: ../../ci/install-quint.sh
+      - name: fetch and patch gosim
+        run: ./fetch-gosim.sh
+      - name: vet
+        run: go vet ./... && go vet -tags sim ./cluster/
+      - name: test (the broadcast cluster on gosim, choices from qenv)
+        run: go test -short -count=1 -timeout 30m ./...
+
   maelstrom:
     runs-on: ubuntu-latest
     steps:

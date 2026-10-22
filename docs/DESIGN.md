@@ -1140,3 +1140,124 @@ used to run on to its next scheduling point.
   operators, not calls, so Orchestrion cannot match them; they would need
   a rewriter of our own.
 - The real exporter, which also needs its chDB sessions behind a seam.
+
+## 14. A whole program in a simulation (gosim, `examples/gosimbroadcast`)
+
+§13's third option, a patched runtime, exists:
+[gosim](https://github.com/jellevandenhooff/gosim) translates a program and
+everything it imports, standard library included, into a module that runs
+on its own deterministic runtime. Goroutines, channels, `select`, timers,
+maps, `sync`, the network (TCP) and the file system are all simulated, on
+several machines that can crash and restart. It is MIT-licensed and
+experimental, by one author; the last commit is from December 2024. The
+spike asked whether gosim can be the runtime under qenv's choices and
+Quint's checks, for code that qenv's seams and weaving do not reach.
+
+**Go 1.26.** gosim works by replacing, at translation time, every
+standard-library function that talks to the Go runtime (a body-less
+function, an assembly routine, a `linkname`) with a hook. The hook tables
+were written for Go 1.23, so 1.24 and 1.26 both fail on the first missing
+hook. A translator change reports every missing hook in one run, not one
+per run. That list for 1.26 was about 40 entries:
+- `sync.Mutex`, moved to `internal/sync`;
+- `sync.Map`, now a hash trie that takes the runtime's hasher from a map
+  type descriptor (that map stays a real map);
+- weak pointers (kept strong) and synctest (unsupported in a simulation);
+- `vgetrandom`, which falls back to the simulated system call;
+- three compiler intrinsics that panic when they are not intrinsified,
+  once translated to another package path.
+
+Other translator fixes:
+- FIPS 140 crypto: its assembly reads package variables that translation
+  moves into per-machine globals, so translation builds with `purego`;
+- hooks matched methods of the same name;
+- `~map[K]V` constraints did not admit named map types;
+- reflect gained `TypeAssert` and `Seq`;
+- the file system had to accept `O_DIRECTORY`.
+
+gosim's behaviour suite passes on 1.26.1. Its race mode does not build
+yet (`internal/race` changed), and is not needed here.
+
+**The Chooser.** All of gosim's nondeterminism comes from one seeded
+generator in its scheduler. That makes it one seam:
+- every bounded pick goes through `gosimruntime.Choose(kind, n)`: the next
+  goroutine ("sched"), a ready `select` case ("select"), where a map
+  iteration starts ("map"), and whatever the program asks for
+  (`fault.partition` in the example);
+- unbounded randomness (math/rand, crypto/rand, hash seeds) comes from a
+  generator seeded by one choice.
+
+Option 0 is nominal: the first runnable goroutine, the first ready case,
+no fault. That is qenv's convention, and it makes Hegel shrink toward the
+canonical schedule. A qenv `Chooser` is a gosim `Chooser`. With qenv's
+`Recorder` and `Replay`, a run of 5500 choices replays to the identical
+step sequence, and `Replay`'s divergence check holds.
+
+**Hegel stays outside.** Translation covers every import, and Hegel calls
+a native library, so Hegel cannot run in the simulation. The test is in
+two halves:
+- the simulated half is an ordinary gosim test (`//go:build sim`);
+- a normal `go test` in the host drives it over gosim's metatest protocol
+  (the test binary on a pipe). The fork extends that protocol: during a
+  run, the binary asks the host for each choice and sends it each line
+  the program `Emit`s, here the qobs step log. On the host,
+  `metatesting.MetaT.RunWith` serves a qenv `Chooser`.
+
+A Hegel abort is a panic from inside `Choose`. It stops the binary, and
+the next run starts a fresh one. `quinthegel.Recorder.Add` takes the
+emitted steps, so `FindViolation` judges and shrinks gosim runs as it
+does qenv's.
+
+**What it ran.** The Glomers broadcast node, unchanged, on three machines
+over real TCP, with a client and a nemesis that isolates nodes on chosen
+steps. The runs conform to the broadcast model. The ReadOwnOnly mutant
+fails at a read. Hegel found NoRetry's lost value and shrank it to two
+gossips lost to an isolated node, with the rest of the schedule nominal.
+Code in the run, none of it written for the simulation:
+- the node and its Maelstrom runtime, `net`, `bufio`, `encoding/json`,
+  tickers and mutexes;
+- qobs and the OTel API it imports.
+
+One harness change: the runtime got `Node.Start` (a transport other
+than stdio) and `Barrier` (the Lamport barrier behind `Sim.Step`). Its
+Hegel network driver is excluded from `sim` builds.
+
+**Costs.**
+- A choice round trip to the host is about 50 µs. A cluster run takes
+  350 ms with qenv choosing and 60 ms on gosim's own seed. Eight in ten
+  choices are the scheduler's. Handing the simulation entropy in chunks,
+  as `qenv.Hegel` already draws it, would remove most of the round
+  trips. Fault choices would still go to the host one by one, for their
+  rates and notes.
+- The first build translates the standard library and every dependency,
+  about a minute. It is cached after that.
+- The fork is about 600 lines. The upstream project is quiet, so
+  carrying the patch is the realistic plan; most of it is the version
+  port, which upstream would need anyway.
+
+**Compared with qenv and weaving.** gosim covers what qenv reaches only
+through seams, and what weaving cannot rewrite:
+- channels and `select`;
+- the standard library's own goroutines and timers;
+- dependencies;
+- the network and the disk.
+
+In exchange:
+- the code under test runs in a translated copy;
+- the Go version is pinned to the hooks;
+- doubles with contract profiles (isolation levels, lossy RPC) and
+  qload's open- and closed-loop clients still belong to qenv.
+
+The two fit together. The simulated program asks `Choose` for its faults
+under qenv's names, and the same Chooser, Hegel included, drives either
+runtime.
+
+**Not done.**
+- Machine crashes (`Machine.Crash`, restart). The broadcast model has
+  no restart.
+- Chunked entropy.
+- Race mode on 1.26.
+
+A machine that crashes stops without running deferred code, so §13's
+interrupted steps cannot arise. A step is sent to the host when it is
+recorded.

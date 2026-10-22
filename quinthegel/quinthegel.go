@@ -84,6 +84,16 @@ func (r *Recorder) Step(action string, err error, kv ...any) {
 // Steps returns what was recorded so far.
 func (r *Recorder) Steps() []qtrace.Step { return r.mem.Steps() }
 
+// Add appends steps recorded elsewhere, as they are: by another process,
+// or inside a simulation that reports its steps to the test (gosim's).
+// Like recorded steps, they are noted on the test case.
+func (r *Recorder) Add(steps ...qtrace.Step) {
+	sink := qobs.Tee{r.mem, noteSink{r}}
+	for i := range steps {
+		sink.Record(context.Background(), &steps[i])
+	}
+}
+
 // Install makes r the global qobs recorder until the returned function is
 // called, so code woven with Orchestrion (//quint:action) records into it.
 // Hegel runs test cases one at a time, so one global recorder per case is

@@ -287,27 +287,7 @@ func (s *stdio) Send(m Message) {
 // Run serves the node under Maelstrom: messages on stdin, replies on
 // stdout, timers on tickers. It returns when stdin closes.
 func (n *Node) Run() error {
-	n.tr = &stdio{w: os.Stdout}
-	stop := make(chan struct{})
-	defer close(stop)
-	for _, t := range n.timers {
-		go func(t *timer) {
-			tk := time.NewTicker(t.every)
-			defer tk.Stop()
-			for {
-				select {
-				case <-stop:
-					return
-				case <-tk.C:
-					if n.id != "" {
-						n.mu.Lock()
-						t.f()
-						n.mu.Unlock()
-					}
-				}
-			}
-		}(t)
-	}
+	defer n.Start(&stdio{w: os.Stdout})()
 	sc := bufio.NewScanner(os.Stdin)
 	sc.Buffer(make([]byte, 1<<20), 16<<20)
 	for sc.Scan() {
@@ -320,6 +300,57 @@ func (n *Node) Run() error {
 		}
 	}
 	return sc.Err()
+}
+
+// Start serves the node over tr, for a network other than Maelstrom's
+// stdio: the node sends with tr, its timers run on tickers, and the caller
+// passes it incoming messages with Receive. Calling the returned function
+// stops the timers.
+func (n *Node) Start(tr Transport) (stop func()) {
+	n.tr = tr
+	done := make(chan struct{})
+	for _, t := range n.timers {
+		go func(t *timer) {
+			tk := time.NewTicker(t.every)
+			defer tk.Stop()
+			for {
+				select {
+				case <-done:
+					return
+				case <-tk.C:
+					if n.id != "" {
+						n.mu.Lock()
+						t.f()
+						n.mu.Unlock()
+					}
+				}
+			}
+		}(t)
+	}
+	return func() { close(done) }
+}
+
+// Barrier orders what comes next after every step the nodes have taken so
+// far: it returns a Lamport time later than all their clocks and moves the
+// clocks to it, so that their later steps come after it. A harness records
+// its own steps (a settle) at that time.
+func Barrier(nodes ...*Node) int64 {
+	var max int64
+	for _, n := range nodes {
+		n.mu.Lock()
+		if n.lamport > max {
+			max = n.lamport
+		}
+		n.mu.Unlock()
+	}
+	for _, n := range nodes {
+		n.mu.Lock()
+		if n.lamport < max+1 {
+			n.lamport = max + 1
+		}
+		n.mu.Unlock()
+	}
+	return max + 1
 }
 
 // StepLogFromEnv opens a step log for a node run by Maelstrom, when

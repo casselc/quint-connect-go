@@ -1,3 +1,8 @@
+// Not built inside gosim (the sim tag): Hegel runs outside a simulation,
+// and its native library cannot be translated into one.
+
+//go:build !sim
+
 package maelstrom
 
 import (

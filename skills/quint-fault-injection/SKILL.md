@@ -147,6 +147,29 @@ real code, or the real code), weave it:
 Inside a simulation the woven locks are scheduling points, so seeds and
 Hegel explore their interleavings. Outside one, the real methods run.
 
+## 4c. A whole program, network and channels included: gosim
+
+When channels, `select`, the standard library's own goroutines, TCP or the
+disk matter, run the program in gosim (examples/gosimbroadcast, on a
+patched gosim: `./fetch-gosim.sh`):
+- put the simulated test in its own package under `//go:build sim`. Start
+  machines with `gosim.NewMachine`, and ask for faults with
+  `gosimruntime.Choose("fault.<name>", n)`, option 0 being no fault.
+  Record with qobs into `qobs.NewJSONLSink` on a writer that calls
+  `gosimruntime.Emit`;
+- keep Hegel and anything native out of that package's imports, because
+  gosim translates them all;
+- drive it from a normal test with `metatesting.ForOtherPackage(t,
+  pkg).RunWith(t, cfg, chooser, emit)`. The chooser can be
+  `qenv.NewSeeded`, `qenv.Hegel(tc)`, a `qenv.Recorder` or `qenv.Replay`.
+  Parse the emitted lines with `qtrace.ReadJSONL`, then check them with
+  `qtest.Check`/`Validate`, or `rec.Add(steps...)` inside
+  `quinthegel.FindViolation`;
+- look the runner up for every run: a Hegel abort stops the test binary.
+
+Each choice is a round trip to the test process (about 50 µs), so a run
+costs about 5 times gosim's own seeded run.
+
 ## 5. Take the same model to the real environment
 
 Run the real binary against real dependencies, and inject the faults you

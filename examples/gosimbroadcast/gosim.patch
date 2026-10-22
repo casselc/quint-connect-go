@@ -1,0 +1,904 @@
+diff --git a/go.mod b/go.mod
+index 2eb2977..7d320a4 100644
+--- a/go.mod
++++ b/go.mod
+@@ -1,6 +1,6 @@
+ module github.com/jellevandenhooff/gosim
+ 
+-go 1.23.2
++go 1.26.1
+ 
+ require (
+ 	github.com/dave/dst v0.27.3
+diff --git a/gosimruntime/chan.go b/gosimruntime/chan.go
+index 1fc9618..1a86e16 100644
+--- a/gosimruntime/chan.go
++++ b/gosimruntime/chan.go
+@@ -518,7 +518,7 @@ func Select(selectors ...ChanSelector) (int, any, bool) {
+ 		if len(ready) == 1 {
+ 			idx = ready[0]
+ 		} else {
+-			idx = ready[fastrandn(uint32(len(ready)))]
++			idx = ready[gs.get().choose("select", uint32(len(ready)))]
+ 		}
+ 		v, ok := selectors[idx].exec()
+ 		return int(idx), v, ok
+diff --git a/gosimruntime/choose.go b/gosimruntime/choose.go
+new file mode 100644
+index 0000000..e451aa7
+--- /dev/null
++++ b/gosimruntime/choose.go
+@@ -0,0 +1,98 @@
++package gosimruntime
++
++import (
++	"encoding/json"
++	"fmt"
++	"sync"
++)
++
++// A Chooser makes the simulation's bounded decisions: which goroutine runs
++// next ("sched"), which ready case a select takes ("select"), where a map
++// iteration starts ("map"), other bounded picks ("rand"), and whatever the
++// simulated program asks for with Choose (faults, by convention kinds
++// starting with "fault."). It returns a value in [0, n). Option 0 is
++// nominal: the first runnable goroutine, the first ready case, no fault.
++//
++// Unbounded randomness (math/rand, crypto/rand, hash seeds) comes from a
++// generator seeded by one choice of kind "seed".
++//
++// A qenv.Chooser is a Chooser.
++type Chooser interface {
++	Choose(kind string, n int) int
++}
++
++// Choose asks the run's chooser for a value in [0, n). Without a chooser it
++// draws from the seeded generator, as before.
++func Choose(kind string, n int) int {
++	if n <= 1 {
++		return 0
++	}
++	return int(gs.get().choose(kind, uint32(n)))
++}
++
++// Emit sends a line to the host running this simulation (a metatest
++// runner), for example a recorded step. Outside a metatest it is dropped.
++func Emit(line string) {
++	if c, ok := gs.get().chooser.(*remoteChooser); ok {
++		c.emit(line)
++	}
++}
++
++func (s *scheduler) choose(kind string, n uint32) uint32 {
++	if s.chooser == nil || inControlledNondeterminism() {
++		return s.fastrander.fastrandn(n)
++	}
++	if n <= 1 {
++		return 0
++	}
++	v := s.chooser.Choose(kind, int(n))
++	if v < 0 || v >= int(n) {
++		panic(fmt.Sprintf("gosim: chooser returned %d for %s/%d", v, kind, n))
++	}
++	return uint32(v)
++}
++
++// The metatest protocol, between a gosim test binary and its runner. During
++// a run with Remote set, the binary sends childMsg lines on stdout and reads
++// a choiceReply after each Choose; the run ends with a Result.
++type childMsg struct {
++	Choose *choiceReq `json:",omitempty"`
++	Emit   *string    `json:",omitempty"`
++	Result *runResult `json:",omitempty"`
++}
++
++type choiceReq struct {
++	Kind string
++	N    int
++}
++
++type choiceReply struct {
++	Value int
++}
++
++type remoteChooser struct {
++	mu  sync.Mutex
++	in  *json.Decoder
++	out *json.Encoder
++}
++
++func (c *remoteChooser) Choose(kind string, n int) int {
++	c.mu.Lock()
++	defer c.mu.Unlock()
++	if err := c.out.Encode(childMsg{Choose: &choiceReq{Kind: kind, N: n}}); err != nil {
++		panic(err)
++	}
++	var reply choiceReply
++	if err := c.in.Decode(&reply); err != nil {
++		panic(err)
++	}
++	return reply.Value
++}
++
++func (c *remoteChooser) emit(line string) {
++	c.mu.Lock()
++	defer c.mu.Unlock()
++	if err := c.out.Encode(childMsg{Emit: &line}); err != nil {
++		panic(err)
++	}
++}
+diff --git a/gosimruntime/map.go b/gosimruntime/map.go
+index d05680b..b5bfced 100644
+--- a/gosimruntime/map.go
++++ b/gosimruntime/map.go
+@@ -28,6 +28,10 @@ type mapElem[K comparable, V any] struct {
+ 	present bool
+ }
+ 
++// MapImpl names the implementation of Map, for the constraint
++// ~struct{ Impl *MapImpl[K, V] } that ~map[K]V translates to.
++type MapImpl[K comparable, V any] = mapImpl[K, V]
++
+ type mapImpl[K comparable, V any] struct {
+ 	// underlying maps keys to a position in small concatenated with values
+ 	underlying map[K]int32
+@@ -246,7 +250,7 @@ func (m Map[K, V]) Set(k K, v V) {
+ 		m.resizeLater()
+ 	}
+ 
+-	freeIdx := int(fastrandn(uint32(len(m.Impl.free))))
++	freeIdx := int(gs.get().choose("map.free", uint32(len(m.Impl.free))))
+ 	idx := m.Impl.free[freeIdx]
+ 	m.Impl.free[freeIdx] = m.Impl.free[len(m.Impl.free)-1]
+ 	m.Impl.free = m.Impl.free[:len(m.Impl.free)-1]
+@@ -353,7 +357,7 @@ func (m Map[K, V]) Iter() MapIter[K, V] {
+ 		return MapIter[K, V]{}
+ 	}
+ 	size := len(m.Impl.values) + len(m.Impl.small)
+-	start := int(fastrandn(uint32(size)))
++	start := int(gs.get().choose("map", uint32(size)))
+ 	return MapIter[K, V]{
+ 		impl:   m.Impl,
+ 		size:   size,
+diff --git a/gosimruntime/rand.go b/gosimruntime/rand.go
+index c9ec794..4dd19db 100644
+--- a/gosimruntime/rand.go
++++ b/gosimruntime/rand.go
+@@ -13,7 +13,7 @@ func Fastrand64() uint64 {
+ }
+ 
+ func Fastrandn(n uint32) uint32 {
+-	return fastrandn(n)
++	return gs.get().choose("rand", n)
+ }
+ 
+ type fastrander struct {
+diff --git a/gosimruntime/runtime.go b/gosimruntime/runtime.go
+index 058fb0d..c349ce2 100644
+--- a/gosimruntime/runtime.go
++++ b/gosimruntime/runtime.go
+@@ -106,6 +106,9 @@ type scheduler struct {
+ 
+ 	fastrander fastrander
+ 
++	// chooser, if set, makes every bounded choice (choose.go).
++	chooser Chooser
++
+ 	clock *clock
+ 
+ 	nextEventID int
+@@ -198,7 +201,7 @@ func (s *scheduler) pickRandomOtherGoroutine(g *goroutine) *goroutine {
+ 	if len(s.goroutines) == 1 {
+ 		return nil
+ 	}
+-	idx := fastrandn(uint32(len(s.goroutines) - 1))
++	idx := s.choose("sched.other", uint32(len(s.goroutines)-1))
+ 	if s.goroutines[idx] == g {
+ 		idx++
+ 	}
+@@ -265,7 +268,7 @@ func (s *scheduler) Run() error {
+ 			return fmt.Errorf("all goroutines blocked\n\n%s", string(buf))
+ 		}
+ 
+-		pick := s.runnable[s.fastrander.fastrandn(uint32(len(s.runnable)))]
++		pick := s.runnable[s.choose("sched", uint32(len(s.runnable)))]
+ 
+ 		if s.checksummer != nil {
+ 			s.checksummer.recordIntInt(checksumKeyRunPick, uint64(pick.ID), uint64(s.fastrander.state))
+@@ -338,6 +341,12 @@ func Seed() int64 {
+ }
+ 
+ func run(f func(), seed int64, enableChecksum bool, captureLog bool, logLevelOverride string, simLogger io.Writer, extraenv []string) internalRunResult {
++	return runWith(f, seed, nil, enableChecksum, captureLog, logLevelOverride, simLogger, extraenv)
++}
++
++// runWith is run with a chooser making the choices (choose.go); nil keeps
++// the seeded generator.
++func runWith(f func(), seed int64, chooser Chooser, enableChecksum bool, captureLog bool, logLevelOverride string, simLogger io.Writer, extraenv []string) internalRunResult {
+ 	if !runtimeInitialized {
+ 		panic("not yet initialized")
+ 	}
+@@ -371,6 +380,10 @@ func run(f func(), seed int64, enableChecksum bool, captureLog bool, logLevelOve
+ 
+ 	scheduler := newScheduler(seed, logger, checksummer, extraenv)
+ 	defer setgs(scheduler)()
++	if chooser != nil {
++		scheduler.chooser = chooser
++		scheduler.fastrander.state = uint64(chooser.Choose("seed", 1<<16))
++	}
+ 
+ 	InitSteps()
+ 
+diff --git a/gosimruntime/testmain.go b/gosimruntime/testmain.go
+index ec389d3..f2fe73a 100644
+--- a/gosimruntime/testmain.go
++++ b/gosimruntime/testmain.go
+@@ -39,6 +39,8 @@ type runConfig struct {
+ 	Seed     int64
+ 	ExtraEnv []string
+ 	Simtrace string
++	// Remote makes the runner the chooser of this run (choose.go).
++	Remote bool
+ }
+ 
+ // Copied in metatesting.RunResult. Keep in sync.
+@@ -218,7 +220,11 @@ func TestMain(rt Runtime) {
+ 			continue
+ 		}
+ 
+-		result := run(func() {
++		var chooser Chooser
++		if req.Remote {
++			chooser = &remoteChooser{in: in, out: out}
++		}
++		result := runWith(func() {
+ 			// TODO: add an entrypoint that takes a single test?
+ 			// TODO: fail gracefully with non-existent tests?
+ 			ok := rt.TestEntrypoint(req.Test, "", []Test{
+@@ -230,7 +236,7 @@ func TestMain(rt Runtime) {
+ 			if !ok {
+ 				SetAbortError(ErrTestFailed)
+ 			}
+-		}, seed, enableTracer, captureLog, logLevelOverride, io.Discard, req.ExtraEnv)
++		}, seed, chooser, enableTracer, captureLog, logLevelOverride, io.Discard, req.ExtraEnv)
+ 
+ 		metaResult := runResult{
+ 			Seed:      result.Seed,
+@@ -242,7 +248,11 @@ func TestMain(rt Runtime) {
+ 			metaResult.Err = result.Err.Error()
+ 		}
+ 
+-		if err := out.Encode(metaResult); err != nil {
++		var msg any = metaResult
++		if req.Remote {
++			msg = childMsg{Result: &metaResult}
++		}
++		if err := out.Encode(msg); err != nil {
+ 			log.Fatal(err)
+ 		}
+ 	}
+diff --git a/internal/hooks/go123/go126.go b/internal/hooks/go123/go126.go
+new file mode 100644
+index 0000000..5576270
+--- /dev/null
++++ b/internal/hooks/go123/go126.go
+@@ -0,0 +1,143 @@
++package go123
++
++// Hooks for runtime entry points that are new since Go 1.23 (or moved, like
++// sync.Mutex into internal/sync). Despite the package name, the fork targets
++// Go 1.26.
++
++import (
++	"syscall"
++	"unsafe"
++
++	"github.com/jellevandenhooff/gosim/gosimruntime"
++	"github.com/jellevandenhooff/gosim/internal/simulation"
++)
++
++// internal/sync holds sync.Mutex since Go 1.24.
++
++func InternalSync_runtime_SemacquireMutex(addr *uint32, lifo bool, skipframes int) {
++	gosimruntime.Semacquire(addr, lifo)
++}
++
++func InternalSync_runtime_Semrelease(addr *uint32, handoff bool, skipframes int) {
++	gosimruntime.Semrelease(addr)
++}
++
++func InternalSync_runtime_canSpin(i int) bool { return false }
++
++func InternalSync_runtime_doSpin() { panic("no") }
++
++func InternalSync_runtime_nanotime() int64 { return gosimruntime.Nanotime() }
++
++func InternalSync_runtime_rand() uint64 { return gosimruntime.Fastrand64() }
++
++func InternalSync_throw(str string) { panic(str) }
++
++func InternalSync_fatal(str string) { panic(str) }
++
++func Sync_runtime_SemacquireWaitGroup(addr *uint32, synctestDurable bool) {
++	gosimruntime.Semacquire(addr, false)
++}
++
++// The simulation is its own bubble: testing/synctest is not supported inside
++// it, so nothing is ever in a synctest bubble.
++
++func InternalSynctest_Run(f func()) { panic("gosim: testing/synctest is not supported") }
++
++func InternalSynctest_Wait() { panic("gosim: testing/synctest is not supported") }
++
++func InternalSynctest_IsInBubble() bool { return false }
++
++func InternalSynctest_associate(p unsafe.Pointer) int { return 0 } // unbubbled
++
++func InternalSynctest_disassociate(b unsafe.Pointer) {}
++
++func InternalSynctest_isAssociated(p unsafe.Pointer) bool { return true }
++
++func InternalSynctest_acquire() any { return nil }
++
++func InternalSynctest_release(any) {}
++
++func InternalSynctest_inBubble(b any, f func()) { f() }
++
++func Time_runtimeNow() (sec int64, nsec int32, mono int64) { return Time_now() }
++
++func Time_runtimeIsBubbled() bool { return false }
++
++// Weak pointers stay strong: the simulation does not model the collector.
++
++func Weak_runtime_registerWeakPointer(p unsafe.Pointer) unsafe.Pointer {
++	cell := new(unsafe.Pointer)
++	*cell = p
++	return unsafe.Pointer(cell)
++}
++
++func Weak_runtime_makeStrongFromWeak(u unsafe.Pointer) unsafe.Pointer {
++	return *(*unsafe.Pointer)(u)
++}
++
++func CryptoSubtle_setDITEnabled() bool { return false }
++
++func CryptoSubtle_setDITDisabled() {}
++
++func CryptoFips140_setBypass() {}
++
++func CryptoFips140_isBypassed() bool { return false }
++
++func CryptoFips140_unsetBypass() {}
++
++func CryptoInternalSysrand_fatal(str string) { panic(str) }
++
++func CryptoRand_fatal(str string) { panic(str) }
++
++// Without the vDSO, getrandom falls back to the (simulated) system call.
++
++func InternalSyscallUnix_vgetrandom(p []byte, flags uint32) (ret int, supported bool) {
++	return 0, false
++}
++
++func GolangOrgXSysUnix_vgetrandom(p []byte, flags uint32) (ret int, supported bool) {
++	return 0, false
++}
++
++func InternalRuntimeSyscallLinux_Syscall6(num, a1, a2, a3, a4, a5, a6 uintptr) (r1, r2, errno uintptr) {
++	r1, r2, err := simulation.RawSyscall6(num, a1, a2, a3, a4, a5, a6)
++	return r1, r2, uintptr(err)
++}
++
++var _ syscall.Errno
++
++func Syscall_runtimeClearenv(env map[string]int) {
++	panic("gosim not implemented")
++}
++
++// Compiler intrinsics outside the runtime lose their intrinsic status once
++// translated to another package path. Their callers (internal/runtime/maps
++// for race annotations) only use them for diagnostics.
++
++func InternalRuntimeSys_GetCallerPC() uintptr { return 0 }
++
++func InternalRuntimeSys_GetCallerSP() uintptr { return 0 }
++
++func InternalRuntimeSys_GetClosurePtr() uintptr { return 0 }
++
++func CryptoInternalFips140_fatal(str string) { panic(str) }
++
++// The service indicator is per goroutine in the runtime; nothing in the
++// simulation reads it.
++
++func CryptoInternalFips140_getIndicator() uint8 { return 0 }
++
++func CryptoInternalFips140_setIndicator(uint8) {}
++
++// Compiler intrinsics whose Go bodies panic.
++
++func CryptoInternalConstanttime_boolToUint8(b bool) uint8 {
++	if b {
++		return 1
++	}
++	return 0
++}
++
++// Built with purego, hash/maphash seeds from crypto/rand, which reads
++// /dev/urandom before the simulated OS exists. Seed from the simulation.
++func HashMaphash_randUint64() uint64 { return gosimruntime.Fastrand64() }
+diff --git a/internal/reflect/type.go b/internal/reflect/type.go
+index 2aab673..01646a2 100644
+--- a/internal/reflect/type.go
++++ b/internal/reflect/type.go
+@@ -55,8 +55,8 @@ type Type interface {
+ 	OverflowFloat(x float64) bool
+ 	OverflowInt(x int64) bool
+ 	OverflowUint(x uint64) bool
+-	// CanSeq() bool
+-	// CanSeq2() bool
++	CanSeq() bool
++	CanSeq2() bool
+ 	isType()
+ 	// common() *abi.Type
+ 	// uncommon() *uncommonType
+@@ -408,3 +408,17 @@ func TypeFor[T any]() Type {
+ 	}
+ 	return TypeOf((*T)(nil)).Elem() // only for an interface kind
+ }
++
++func (t *typeImpl) CanSeq() bool {
++	if t.kind == wrappedMap {
++		return true
++	}
++	return t.inner.CanSeq()
++}
++
++func (t *typeImpl) CanSeq2() bool {
++	if t.kind == wrappedMap {
++		return true
++	}
++	return t.inner.CanSeq2()
++}
+diff --git a/internal/reflect/value.go b/internal/reflect/value.go
+index 6473a18..c2f3d17 100644
+--- a/internal/reflect/value.go
++++ b/internal/reflect/value.go
+@@ -7,6 +7,7 @@
+ package reflect
+ 
+ import (
++	"iter"
+ 	"reflect" //gosim:notranslate
+ 	"unsafe"
+ 
+@@ -553,3 +554,48 @@ func (v Value) Comparable() bool {
+ func (v Value) Equal(u Value) bool {
+ 	return v.inner.Equal(u.inner)
+ }
++
++// TypeAssert is v.Interface().(T) without allocating (Go 1.25).
++func TypeAssert[T any](v Value) (T, bool) {
++	return reflect.TypeAssert[T](v.inner)
++}
++
++// Seq is reflect.Value.Seq, with maps and values wrapped.
++func (v Value) Seq() iter.Seq[Value] {
++	if v.kind == wrappedMap {
++		return func(yield func(Value) bool) {
++			for it := v.MapRange(); it.Next(); {
++				if !yield(it.Key()) {
++					return
++				}
++			}
++		}
++	}
++	return func(yield func(Value) bool) {
++		for x := range v.inner.Seq() {
++			if !yield(wrapValue(x)) {
++				return
++			}
++		}
++	}
++}
++
++// Seq2 is reflect.Value.Seq2, with maps and values wrapped.
++func (v Value) Seq2() iter.Seq2[Value, Value] {
++	if v.kind == wrappedMap {
++		return func(yield func(Value, Value) bool) {
++			for it := v.MapRange(); it.Next(); {
++				if !yield(it.Key(), it.Value()) {
++					return
++				}
++			}
++		}
++	}
++	return func(yield func(Value, Value) bool) {
++		for x, y := range v.inner.Seq2() {
++			if !yield(wrapValue(x), wrapValue(y)) {
++				return
++			}
++		}
++	}
++}
+diff --git a/internal/simulation/os_linux.go b/internal/simulation/os_linux.go
+index b5859a5..393afeb 100644
+--- a/internal/simulation/os_linux.go
++++ b/internal/simulation/os_linux.go
+@@ -318,6 +318,10 @@ func (l *LinuxOS) SysOpenat(dirfd int, path string, flags int, mode uint32, invo
+ 	// just get rid of this
+ 	flags &= ^syscall.O_CLOEXEC
+ 
++	// Since Go 1.25, os opens directories with O_DIRECTORY.
++	wantDir := flags&syscall.O_DIRECTORY != 0
++	flags &= ^syscall.O_DIRECTORY
++
+ 	// TODO: some rules about paths; component length; total length; allow characters?
+ 	// TODO: check mode
+ 
+@@ -345,6 +349,12 @@ func (l *LinuxOS) SysOpenat(dirfd int, path string, flags int, mode uint32, invo
+ 	if err != nil {
+ 		return 0, err
+ 	}
++	if wantDir {
++		if st, err := l.machine.filesystem.Statfd(inode); err != nil || !st.IsDir {
++			// TODO: release the inode's reference taken by OpenFile?
++			return 0, syscall.ENOTDIR
++		}
++	}
+ 
+ 	// TODO: add reference here? or in OpenFile? help this is strange.
+ 
+diff --git a/internal/translate/hooks_go123.go b/internal/translate/hooks_go123.go
+index cb2ce1d..9792cb4 100644
+--- a/internal/translate/hooks_go123.go
++++ b/internal/translate/hooks_go123.go
+@@ -202,6 +202,50 @@ var hooksGo123 = map[packageSelector]packageSelector{
+ 	{Pkg: "time", Selector: "resetTimer"}:  {Pkg: hooksGo123Package},
+ 	{Pkg: "time", Selector: "runtimeNano"}: {Pkg: hooksGo123Package},
+ 	{Pkg: "time", Selector: "stopTimer"}:   {Pkg: hooksGo123Package},
++
++	// Go 1.24-1.26 (go126.go).
++	{Pkg: "hash/maphash", Selector: "randUint64"}:                  {Pkg: hooksGo123Package},
++	{Pkg: "crypto/internal/constanttime", Selector: "boolToUint8"}: {Pkg: hooksGo123Package},
++	{Pkg: "internal/abi", Selector: "EscapeNonString"}:             {Pkg: hooksGo123Package},
++	{Pkg: "crypto/internal/fips140", Selector: "fatal"}:            {Pkg: hooksGo123Package},
++	{Pkg: "crypto/internal/fips140", Selector: "getIndicator"}:     {Pkg: hooksGo123Package},
++	{Pkg: "crypto/internal/fips140", Selector: "setIndicator"}:     {Pkg: hooksGo123Package},
++	{Pkg: "internal/sync", Selector: "runtime_SemacquireMutex"}:    {Pkg: hooksGo123Package},
++	{Pkg: "internal/sync", Selector: "runtime_Semrelease"}:         {Pkg: hooksGo123Package},
++	{Pkg: "internal/sync", Selector: "runtime_canSpin"}:            {Pkg: hooksGo123Package},
++	{Pkg: "internal/sync", Selector: "runtime_doSpin"}:             {Pkg: hooksGo123Package},
++	{Pkg: "internal/sync", Selector: "runtime_nanotime"}:           {Pkg: hooksGo123Package},
++	{Pkg: "internal/sync", Selector: "runtime_rand"}:               {Pkg: hooksGo123Package},
++	{Pkg: "internal/sync", Selector: "throw"}:                      {Pkg: hooksGo123Package},
++	{Pkg: "internal/sync", Selector: "fatal"}:                      {Pkg: hooksGo123Package},
++	{Pkg: "sync", Selector: "runtime_SemacquireWaitGroup"}:         {Pkg: hooksGo123Package},
++	{Pkg: "internal/synctest", Selector: "Run"}:                    {Pkg: hooksGo123Package},
++	{Pkg: "internal/synctest", Selector: "Wait"}:                   {Pkg: hooksGo123Package},
++	{Pkg: "internal/synctest", Selector: "IsInBubble"}:             {Pkg: hooksGo123Package},
++	{Pkg: "internal/synctest", Selector: "associate"}:              {Pkg: hooksGo123Package},
++	{Pkg: "internal/synctest", Selector: "disassociate"}:           {Pkg: hooksGo123Package},
++	{Pkg: "internal/synctest", Selector: "isAssociated"}:           {Pkg: hooksGo123Package},
++	{Pkg: "internal/synctest", Selector: "acquire"}:                {Pkg: hooksGo123Package},
++	{Pkg: "internal/synctest", Selector: "release"}:                {Pkg: hooksGo123Package},
++	{Pkg: "internal/synctest", Selector: "inBubble"}:               {Pkg: hooksGo123Package},
++	{Pkg: "time", Selector: "runtimeNow"}:                          {Pkg: hooksGo123Package},
++	{Pkg: "time", Selector: "runtimeIsBubbled"}:                    {Pkg: hooksGo123Package},
++	{Pkg: "weak", Selector: "runtime_registerWeakPointer"}:         {Pkg: hooksGo123Package},
++	{Pkg: "weak", Selector: "runtime_makeStrongFromWeak"}:          {Pkg: hooksGo123Package},
++	{Pkg: "crypto/subtle", Selector: "setDITEnabled"}:              {Pkg: hooksGo123Package},
++	{Pkg: "crypto/subtle", Selector: "setDITDisabled"}:             {Pkg: hooksGo123Package},
++	{Pkg: "crypto/fips140", Selector: "setBypass"}:                 {Pkg: hooksGo123Package},
++	{Pkg: "crypto/fips140", Selector: "isBypassed"}:                {Pkg: hooksGo123Package},
++	{Pkg: "crypto/fips140", Selector: "unsetBypass"}:               {Pkg: hooksGo123Package},
++	{Pkg: "crypto/internal/sysrand", Selector: "fatal"}:            {Pkg: hooksGo123Package},
++	{Pkg: "crypto/rand", Selector: "fatal"}:                        {Pkg: hooksGo123Package},
++	{Pkg: "internal/syscall/unix", Selector: "vgetrandom"}:         {Pkg: hooksGo123Package},
++	{Pkg: "golang.org/x/sys/unix", Selector: "vgetrandom"}:         {Pkg: hooksGo123Package},
++	{Pkg: "internal/runtime/syscall/linux", Selector: "Syscall6"}:  {Pkg: hooksGo123Package},
++	{Pkg: "syscall", Selector: "runtimeClearenv"}:                  {Pkg: hooksGo123Package},
++	{Pkg: "internal/runtime/sys", Selector: "GetCallerPC"}:         {Pkg: hooksGo123Package},
++	{Pkg: "internal/runtime/sys", Selector: "GetCallerSP"}:         {Pkg: hooksGo123Package},
++	{Pkg: "internal/runtime/sys", Selector: "GetClosurePtr"}:       {Pkg: hooksGo123Package},
+ }
+ 
+ var hooksGensyscallGo123ByArch = map[string]map[packageSelector]packageSelector{}
+diff --git a/internal/translate/main.go b/internal/translate/main.go
+index 9a8bac0..e4ae201 100644
+--- a/internal/translate/main.go
++++ b/internal/translate/main.go
+@@ -72,6 +72,15 @@ var keepAsmPackagesGo123 = map[string]bool{
+ 	"vendor/golang.org/x/crypto/chacha20poly1305":  true,
+ 	"vendor/golang.org/x/crypto/sha3":              true,
+ 	"hash/crc32":                                   true,
++	"crypto/internal/fips140/aes":                  true,
++	"crypto/internal/fips140/aes/gcm":              true,
++	"crypto/internal/fips140/bigmod":               true,
++	"crypto/internal/fips140/edwards25519/field":   true,
++	"crypto/internal/fips140/nistec":               true,
++	"crypto/internal/fips140/sha256":               true,
++	"crypto/internal/fips140/sha3":                 true,
++	"crypto/internal/fips140/sha512":               true,
++	"crypto/internal/fips140/subtle":               true,
+ 
+ 	"net/url":  true, // XXX: linkname setpath nonsense
+ 	"net/http": true, // XXX: linkname roundtrip nonsense
+@@ -126,7 +135,10 @@ func loadPackages(patterns []string, b gosimtool.BuildConfig, mode packages.Load
+ 
+ 	// apply build config to packages config
+ 	// TODO: build tags plan (rename files, force GOOS and GOARCH)
+-	tags := []string{"sim"}
++	// purego: since Go 1.24 the crypto assembly (crypto/internal/fips140/...)
++	// refers to package-level Go variables, which translation moves into
++	// per-machine globals. Use the pure Go implementations instead.
++	tags := []string{"sim", "purego"}
+ 	if b.Race {
+ 		tags = append(tags, "race")
+ 	}
+@@ -527,6 +539,8 @@ func translatePackages(cache *cache.Cache, listPatterns []string, rootOutputDir
+ 		})
+ 	})
+ 
++	exitIfMissingBodies()
++
+ 	for pkgId, res := range allResults {
+ 		hash := packageHashes[pkgId]
+ 		if !cacheHits[hash] {
+diff --git a/internal/translate/map.go b/internal/translate/map.go
+index 8643671..a7628d9 100644
+--- a/internal/translate/map.go
++++ b/internal/translate/map.go
+@@ -283,6 +283,14 @@ func (t *packageTranslator) rewriteMapLen(c *dstutil.Cursor) {
+ }
+ 
+ func (t *packageTranslator) rewriteMapType(c *dstutil.Cursor) {
++	// internal/sync's HashTrieMap (sync.Map since Go 1.24) declares a
++	// map[K]V only to take the runtime's hasher from its type descriptor.
++	// It must stay a real map type.
++	// TODO: the runtime hasher is seeded per process, so sync.Map.Range
++	// order is not deterministic across runs.
++	if t.pkgPath == "internal/sync" {
++		return
++	}
+ 	// map type
+ 	if mapType, ok := c.Node().(*dst.MapType); ok {
+ 		c.Replace(&dst.IndexListExpr{
+@@ -294,16 +302,21 @@ func (t *packageTranslator) rewriteMapType(c *dstutil.Cursor) {
+ 		})
+ 	}
+ 
+-	// for generics, eject the outer ~ on map...
++	// for generics, ~map[K]V becomes ~struct{ Impl *MapImpl[K, V] }, the
++	// underlying type of every translated map type, so that named map types
++	// (like textproto.MIMEHeader passed to maps.Keys) still satisfy it.
+ 	if unary, ok := c.Node().(*dst.UnaryExpr); ok && unary.Op == token.TILDE {
+ 		if mapType, ok := unary.X.(*dst.MapType); ok {
+-			c.Replace(&dst.IndexListExpr{
+-				X: t.newRuntimeSelector("Map"),
+-				Indices: []dst.Expr{
+-					mapType.Key,
+-					t.apply(mapType.Value).(dst.Expr),
+-				},
+-			})
++			unary.X = &dst.StructType{Fields: &dst.FieldList{List: []*dst.Field{{
++				Names: []*dst.Ident{dst.NewIdent("Impl")},
++				Type: &dst.StarExpr{X: &dst.IndexListExpr{
++					X: t.newRuntimeSelector("MapImpl"),
++					Indices: []dst.Expr{
++						mapType.Key,
++						t.apply(mapType.Value).(dst.Expr),
++					},
++				}},
++			}}}}
+ 		}
+ 	}
+ }
+diff --git a/internal/translate/missing.go b/internal/translate/missing.go
+new file mode 100644
+index 0000000..20c85a1
+--- /dev/null
++++ b/internal/translate/missing.go
+@@ -0,0 +1,54 @@
++package translate
++
++import (
++	"log/slog"
++	"os"
++	"slices"
++	"sync"
++)
++
++// missingBodies collects every bodyless function without a hook across all
++// translated packages, so that porting to a new Go version sees them all in
++// one run instead of one per run.
++var missingBodies struct {
++	sync.Mutex
++	list []packageSelector
++}
++
++func reportMissingBody(pkg, name string) {
++	missingBodies.Lock()
++	defer missingBodies.Unlock()
++	missingBodies.list = append(missingBodies.list, packageSelector{Pkg: pkg, Selector: name})
++}
++
++func exitIfMissingBodies() {
++	missingBodies.Lock()
++	defer missingBodies.Unlock()
++	if len(missingBodies.list) == 0 {
++		return
++	}
++	slices.SortFunc(missingBodies.list, func(a, b packageSelector) int {
++		if a.Pkg != b.Pkg {
++			if a.Pkg < b.Pkg {
++				return -1
++			}
++			return 1
++		}
++		if a.Selector < b.Selector {
++			return -1
++		}
++		if a.Selector > b.Selector {
++			return 1
++		}
++		return 0
++	})
++	for _, m := range slices.Compact(missingBodies.list) {
++		slog.Error("missing function body", "pkg", m.Pkg, "name", m.Selector)
++	}
++	os.Exit(1)
++}
++
++// emptyBodyGo126 lists functions whose body is replaced by an empty one.
++var emptyBodyGo126 = map[packageSelector]bool{
++	{Pkg: "internal/abi", Selector: "EscapeNonString"}: true, // panic("intrinsic")
++}
+diff --git a/internal/translate/rewrites.go b/internal/translate/rewrites.go
+index 248c742..3fa7bfe 100644
+--- a/internal/translate/rewrites.go
++++ b/internal/translate/rewrites.go
+@@ -4,7 +4,6 @@ import (
+ 	"fmt"
+ 	"go/token"
+ 	"log/slog"
+-	"os"
+ 	"regexp"
+ 	"slices"
+ 	"strconv"
+@@ -123,6 +122,17 @@ func (t *packageTranslator) rewriteStdlibEmptyAndLinkname(c *dstutil.Cursor) {
+ 	if !ok {
+ 		return
+ 	}
++	// Hooks and linknames name functions; a method of the same name (like
++	// internal/synctest's Bubble.Run next to Run) is not one of them.
++	if decl.Recv != nil {
++		return
++	}
++	// Generic intrinsics cannot be linknamed to a hook: give them an empty
++	// body instead.
++	if emptyBodyGo126[packageSelector{Pkg: t.pkgPath, Selector: decl.Name.Name}] {
++		decl.Body = &dst.BlockStmt{}
++		return
++	}
+ 
+ 	// XXX: this misses some linkname stuff
+ 	// XXX: this wrongly assumes a linkname is going to be part of a FuncDecl's Decs; they can be anywhere in the code
+@@ -215,8 +225,7 @@ func (t *packageTranslator) rewriteStdlibEmptyAndLinkname(c *dstutil.Cursor) {
+ 		} else if t.keepAsmPkgs[t.pkgPath] {
+ 			slog.Debug("keeping asm header", "pkg", t.pkgPath, "name", decl.Name.Name)
+ 		} else {
+-			slog.Error("missing function body", "pkg", t.pkgPath, "name", decl.Name.Name)
+-			os.Exit(1)
++			reportMissingBody(t.pkgPath, decl.Name.Name)
+ 		}
+ 	}
+ 
+diff --git a/metatesting/chooser.go b/metatesting/chooser.go
+new file mode 100644
+index 0000000..347811e
+--- /dev/null
++++ b/metatesting/chooser.go
+@@ -0,0 +1,103 @@
++package metatesting
++
++import (
++	"bytes"
++	"fmt"
++	"testing"
++
++	"github.com/jellevandenhooff/gosim/internal/prettylog"
++)
++
++// A Chooser makes a run's choices from the runner's side: which goroutine
++// runs next, which select case fires, and what the simulated program asks
++// for with gosimruntime.Choose. A qenv.Chooser is a Chooser.
++type Chooser interface {
++	Choose(kind string, n int) int
++}
++
++// The protocol messages, copied from gosimruntime (choose.go). Keep in sync.
++type remoteConfig struct {
++	RunConfig
++	Remote bool
++}
++
++type childMsg struct {
++	Choose *struct {
++		Kind string
++		N    int
++	}
++	Emit   *string
++	Result *RunResult
++}
++
++type choiceReply struct {
++	Value int
++}
++
++// RunWith runs a test with chooser making its choices, in this goroutine,
++// and calls emit with each line the test passes to gosimruntime.Emit.
++// config.Seed is ignored: the seed for unbounded randomness is a choice too.
++//
++// A chooser may abort the run by panicking (Hegel does): RunWith stops the
++// test binary, so that the next run starts a fresh one, and re-panics.
++func (r *MetaT) RunWith(t testing.TB, config *RunConfig, chooser Chooser, emit func(line string)) (res *RunResult, err error) {
++	t.Helper()
++	defer func() {
++		if p := recover(); p != nil {
++			r.kill()
++			panic(p)
++		}
++	}()
++
++	if err := r.w.Encode(remoteConfig{RunConfig: *config, Remote: true}); err != nil {
++		return nil, err
++	}
++	for {
++		var msg childMsg
++		if err := r.r.Decode(&msg); err != nil {
++			r.kill()
++			return nil, fmt.Errorf("metatest protocol: %w", err)
++		}
++		switch {
++		case msg.Choose != nil:
++			v := chooser.Choose(msg.Choose.Kind, msg.Choose.N)
++			if err := r.w.Encode(choiceReply{Value: v}); err != nil {
++				return nil, err
++			}
++		case msg.Emit != nil:
++			if emit != nil {
++				emit(*msg.Emit)
++			}
++		case msg.Result != nil:
++			if msg.Result.Failed {
++				b := new(bytes.Buffer)
++				fmt.Fprintf(b, "\n> running %s\n", config.Test)
++				w := prettylog.NewWriter(b)
++				for _, line := range bytes.SplitAfter(msg.Result.LogOutput, []byte("\n")) {
++					if len(line) > 0 {
++						w.Write(line)
++					}
++				}
++				t.Log(b.String())
++			}
++			return msg.Result, nil
++		default:
++			r.kill()
++			return nil, fmt.Errorf("metatest protocol: empty message")
++		}
++	}
++}
++
++// kill stops the test binary and forgets it, so that ForOtherPackage starts
++// a new one.
++func (r *MetaT) kill() {
++	r.cmd.Process.Kill()
++	r.cmd.Wait()
++	runnerMapMu.Lock()
++	defer runnerMapMu.Unlock()
++	for pkg, m := range runnerMap {
++		if m == r {
++			delete(runnerMap, pkg)
++		}
++	}
++}

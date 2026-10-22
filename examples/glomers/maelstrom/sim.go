@@ -93,16 +93,12 @@ func (s *Sim) Restart(id string) {
 // Step records a model step of the harness itself (e.g. "settle"), ordered
 // after every step the nodes have taken so far.
 func (s *Sim) Step(action string, kv ...any) {
-	var max int64
+	nodes := make([]*Node, 0, len(s.Nodes))
 	for _, n := range s.Nodes {
-		if n.lamport > max {
-			max = n.lamport
-		}
+		nodes = append(nodes, n)
 	}
-	for _, n := range s.Nodes {
-		n.lamport = max + 1 // later steps of the nodes come after this one
-	}
-	qobs.Record(context.Background(), action, nil, append(kv, "actor", "cluster", "process", "cluster", "thread", "sim", "order.lamport", max+1)...)
+	t := Barrier(nodes...)
+	qobs.Record(context.Background(), action, nil, append(kv, "actor", "cluster", "process", "cluster", "thread", "sim", "order.lamport", t)...)
 }
 
 // IDs of the nodes.
