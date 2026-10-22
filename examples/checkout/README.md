@@ -128,5 +128,5 @@ go test -run 'Consumers|Mitigations|Storm' -v .   # ~2 min; under -short only th
 | `model/checkout.qnt`, `checkout.binding.yaml` | the model and its binding (every parameter a same-named step field) |
 | `cmd/checkout-sim` | simulate seeds and write step logs |
 | `checkout_test.go` | the table above as explorations; Hegel shrinking a write skew; Hegel in batches |
-| `sweep_test.go` | pairwise sweeps (`qtest.SweepExplore`) of isolation × orders × stock × which fault kinds happen: 13 rows of the 432, the faithful shop conforming on each; `NoIdempotencyKey` split into its two bugs (the void's, in every row; the double charge, exactly in the rows with provider faults); both orders of every pair of fault kinds, scripted |
+| `sweep_test.go` | pairwise sweeps (`System.Sweep`) of isolation × orders × stock × which fault kinds happen: 13 rows of the 432, the faithful shop conforming on each; `NoIdempotencyKey` split into its two bugs (the void's, in every row; the double charge, exactly in the rows with provider faults); both orders of every pair of fault kinds, scripted |
 | `load.go`, `load_test.go` | the shop as a `qload.Experiment`: provider capacity, consumer count, retry and redelivery designs; recovery (`qload.Assess`) and correctness under a storm (checked with `qtest.Constants` for the load run's stock) |

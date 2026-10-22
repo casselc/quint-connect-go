@@ -17,7 +17,7 @@ import (
 // instance whose accounts are the pseudonyms.
 func TestSanitizedRunConforms(t *testing.T) {
 	qtest.RequireQuint(t)
-	run := qtest.Record(t, "bank.binding.yaml", func(*qobs.Recorder) { payday(New(accounts)) })
+	run := qtest.Record(t, "bank.binding.yaml", func(*qobs.Recorder) { payday(New(accounts)) }, qtest.Global())
 	ch, err := validate.NewChecker("bank.binding.yaml", validate.Options{})
 	if err != nil {
 		t.Fatal(err)
@@ -33,6 +33,6 @@ func TestSanitizedRunConforms(t *testing.T) {
 			t.Fatalf("a name survived: %+v", s)
 		}
 	}
-	rep := qtest.Validate(t, "bank.binding.yaml", clean, qtest.Constants(map[string]string{"ACCOUNTS": "Set(" + strings.Join(names, ", ") + ")"})).Report
-	qtest.Expect(t, rep, qtest.Conforms())
+	qtest.Validate(t, "bank.binding.yaml", clean, qtest.Constants(map[string]string{"ACCOUNTS": "Set(" + strings.Join(names, ", ") + ")"})).
+		Expect(t, qtest.Conforms())
 }

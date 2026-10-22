@@ -33,7 +33,7 @@ itf/          ITF decode/encode, Go <-> Quint values (Decode/Encode), Quint lite
 qobs/ qtrace/ otelio/ convert/ load/   recording, schema/reconstruction, OTLP, span conversion, input sniffing
 binding/ validate/ qtest/              binding YAML, quint-test-based validator, test helpers (Expect, Explore)
 qenv/         deterministic simulation: scheduler, virtual time, processes; Store, Queue, Service doubles;
-              choice/ (choosers, byte rule, rates) and profile/ (virtual-time pprof), re-exported by qenv
+              internal/choice (choosers, byte rule, rates) and internal/profile (virtual-time pprof), qenv's API
 qenv/weave/   Orchestrion aspects: sync locks, wait groups and //qenv:go goroutines simulated inside qenv, real outside
 qenv/fault/   the //quint:fault aspect: fault points (qenv.FaultPoint) with the function's own errors, declared for coverage
 qgosim/       separate module: qenv and whole programs in gosim (the fork: branch gosim-fork, ./fetch-gosim.sh)
@@ -141,10 +141,10 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   `skills/<name>/references/*.md`, linked from its SKILL.md with when to
   read each; verdicts and expectations are in
   `quint-verification-workflow/references/verdicts.md`. `skills_test.go`
-  checks every link resolves, and fails on deprecated identifiers
+  checks every link resolves, and fails on removed identifiers
   (qtest.Check, RecordAndCheck, qtest.Explore(binding), SweepExplore,
-  Explored, `step [i]`): when deprecating an API, add it to
-  `TestSkillsAvoidDeprecated`.
+  Explored, the free qtest.Expect, DurableFileSink, `step [i]`): when
+  removing an API, add it to `TestSkillsAvoidDeprecated`.
 - Skills live in `skills/<name>/SKILL.md`, never directly in `.agents/` or
   `.claude/`, which only hold symlinks to them. Add a symlink in both when
   adding a skill (`skills_test.go` checks it). A skill's front-matter
@@ -251,7 +251,7 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   the doubles, and iterate maps in sorted order where the order matters.
   `qenv.Replay` stops at the first divergence and reports it (`Err`, the
   run's error in an exploration). `EncodeChoices` writes the byte
-  rule's version (`choice.BytesVersion`): bump it when the rule changes,
+  rule's version (`qenv.BytesVersion`): bump it when the rule changes,
   and old corpus entries fail with the fix instead of replaying another
   run.
 - A fault point's options are nominal, then its errors in the order
@@ -399,7 +399,7 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
 - Controllers are closed loops (`ClientConfig.Population`). An open-loop
   abstraction double-counts a failing object's polls and finds storms
   that cannot happen.
-- `quinthegel.CaseChecker` prefix reuse is only sound for one actor with
+- quinthegel's case checker (`caseChecker`): prefix reuse is only sound for one actor with
   no `order.*` keys, where the recording order is the reconstructed order,
   and with equal instance constants. Keep those guards.
 - gosim (`qgosim`, `examples/gosim`) translates everything the simulated

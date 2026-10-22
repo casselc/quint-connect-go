@@ -38,8 +38,8 @@ func TestExpectations(t *testing.T) {
 func TestExplore(t *testing.T) {
 	RequireQuint(t)
 	b := "../validate/testdata/account.yaml"
-	scenario := func(lock bool) func(qenv.Chooser) {
-		return func(c qenv.Chooser) {
+	scenario := func(lock bool) func(qenv.Chooser) error {
+		return func(c qenv.Chooser) error {
 			s := qenv.New(c)
 			defer s.Close()
 			st := qenv.NewStore(s, "db", qenv.ReadCommitted)
@@ -64,13 +64,11 @@ func TestExplore(t *testing.T) {
 					})
 				})
 			}
-			if err := s.Run(time.Second); err != nil {
-				t.Fatal(err)
-			}
+			return s.Run(time.Second)
 		}
 	}
-	Explore(t, b, ExploreConfig{Seeds: 20}, scenario(true)).Expect(t, Conforms())
-	x := Explore(t, b, ExploreConfig{Seeds: 20}, scenario(false))
+	System{Binding: b, Run: scenario(true)}.Explore(t, ExploreConfig{Seeds: 20}).Expect(t, Conforms())
+	x := System{Binding: b, Run: scenario(false)}.Explore(t, ExploreConfig{Seeds: 20})
 	x.Expect(t, AnyOf(Mismatch("withdraw"), Rejects("withdraw")))
 	if len(x.Failing()) == 20 {
 		t.Fatal("every interleaving overdrew: the schedule is not being explored")
@@ -99,11 +97,12 @@ func TestConstants(t *testing.T) {
 func TestVerdictCache(t *testing.T) {
 	RequireQuint(t)
 	cache := &VerdictCache{}
-	x := Explore(t, "../validate/testdata/account.yaml", ExploreConfig{Seeds: 10, Verdicts: cache}, func(c qenv.Chooser) {
+	x := System{Binding: "../validate/testdata/account.yaml", Run: func(c qenv.Chooser) error {
 		s := qenv.New(c)
 		defer s.Close()
 		qobs.Record(s.Context(), "deposit", nil, "amount", 10, "obs.balance", 10)
-	})
+		return nil
+	}}.Explore(t, ExploreConfig{Seeds: 10, Verdicts: cache})
 	x.Expect(t, Conforms())
 	if cache.Hits() != 9 {
 		t.Errorf("%d of 10 runs judged from the cache, want 9", cache.Hits())

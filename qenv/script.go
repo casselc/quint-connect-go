@@ -2,10 +2,12 @@ package qenv
 
 import (
 	"fmt"
-	"github.com/casselc/quint-connect-go/qobs"
 	"slices"
 	"strings"
 	"sync"
+
+	"github.com/casselc/quint-connect-go/qenv/internal/choice"
+	"github.com/casselc/quint-connect-go/qobs"
 )
 
 // A Scripted fault is one fault a Script makes happen: at the first choice
@@ -108,9 +110,9 @@ func (s *Script) Choose(kind string, n int) int {
 	f := s.Faults[i]
 	v := f.Option
 	if f.Name != "" {
-		v = slices.Index(FaultOptions(k), f.Name) + 1
+		v = slices.Index(choice.Options(k), f.Name) + 1
 		if v == 0 {
-			panic(fmt.Sprintf("qenv: script fault %v: %s has no option %q (its options: %v)", f, kind, f.Name, FaultOptions(k)))
+			panic(fmt.Sprintf("qenv: script fault %v: %s has no option %q (its options: %v)", f, kind, f.Name, choice.Options(k)))
 		}
 	}
 	if v <= 0 {

@@ -368,7 +368,7 @@ func Swarm(c Chooser, kinds ...string) Chooser {
 }
 
 // Without turns the given fault kinds (prefixes, as in Swarm) off for a
-// whole run: a sweep's row says which kinds are on (qtest.SweepExplore).
+// whole run: a sweep's row says which kinds are on (qtest.System.Sweep).
 func Without(c Chooser, kinds ...string) Chooser {
 	s := &swarm{c: c, off: map[string]bool{}}
 	for _, k := range kinds {

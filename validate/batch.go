@@ -13,43 +13,6 @@ import (
 	"github.com/casselc/quint-connect-go/qtrace"
 )
 
-// CheckRuns checks many independent runs (e.g. the test cases of a
-// property-based or state-machine test), each as its own Check, running up
-// to parallel quint processes at once (0: GOMAXPROCS). Run i's modules and
-// ITF go to <Options.Dir>/run<i>. reports[i] is nil only if errs[i] is set.
-func (c *Checker) CheckRuns(ctx context.Context, runs [][]qtrace.Step, parallel int) (reports []*Report, errs []error) {
-	if parallel <= 0 {
-		parallel = runtime.GOMAXPROCS(0)
-	}
-	reports, errs = make([]*Report, len(runs)), make([]error, len(runs))
-	base := c.Options.Dir
-	if base == "" {
-		d, err := os.MkdirTemp("", "quintgo-runs-")
-		if err != nil {
-			for i := range errs {
-				errs[i] = err
-			}
-			return reports, errs
-		}
-		base = d
-	}
-	sem := make(chan struct{}, parallel)
-	var wg sync.WaitGroup
-	for i := range runs {
-		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-			cc := *c
-			cc.Options.Dir = filepath.Join(base, fmt.Sprintf("run%d", i))
-			reports[i], errs[i] = cc.Check(ctx, runs[i])
-		}(i)
-	}
-	wg.Wait()
-	return reports, errs
-}
-
 // CheckBatch checks many independent runs with as few quint processes as
 // possible: each run is reconstructed and planned in Go, the actors' traces
 // are grouped by their instance constants (traces of one instance can share
@@ -59,8 +22,8 @@ func (c *Checker) CheckRuns(ctx context.Context, runs [][]qtrace.Step, parallel 
 // CPU, at most 64 traces each).
 //
 // Process start-up and model loading cost ~0.5 s per quint process and
-// dominate short replays, so this is much faster than CheckRuns for many
-// short runs. The verdicts are the same. A chunk quint fails to evaluate is
+// dominate short replays, so this is much faster than a Check per run
+// for many short runs. The verdicts are the same. A chunk quint fails to evaluate is
 // re-checked one trace at a time.
 func (c *Checker) CheckBatch(ctx context.Context, runs [][]qtrace.Step, perProcess int) (reports []*Report, errs []error) {
 	reports, errs = make([]*Report, len(runs)), make([]error, len(runs))

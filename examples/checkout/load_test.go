@@ -110,7 +110,7 @@ func TestStormIsCorrect(t *testing.T) {
 	// a crash every 20 s on average; one lost response or ack in a hundred
 	cfg.Faults = qenv.Rates{Kinds: map[string]float64{"fault.nemesis": 0.05, "fault.rpc": 0.01, "fault.queue": 0.01}}
 	_, mem := stormRun(t, cfg)
-	qtest.Check(t, binding, mem.Steps(), loadStock).Expect(t, qtest.Conforms())
+	qtest.Validate(t, binding, mem.Steps(), loadStock).Expect(t, qtest.Conforms())
 }
 
 // Without idempotency keys, the storm alone, with no injected fault,

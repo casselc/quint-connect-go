@@ -25,10 +25,10 @@ func needQuint(t *testing.T) {
 }
 
 // A deterministic simulation that emits its own trace: no OTel anywhere.
-func TestRecordAndCheck(t *testing.T) {
+func TestRecord(t *testing.T) {
 	needQuint(t)
 	ctx := context.Background()
-	r := RecordAndCheck(t, account, func(rec *qobs.Recorder) {
+	r := Record(t, account, func(rec *qobs.Recorder) {
 		bal := 0
 		for _, op := range []struct {
 			name string
@@ -42,6 +42,7 @@ func TestRecordAndCheck(t *testing.T) {
 			rec.Record(ctx, op.name, nil, "amount", op.n, "obs.balance", bal)
 		}
 	}, opts()...)
+	r.Expect(t, Conforms())
 	// The run left a step log and a model-level ITF, and each validates on its own.
 	if _, err := os.Stat(r.StepLog); err != nil {
 		t.Fatal(err)

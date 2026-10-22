@@ -49,7 +49,6 @@ type Config struct {
 type Option func(*Config)
 
 func WithOptions(o validate.Options) Option { return func(c *Config) { c.Options = o } }
-func KeepIn(dir string) Option              { return func(c *Config) { c.Dir = dir } }
 func RecorderOptions(opts ...qobs.Option) Option {
 	return func(c *Config) { c.Recorder = append(c.Recorder, opts...) }
 }
@@ -194,13 +193,14 @@ func Record(t testing.TB, bindingPath string, scenario func(rec *qobs.Recorder),
 		defer release()
 		scenario(rec)
 	}()
-	if n, msgs := qobs.Escaped(mark); n > mark && !c.Global {
-		t.Errorf("quintgo: %d steps were recorded from goroutines outside the scenario's run (the first: %s); "+
-			"record through the scenario's context (rec's: qobs.WithRecorder), or pass qtest.Global() for goroutines "+
-			"the scenario starts", n-mark, firstOr(msgs))
-	}
 	if err := file.Close(); err != nil {
 		t.Fatalf("quintgo: step log: %v", err)
+	}
+	if n, msgs := qobs.Escaped(mark); n > mark && !c.Global {
+		// a verdict on a run missing steps would only mislead
+		t.Fatalf("quintgo: %d steps were recorded from goroutines outside the scenario's run (the first: %s); "+
+			"record through the scenario's context (rec's: qobs.WithRecorder), or pass qtest.Global() for goroutines "+
+			"the scenario starts", n-mark, firstOr(msgs))
 	}
 	for _, is := range rec.Issues() {
 		t.Errorf("quintgo: recording: %s", is)
@@ -215,30 +215,8 @@ func Record(t testing.TB, bindingPath string, scenario func(rec *qobs.Recorder),
 	return check(t, bindingPath, run, c)
 }
 
-// RecordAndCheck is Record, failing the test (with the offending step and
-// invariant) unless every actor conforms and satisfies the invariants.
-//
-// Deprecated: use Record(...).Expect(t, Conforms()), which states other
-// verdicts the same way.
-func RecordAndCheck(t testing.TB, bindingPath string, scenario func(rec *qobs.Recorder), opts ...Option) *Run {
-	t.Helper()
-	r := Record(t, bindingPath, scenario, opts...)
-	fail(t, r)
-	return r
-}
-
-// Check validates steps recorded elsewhere, failing the test on a violation.
-//
-// Deprecated: use Validate(...).Expect(t, Conforms()).
-func Check(t testing.TB, bindingPath string, steps []qtrace.Step, opts ...Option) *Run {
-	t.Helper()
-	r := Validate(t, bindingPath, steps, opts...)
-	fail(t, r)
-	return r
-}
-
-// Validate is Check without failing the test on a violation: inspect the
-// returned Run, or state the expected verdict with Run.Expect.
+// Validate checks steps recorded elsewhere (a step log, a real run's
+// sink): state the expected verdict with Run.Expect.
 func Validate(t testing.TB, bindingPath string, steps []qtrace.Step, opts ...Option) *Run {
 	t.Helper()
 	c := config(t, opts)
@@ -281,19 +259,6 @@ func check(t testing.TB, bindingPath string, run *Run, c Config) *Run {
 	}
 	run.Report = rep
 	return run
-}
-
-func fail(t testing.TB, r *Run) {
-	t.Helper()
-	if r.OK() {
-		return
-	}
-	var itfs []string
-	for _, p := range r.ITF {
-		itfs = append(itfs, p)
-	}
-	t.Fatalf("quintgo: the recorded trace does not satisfy the model\n%s  step log: %s\n  model-level ITF: %s",
-		r.Report.Summary(), r.StepLog, strings.Join(itfs, ", "))
 }
 
 // firstOr is the first of msgs, or a placeholder when none was kept.

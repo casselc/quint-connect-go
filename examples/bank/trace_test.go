@@ -17,7 +17,8 @@ import (
 )
 
 // payday is a scenario a service might run in production: concurrent
-// deposits, then transfers, some of which are refused.
+// deposits, then transfers, some of which are refused. Its depositors are
+// goroutines no run follows: Record needs qtest.Global() for their steps.
 func payday(b *Bank) {
 	ctx := context.Background()
 	done := make(chan struct{})
@@ -45,14 +46,14 @@ func payday(b *Bank) {
 // ($QUINTGO_KEEP keeps them).
 func TestRecordedRunConforms(t *testing.T) {
 	qtest.RequireQuint(t)
-	qtest.Record(t, "bank.binding.yaml", func(*qobs.Recorder) { payday(New(accounts)) }).Expect(t, qtest.Conforms())
+	qtest.Record(t, "bank.binding.yaml", func(*qobs.Recorder) { payday(New(accounts)) }, qtest.Global()).Expect(t, qtest.Conforms())
 }
 
 // The same scenario on the LostDeposit mutant: the third deposit to each
 // account reports a balance the model does not have.
 func TestRecordedRunCatchesLostDeposit(t *testing.T) {
 	qtest.RequireQuint(t)
-	run := qtest.Record(t, "bank.binding.yaml", func(*qobs.Recorder) { payday(New(accounts, WithMutation(LostDeposit))) })
+	run := qtest.Record(t, "bank.binding.yaml", func(*qobs.Recorder) { payday(New(accounts, WithMutation(LostDeposit))) }, qtest.Global())
 	run.Expect(t, qtest.Mismatch("deposit"))
 	t.Logf("as expected:\n%s", run.Report.Summary())
 }

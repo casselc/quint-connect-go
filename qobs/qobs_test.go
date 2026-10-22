@@ -8,10 +8,10 @@ import (
 	"testing"
 )
 
-// A durable sink's steps are in the file as soon as they are recorded.
-func TestDurableFileSink(t *testing.T) {
+// A file sink is durable: its steps are in the file as soon as they are recorded.
+func TestFileSinkIsDurable(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "steps.jsonl")
-	sink, err := DurableFileSink(p)
+	sink, err := FileSink(p)
 	if err != nil {
 		t.Fatal(err)
 	}

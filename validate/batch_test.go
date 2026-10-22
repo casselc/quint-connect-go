@@ -3,6 +3,9 @@ package validate
 import (
 	"context"
 	"fmt"
+	"path/filepath"
+	"runtime"
+	"sync"
 	"testing"
 	"time"
 
@@ -56,8 +59,21 @@ func TestCheckBatchMatchesCheck(t *testing.T) {
 	t0 := time.Now()
 	batch, errs := c.CheckBatch(context.Background(), runs, 0)
 	tBatch := time.Since(t0)
+	// each run on its own, in parallel: what CheckBatch replaces
 	t0 = time.Now()
-	par, perrs := c.CheckRuns(context.Background(), runs, 0)
+	par, perrs := make([]*Report, len(runs)), make([]error, len(runs))
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, runtime.GOMAXPROCS(0))
+	for i := range runs {
+		wg.Go(func() {
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			cc := *c
+			cc.Options.Dir = filepath.Join(t.TempDir(), fmt.Sprintf("run%d", i))
+			par[i], perrs[i] = cc.Check(context.Background(), runs[i])
+		})
+	}
+	wg.Wait()
 	tPar := time.Since(t0)
 	for i := range runs {
 		if errs[i] != nil || perrs[i] != nil {
@@ -74,6 +90,6 @@ func TestCheckBatchMatchesCheck(t *testing.T) {
 		}
 	}
 	tSeq := time.Since(t0) * time.Duration(len(runs)) / 6
-	t.Logf("%d runs: CheckBatch %v, CheckRuns (parallel) %v, Check one at a time ~%v", len(runs), tBatch.Round(time.Millisecond),
+	t.Logf("%d runs: CheckBatch %v, Check in parallel %v, Check one at a time ~%v", len(runs), tBatch.Round(time.Millisecond),
 		tPar.Round(time.Millisecond), tSeq.Round(time.Millisecond))
 }

@@ -28,7 +28,7 @@ type FaultMap map[string]func(s *Step) *Fault
 // script makes the trace's faults, in order, each after the steps that
 // precede it, and no others; the program makes every other step itself,
 // and its recorded steps are then checked against the model
-// (qtest.Check). A run that cannot follow the trace leaves faults in
+// (qtest.Validate). A run that cannot follow the trace leaves faults in
 // Script.Remaining, or records steps the model rejects.
 //
 // The script waits on the run's own step recorder (the one in the

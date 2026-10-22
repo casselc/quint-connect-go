@@ -185,12 +185,6 @@ func WithRecorder(ctx context.Context, r *Recorder) context.Context {
 	return qrun.With(ctx, recorderKey, r)
 }
 
-// InContext returns the recorder WithRecorder put in ctx, or nil.
-func InContext(ctx context.Context) *Recorder {
-	r, _ := qrun.In(ctx, recorderKey)
-	return r
-}
-
 var (
 	discard atomic.Pointer[func() bool]
 	strict  atomic.Int64

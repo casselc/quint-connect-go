@@ -51,7 +51,7 @@ func realSteps(t *testing.T, cfg grpcledger.RealConfig) []qtrace.Step {
 func TestRealSpansConform(t *testing.T) {
 	qtest.RequireQuint(t)
 	steps := realSteps(t, grpcledger.RealConfig{Seed: 1, Refuse: 0.1, LoseResponse: 0.2})
-	qtest.Expect(t, qtest.Validate(t, binding, steps).Report, qtest.Conforms())
+	qtest.Validate(t, binding, steps).Expect(t, qtest.Conforms())
 }
 
 // The bugs the simulation finds, from a real server's spans: the missing
@@ -69,7 +69,7 @@ func TestRealMutants(t *testing.T) {
 		{ledger.NoFundsCheck, 0, qtest.AnyOf(qtest.Rejects("transfer"), qtest.Mismatch("transfer"))}} {
 		t.Run(c.m.String(), func(t *testing.T) {
 			steps := realSteps(t, grpcledger.RealConfig{Mutation: c.m, Seed: 1, LoseResponse: c.lose})
-			qtest.Expect(t, qtest.Validate(t, binding, steps).Report, c.want)
+			qtest.Validate(t, binding, steps).Expect(t, c.want)
 		})
 	}
 }

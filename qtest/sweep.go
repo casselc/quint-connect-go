@@ -54,15 +54,6 @@ var rowKey = qrun.NewKey[qsweep.Row]("sweep.row")
 // no run function): a System's Run configures itself from it.
 func RowOf(c qenv.Chooser) (qsweep.Row, bool) { return qrun.In(qenv.ContextOf(c), rowKey) }
 
-// SweepExplore explores each covering row of sw as a subtest named by the
-// row, checking its expectation there.
-//
-// Deprecated: use System.Sweep.
-func SweepExplore(t *testing.T, bindingPath string, sw Sweep, scenario func(row qsweep.Row, c qenv.Chooser)) *Swept {
-	t.Helper()
-	return sweep(t, bindingPath, sw, func(row qsweep.Row, c qenv.Chooser) error { scenario(row, c); return nil })
-}
-
 func sweep(t *testing.T, bindingPath string, sw Sweep, scenario func(row qsweep.Row, c qenv.Chooser) error) *Swept {
 	t.Helper()
 	strength := sw.Strength

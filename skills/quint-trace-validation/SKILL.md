@@ -71,8 +71,8 @@ templates (collections, outcomes, ITF), or setting up the analyzers
 
 - In a test:
   `qtest.Record(t, "bank.binding.yaml", func(*qobs.Recorder) { scenario() }).Expect(t, qtest.Conforms())`.
-  Use `qtest.Validate` for steps recorded elsewhere. (`RecordAndCheck`
-  and `Check` are deprecated: every verdict is an `Expect`.) Start with
+  Use `qtest.Validate` for steps recorded elsewhere: every verdict is an
+  `Expect`. Start with
   `qtest.RequireQuint(t)`, which skips the test without quint.
   The scenario's goroutine records into the run. Steps from goroutines
   it starts (an HTTP server's handlers, a cluster's nodes) fail the test
@@ -111,7 +111,7 @@ Production logs are selected and sanitized before they are checked
 The generated module (`module:` in the report) is a plain Quint file:
 `quint test` it, edit it, or keep it as a regression test. The `itf:` file
 of a conforming run carries the model's full state and `mbt::nondetPicks`,
-so `connect.ReplayFiles` can drive the implementation with it again.
+so `connect.Replay` (with `itf.ReadFile`) can drive the implementation with it again.
 
 Soundness is relative to the binding: a wrong template can hide or invent
 a bug. When a verdict surprises you, check the binding first.

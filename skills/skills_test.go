@@ -79,7 +79,7 @@ func TestSkillLinksResolve(t *testing.T) {
 	})
 }
 
-// Skills teach the current API: an identifier deprecated in the code (or
+// Skills teach the current API: an identifier removed from the code (or
 // a report format it no longer prints) would send agents to it.
 func TestSkillsAvoidDeprecated(t *testing.T) {
 	deprecated := []struct{ text, instead string }{
@@ -88,6 +88,8 @@ func TestSkillsAvoidDeprecated(t *testing.T) {
 		{"qtest.Explore(", "qtest.System{...}.Explore"},
 		{"qtest.SweepExplore", "System.Sweep"},
 		{"Explored", "qtest.Run"},
+		{"qtest.Expect(", "Run.Expect (qtest.Validate(...).Expect)"},
+		{"DurableFileSink", "qobs.FileSink (durable)"},
 		{"step [", `"step N" (reports number steps from 1)`},
 	}
 	_ = fs.WalkDir(FS(), ".", func(p string, d fs.DirEntry, err error) error {
@@ -97,7 +99,7 @@ func TestSkillsAvoidDeprecated(t *testing.T) {
 		b, _ := fs.ReadFile(FS(), p)
 		for _, dep := range deprecated {
 			if strings.Contains(string(b), dep.text) {
-				t.Errorf("%s mentions %s, which is deprecated: use %s", p, dep.text, dep.instead)
+				t.Errorf("%s mentions %s, which is gone: use %s", p, dep.text, dep.instead)
 			}
 		}
 		return nil

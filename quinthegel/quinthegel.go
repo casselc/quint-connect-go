@@ -237,7 +237,7 @@ func Test(t *testing.T, cfg Config, body func(ht *hegel.T, rec *Recorder), opts 
 	}
 	keep := keepDir(t, cfg.Keep)
 	var checker *validate.Checker
-	var cc *CaseChecker
+	var cc *caseChecker
 	if cfg.Mode != Off {
 		vo := cfg.Validate
 		vo.Dir = filepath.Join(keep, "quint")
@@ -246,7 +246,7 @@ func Test(t *testing.T, cfg Config, body func(ht *hegel.T, rec *Recorder), opts 
 			t.Fatalf("quinthegel: %v", err)
 		}
 		checker = c
-		cc = NewCaseChecker(c)
+		cc = newCaseChecker(c)
 	}
 	var (
 		mu   sync.Mutex
@@ -271,7 +271,7 @@ func Test(t *testing.T, cfg Config, body func(ht *hegel.T, rec *Recorder), opts 
 		}
 		switch cfg.Mode {
 		case Each:
-			CheckCase(ht, cc, steps)
+			checkCase(ht, cc, steps)
 		case After:
 			key := qtrace.Key(steps)
 			mu.Lock()
@@ -353,7 +353,7 @@ func batched(t *testing.T, cfg Config, body func(ht *hegel.T, rec *Recorder), op
 	if err != nil {
 		t.Fatalf("quinthegel: %v", err)
 	}
-	cc := NewCaseChecker(c)
+	cc := newCaseChecker(c)
 	rounds := cfg.Rounds
 	if rounds <= 0 {
 		rounds = 1
@@ -417,7 +417,7 @@ func batched(t *testing.T, cfg Config, body func(ht *hegel.T, rec *Recorder), op
 		t.Logf("quinthegel: round %d (seed %d): %d of %d runs violate the model; shrinking", r, s, len(failed), len(runs))
 		ok := t.Run("shrink", func(st *testing.T) {
 			hegel.Test(st, func(ht *hegel.T) {
-				CheckCase(ht, cc, record(ht))
+				checkCase(ht, cc, record(ht))
 			}, append(append([]hegel.Option{hegel.SuppressHealthCheck(hegel.TooSlow)}, opts...), hegel.WithSeed(s))...)
 		})
 		if ok {

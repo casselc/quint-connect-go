@@ -35,5 +35,5 @@ func TestNativeInSynctest(t *testing.T) {
 		t.Errorf("the bubble's clock moved %v; want the run's 20 s and more", took)
 	}
 	t.Logf("%d steps in %v of the bubble's time", len(mem.Steps()), took)
-	qtest.Expect(t, qtest.Validate(t, binding, mem.Steps()).Report, qtest.Conforms())
+	qtest.Validate(t, binding, mem.Steps()).Expect(t, qtest.Conforms())
 }

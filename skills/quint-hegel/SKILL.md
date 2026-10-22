@@ -60,7 +60,7 @@ func TestBankAgainstModel(t *testing.T) {
   v.Expect(t, qtest.Rejects("transfer"))
   ```
   (`hegel.Test` cannot express "expected to fail". `FindViolation`
-  wraps `hegel.Run`, `CaseChecker` and the TooSlow suppression.) Hegel
+  wraps `hegel.Run`, a verdict cache and the TooSlow suppression.) Hegel
   runs quiet: the expected failure's replay, stack and reproduction blob
   are shown only if the outcome is not the expected one
   (`QUINTGO_VERBOSE=1` shows them always). A System shrinks the same way:

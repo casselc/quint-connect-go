@@ -8,6 +8,6 @@
 //
 // The same run can be driven by Hegel (quinthegel.Chooser), a seed
 // (NewSeeded), a recorded list of choices (Replay), or no faults at all
-// (Nominal). The choosers live in qenv/choice, which does not depend on
-// the simulation; qenv re-exports them.
+// (Nominal). The choosers are implemented apart from the simulation
+// (qenv/internal/choice) and are qenv's API.
 package qenv

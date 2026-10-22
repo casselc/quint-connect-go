@@ -14,14 +14,14 @@ import (
 	"hegel.dev/go/hegel"
 )
 
-// Verdict is the outcome of checking one run.
-type Verdict struct {
+// verdict is the outcome of checking one run.
+type verdict struct {
 	OK      bool
 	Summary string // the validator's report (or what the cache remembered of it)
 	Cached  bool   // decided from earlier checks, without running quint
 }
 
-// CaseChecker checks the runs of Hegel test cases against the model. It
+// caseChecker checks the runs of Hegel test cases against the model. It
 // remembers verdicts, so shrinking does not run quint again for runs it has
 // already decided:
 //
@@ -34,25 +34,25 @@ type Verdict struct {
 //
 // Prefix reuse is limited to runs of one actor with no domain clocks
 // (quint.order.*), whose reconstructed order is the recording order.
-type CaseChecker struct {
+type caseChecker struct {
 	Checker *validate.Checker
 
 	mu       sync.Mutex
-	full     map[string]Verdict // constants + all steps -> verdict
+	full     map[string]verdict // constants + all steps -> verdict
 	prefixes map[string]string  // constants + failing prefix -> summary
 	n        atomic.Int64       // quint runs
 	hits     atomic.Int64
 	batches  atomic.Int64
 }
 
-// NewCaseChecker wraps a validate.Checker (see Checker).
-func NewCaseChecker(c *validate.Checker) *CaseChecker {
-	return &CaseChecker{Checker: c, full: map[string]Verdict{}, prefixes: map[string]string{}}
+// newCaseChecker wraps a validate.Checker (see Checker).
+func newCaseChecker(c *validate.Checker) *caseChecker {
+	return &caseChecker{Checker: c, full: map[string]verdict{}, prefixes: map[string]string{}}
 }
 
 // Stats reports how many runs were checked with quint and how many were
 // decided from the cache.
-func (cc *CaseChecker) Stats() (quintRuns, cacheHits int64) { return cc.n.Load(), cc.hits.Load() }
+func (cc *caseChecker) Stats() (quintRuns, cacheHits int64) { return cc.n.Load(), cc.hits.Load() }
 
 // keyed is a run with its cache keys.
 type keyed struct {
@@ -62,7 +62,7 @@ type keyed struct {
 	prefixable bool
 }
 
-func (cc *CaseChecker) key(steps []qtrace.Step) keyed {
+func (cc *caseChecker) key(steps []qtrace.Step) keyed {
 	consts, prefixable := cc.constants(steps)
 	// Steps the binding skips become no model call; with one process they
 	// cannot change the replay either, so they are left out of the keys:
@@ -75,7 +75,7 @@ func (cc *CaseChecker) key(steps []qtrace.Step) keyed {
 }
 
 // lookup decides a run from earlier verdicts, if it can.
-func (cc *CaseChecker) lookup(k keyed) (Verdict, bool) {
+func (cc *caseChecker) lookup(k keyed) (verdict, bool) {
 	cc.mu.Lock()
 	defer cc.mu.Unlock()
 	if v, ok := cc.full[k.keys[len(k.keys)-1]]; ok {
@@ -85,16 +85,16 @@ func (cc *CaseChecker) lookup(k keyed) (Verdict, bool) {
 	if k.prefixable {
 		for i, key := range k.keys {
 			if sum, ok := cc.prefixes[key]; ok {
-				return Verdict{Summary: fmt.Sprintf("the first %d steps are a prefix the model already rejected:\n%s", i+1, sum), Cached: true}, true
+				return verdict{Summary: fmt.Sprintf("the first %d steps are a prefix the model already rejected:\n%s", i+1, sum), Cached: true}, true
 			}
 		}
 	}
-	return Verdict{}, false
+	return verdict{}, false
 }
 
 // store remembers the verdict on a run, and its failing prefix.
-func (cc *CaseChecker) store(k keyed, rep *validate.Report) Verdict {
-	v := Verdict{OK: rep.OK(), Summary: rep.Summary()}
+func (cc *caseChecker) store(k keyed, rep *validate.Report) verdict {
+	v := verdict{OK: rep.OK(), Summary: rep.Summary()}
 	cc.mu.Lock()
 	defer cc.mu.Unlock()
 	cc.full[k.keys[len(k.keys)-1]] = v
@@ -115,9 +115,9 @@ func (cc *CaseChecker) store(k keyed, rep *validate.Report) Verdict {
 }
 
 // Check decides one run. A run with no steps is vacuously OK.
-func (cc *CaseChecker) Check(ctx context.Context, steps []qtrace.Step) (Verdict, error) {
+func (cc *caseChecker) Check(ctx context.Context, steps []qtrace.Step) (verdict, error) {
 	if len(steps) == 0 {
-		return Verdict{OK: true, Summary: "no steps recorded"}, nil
+		return verdict{OK: true, Summary: "no steps recorded"}, nil
 	}
 	k := cc.key(steps)
 	if v, ok := cc.lookup(k); ok {
@@ -129,7 +129,7 @@ func (cc *CaseChecker) Check(ctx context.Context, steps []qtrace.Step) (Verdict,
 	c.Options.NoITF = true // verdicts only
 	rep, err := c.Check(ctx, steps)
 	if err != nil {
-		return Verdict{}, err
+		return verdict{}, err
 	}
 	return cc.store(k, rep), nil
 }
@@ -139,14 +139,14 @@ func (cc *CaseChecker) Check(ctx context.Context, steps []qtrace.Step) (Verdict,
 // verdicts, so later Checks of these runs, or of runs sharing a rejected
 // prefix, need no quint. It returns the verdicts, in order (OK for an
 // empty run), and counts one quint run per process.
-func (cc *CaseChecker) Prefetch(ctx context.Context, runs [][]qtrace.Step) ([]Verdict, error) {
-	out := make([]Verdict, len(runs))
+func (cc *caseChecker) Prefetch(ctx context.Context, runs [][]qtrace.Step) ([]verdict, error) {
+	out := make([]verdict, len(runs))
 	ks := make([]keyed, len(runs))
 	var todo [][]qtrace.Step
 	var idx []int
 	for i, steps := range runs {
 		if len(steps) == 0 {
-			out[i] = Verdict{OK: true, Summary: "no steps recorded"}
+			out[i] = verdict{OK: true, Summary: "no steps recorded"}
 			continue
 		}
 		ks[i] = cc.key(steps)
@@ -177,7 +177,7 @@ func (cc *CaseChecker) Prefetch(ctx context.Context, runs [][]qtrace.Step) ([]Ve
 
 // constants renders the run's instance constants (they may depend on the
 // whole run) and says whether prefix reuse is sound for it.
-func (cc *CaseChecker) constants(steps []qtrace.Step) (string, bool) {
+func (cc *caseChecker) constants(steps []qtrace.Step) (string, bool) {
 	traces, issues := qtrace.Reconstruct(steps)
 	if len(traces) != 1 || len(issues) > 0 || len(traces[0].Issues) > 0 {
 		return "", false
@@ -197,7 +197,7 @@ func (cc *CaseChecker) constants(steps []qtrace.Step) (string, bool) {
 // effective drops the steps the binding skips, when the run has a single
 // process (a skipped step can still mark a restart between processes). It
 // returns the kept steps and their indexes in steps.
-func (cc *CaseChecker) effective(steps []qtrace.Step) ([]qtrace.Step, []int) {
+func (cc *caseChecker) effective(steps []qtrace.Step) ([]qtrace.Step, []int) {
 	for i := range steps {
 		if steps[i].Process != steps[0].Process {
 			return steps, identity(len(steps))
@@ -278,18 +278,10 @@ func prefixKeys(consts string, steps []qtrace.Step) []string {
 	return keys
 }
 
-// CheckCase checks a test case's recorded run and fails the test case
+// checkCase checks a test case's recorded run and fails the test case
 // (tc.Errorf) if the model rejects it, so Hegel shrinks the run against the
-// model. It is what Test does in Each mode, for use in hand-written Hegel
-// tests (hegel.Test, hegel.Run):
-//
-//	cc := quinthegel.NewCaseChecker(checker)
-//	err := hegel.Run(func(tc hegel.TestCase) {
-//		rec := quinthegel.NewRecorder(tc)
-//		hegel.RunStateful(tc, &machine{rec: rec})
-//		quinthegel.CheckCase(tc, cc, rec.Steps())
-//	})
-func CheckCase(tc hegel.TestCase, cc *CaseChecker, steps []qtrace.Step) {
+// model: what Test does in Each mode.
+func checkCase(tc hegel.TestCase, cc *caseChecker, steps []qtrace.Step) {
 	v, err := cc.Check(context.Background(), steps)
 	if err != nil {
 		tc.Errorf("quinthegel: checking the run: %v", err)

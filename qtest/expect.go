@@ -250,12 +250,9 @@ func (q quantified) judge(rs []*validate.Report) judgment {
 	return j
 }
 
-// Expect fails t unless the report meets every expectation, printing the
-// report. It is how a test states what a mutant must look like:
-//
-//	run := qtest.Record(t, "bank.binding.yaml", scenarioWith(LostDeposit))
-//	qtest.Expect(t, run.Report, qtest.Mismatch("deposit"))
-func Expect(t testing.TB, r *validate.Report, es ...Expectation) {
+// expectReport fails t unless the report meets every expectation,
+// printing the report.
+func expectReport(t testing.TB, r *validate.Report, es ...Expectation) {
 	t.Helper()
 	if r == nil {
 		t.Fatalf("quintgo: no report")
@@ -270,10 +267,13 @@ func Expect(t testing.TB, r *validate.Report, es ...Expectation) {
 	}
 }
 
-// Expect is qtest.Expect on the run's report, naming the run's step log
-// and model-level ITF when it fails (Record's and Validate's):
+// Expect fails t unless the run's report meets every expectation,
+// printing the report and naming the run's step log and model-level ITF
+// (Record's and Validate's). It is how a test states what a mutant must
+// look like:
 //
 //	qtest.Record(t, "bank.binding.yaml", payday).Expect(t, qtest.Conforms())
+//	qtest.Record(t, "bank.binding.yaml", scenarioWith(LostDeposit)).Expect(t, qtest.Mismatch("deposit"))
 func (r *Run) Expect(t testing.TB, es ...Expectation) {
 	t.Helper()
 	if r.Report != nil && r.StepLog != "" {
@@ -288,7 +288,7 @@ func (r *Run) Expect(t testing.TB, es ...Expectation) {
 			}
 		}
 	}
-	Expect(t, r.Report, es...)
+	expectReport(t, r.Report, es...)
 }
 
 func keysOf[V any](m map[string]V) []string {

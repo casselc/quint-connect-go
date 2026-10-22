@@ -31,7 +31,7 @@ func TestChoreoBinding(t *testing.T) {
 	qtest.RequireQuint(t)
 	ok := steps([2]string{"prepare", "p1"}, [2]string{"prepare", "p2"}, [2]string{"prepare", "p3"},
 		[2]string{"decideCommit", ""}, [2]string{"commitAsInstructed", "p2"})
-	qtest.Expect(t, qtest.Validate(t, binding, ok.Steps()).Report, qtest.Conforms())
+	qtest.Validate(t, binding, ok.Steps()).Expect(t, qtest.Conforms())
 	early := steps([2]string{"prepare", "p1"}, [2]string{"decideCommit", ""})
-	qtest.Expect(t, qtest.Validate(t, binding, early.Steps()).Report, qtest.Rejects("decideCommit"))
+	qtest.Validate(t, binding, early.Steps()).Expect(t, qtest.Rejects("decideCommit"))
 }

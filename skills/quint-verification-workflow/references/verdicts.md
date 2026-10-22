@@ -38,7 +38,7 @@ seeds, not by hand.
 
 ## Where each workflow states it
 
-- recorded steps: `qtest.Expect(t, qtest.Validate(t, binding, steps).Report, ...)`;
+- recorded steps: `qtest.Validate(t, binding, steps).Expect(t, ...)`;
 - an exploration or sweep row: `x.Expect(t, claims...)`, `Sweep.Expect(row)`;
 - Hegel: `quinthegel.FindViolation(...).Expect(t, ...)`,
   `quinthegel.Shrink(t, sys).Expect(t, ...)` (fails when nothing is found);

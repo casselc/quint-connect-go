@@ -67,7 +67,7 @@ rules:
 All three give the same verdicts on examples/edgepublish's five scenarios, at the same step
 (`examples/edgepublish/scenarios.TestScenarios` checks this). A validated run also writes an ITF
 with the model's full state at every step and `mbt::nondetPicks`, i.e. the
-shape of `quint run --mbt`. `connect.Replay` (or `connect.ReplayFiles`) replays such a trace on the
+shape of `quint run --mbt`. `connect.Replay` replays such a trace on the
 implementation: `scenarios.TestScenarios` replays each observed conforming
 trace through the MBT driver. `validate.ValidateITF` also takes plain `quint
 run --mbt` output (`quintgo validate -spec M.qnt -module M -instance

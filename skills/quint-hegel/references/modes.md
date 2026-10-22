@@ -10,7 +10,7 @@
       reproduce.
     - The body must be deterministic in Hegel's draws.
   - `Each` checks every case, so a violation is a Hegel failure and Hegel
-    shrinks it against the model. A `CaseChecker` caches verdicts, so
+    shrinks it against the model. The checker caches verdicts, so
     shrinking runs quint far less than once per candidate.
   - `After` checks the distinct runs in bulk after Hegel finishes. It is
     the cheapest, but shrinks nothing.

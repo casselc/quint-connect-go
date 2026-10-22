@@ -19,11 +19,6 @@ import (
 	"github.com/casselc/quint-connect-go/validate"
 )
 
-// Explored is one seeded run of an Exploration.
-//
-// Deprecated: it is Run.
-type Explored = Run
-
 // An Exploration is many seeded runs of a simulated scenario, checked
 // against the model in bulk.
 type Exploration struct {
@@ -96,24 +91,8 @@ type ExploreConfig struct {
 	Verdicts *VerdictCache
 }
 
-// Explore runs scenario once per seed, each time with a seeded qenv chooser
-// (wrapped in a qenv.Recorder, so every run can be replayed) whose context
-// carries a fresh step recorder, then checks every run in
-// one batch (validate.Checker.CheckBatch, without ITF). It is how a
-// simulated system is explored like Maelstrom or Jepsen explore real
-// ones: many random schedules and faults, every one judged by the model.
-// State expectations with Exploration.Expect.
-//
-// Deprecated: use System{Binding: bindingPath, Run: run}.Explore(t, cfg),
-// whose Run returns the run's error and serves Shrink, Sweep, Fuzz and
-// Mutate too.
-func Explore(t testing.TB, bindingPath string, cfg ExploreConfig, scenario func(c qenv.Chooser)) *Exploration {
-	t.Helper()
-	return explore(t, bindingPath, cfg, func(c qenv.Chooser) error { scenario(c); return nil })
-}
-
-// explore is Explore with a scenario that returns its error: a run that
-// fails to run (rather than to conform) fails t, naming its seed.
+// explore runs the scenario once per seed and checks every run (System.Explore):
+// a run that fails to run (rather than to conform) fails t, naming its seed.
 func explore(t testing.TB, bindingPath string, cfg ExploreConfig, scenario func(c qenv.Chooser) error) *Exploration {
 	t.Helper()
 	if cfg.Seeds == 0 {

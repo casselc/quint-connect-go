@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/casselc/quint-connect-go/qenv/choice"
+	"github.com/casselc/quint-connect-go/qenv/internal/choice"
 )
 
 // A FaultKind is a kind of fault and its options' names, nominal (option
@@ -16,7 +16,7 @@ type FaultKind struct {
 	Options []string
 }
 
-// Faults declares a fault kind: name as Sim.Fault takes it ("kube.request")
+// Faults declares a fault kind: name without the "fault." prefix ("kube.request")
 // and its options in order (choice.Declare: the one registry, which also
 // holds the sites DeclareFault registers). Declaring it again with other
 // options panics: option numbers would change meaning.
@@ -24,10 +24,6 @@ func Faults(name string, options ...string) FaultKind {
 	choice.Declare(name, options...)
 	return FaultKind{Name: name, Options: append([]string(nil), options...)}
 }
-
-// FaultOptions are a declared kind's option names (by Sim.Fault's name,
-// with or without the "fault." prefix), or nil.
-func FaultOptions(kind string) []string { return choice.Options(kind) }
 
 // Only is the kind restricted to its first options, named, for a call that
 // cannot fail in the others (a read cannot lose an update's response).
@@ -43,7 +39,7 @@ func (k FaultKind) Only(options ...string) FaultKind {
 // FaultOf makes a fault choice of the kind: "" for nominal, else the
 // option's name.
 func (s *Sim) FaultOf(k FaultKind) string {
-	v := s.Fault(k.Name, 1+len(k.Options))
+	v := s.fault(k.Name, 1+len(k.Options))
 	if v == 0 {
 		return ""
 	}

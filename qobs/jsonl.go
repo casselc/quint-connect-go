@@ -38,11 +38,6 @@ func FileSink(path string) (*JSONLSink, error) {
 	return &JSONLSink{w: f, c: f}, nil
 }
 
-// DurableFileSink is FileSink.
-//
-// Deprecated: FileSink is durable; use it.
-func DurableFileSink(path string) (*JSONLSink, error) { return FileSink(path) }
-
 // BufferedFileSink creates (truncating) a buffered step log file: fewer
 // writes, for long runs nothing kills. Close (or Flush) it when done:
 // steps still in the buffer are lost if the process dies, undetectably.

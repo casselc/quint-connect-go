@@ -390,11 +390,11 @@ run can be replayed deterministically on a new build. Model traces drive
 Go; Go traces go back to the model; either can drive Go again.
 
 **Record then check** (`qtest`).
-- `RecordAndCheck(t, binding, scenario)` installs a recorder (memory plus a
-  step log) as the global one, runs the scenario, writes the model-level
-  ITF, validates, and fails the test with the offending step and invariant.
-- `Record` returns the result for expected violations; `Check` takes steps
-  recorded elsewhere.
+- `Record(t, binding, scenario)` makes the scenario's goroutine the run's
+  (a recorder to memory plus a step log; the global one too with
+  `qtest.Global()`), runs the scenario, writes the model-level ITF and
+  validates; `Validate` takes steps recorded elsewhere. Either states its
+  verdict with `Run.Expect` (`Conforms()`, or a mutant's `Mismatch`...).
 - Checkers are cached per binding, so the model is typechecked once per
   test binary.
 
@@ -828,7 +828,7 @@ controller reads fresh from each API server. Both mutants fail in both
 environments.
 
 What the real run needs that the simulation does not: a durable step log
-(`DurableFileSink`, because a killed process loses buffered steps and the
+(`FileSink`, durable because a killed process loses buffered steps and the
 loss at the end of a log is undetectable), and recording at the response
 rather than at the server. The API server's audit log would be the
 faithful recording point.
@@ -1756,7 +1756,7 @@ restarts once:
 - the mutant that keeps its count in memory follows the same traces, and
   the model rejects its restart (`Mismatch("restart")`).
 
-## 16. Covering arrays (`qsweep`, `qtest.SweepExplore`)
+## 16. Covering arrays (`qsweep`, `qtest.System.Sweep`)
 
 Explorations sample the schedule and the faults. Configurations were a
 product written by hand: checkout's isolation levels × mutants, three
@@ -1776,7 +1776,7 @@ none is left.
 - The space is bounded (`MaxSpace`, 2M rows), far above what a test
   sweeps.
 
-**Sweeps.** `qtest.SweepExplore` explores each row as a subtest, with
+**Sweeps.** `System.Sweep` explores each row as a subtest, with
 per-row options (the model's constants for the row's sizes) and per-row
 expectations.
 - Fault kinds are factors (`qsweep.Bool`), turned off with `qenv.Without`.
@@ -2673,7 +2673,9 @@ System (`Recovers`, `Assess`, `Of`, `OfSimulation`, `System`,
 they are qload's, and `qmeta.Simulate` is `qload.SimulateTrajectory`.
 qenv's choosers and their byte rule are `qenv/choice`, which needs no
 simulation (a fuzz corpus, gosim's host side); the virtual-time profile
-is `qenv/profile`. qenv re-exports both, so no caller changed. OTelSink
+is `qenv/profile`. qenv re-exports both, so no caller changed. (The third review made both internal,
+`qenv/internal/choice` and `qenv/internal/profile`: nothing but qenv
+imported them, and two import paths for one API was one too many.) OTelSink
 stayed in qobs: qobs reads a step's thread from the span in its context,
 so it needs otel/trace whatever the sink's package.
 

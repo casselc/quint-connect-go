@@ -44,7 +44,13 @@ func (s System) opts(more ...Option) []Option {
 	return append(out, more...)
 }
 
-// Explore runs the system once per seed and checks every run (Explore).
+// Explore runs the system once per seed, each time with a seeded qenv
+// chooser (wrapped in a qenv.Recorder, so every run can be replayed) whose
+// context carries a fresh step recorder, then checks every run in one
+// batch (validate.Checker.CheckBatch, without ITF). It is how a simulated
+// system is explored like Maelstrom or Jepsen explore real ones: many
+// random schedules and faults, every one judged by the model. State
+// expectations with Exploration.Expect.
 func (s System) Explore(t testing.TB, cfg ExploreConfig) *Exploration {
 	t.Helper()
 	cfg.Opts = s.opts(cfg.Opts...)
@@ -90,7 +96,8 @@ func (s System) FollowTraces(t testing.TB, trace connect.Config, faults connect.
 	return x
 }
 
-// Sweep explores each covering row of sw (SweepExplore), running the
+// Sweep explores each covering row of sw as a subtest named by the row,
+// checking its expectation there, running the
 // system as run says for the row. With run nil it is the System's own
 // Run, which reads the row from its chooser (RowOf): one Run for every
 // workflow.

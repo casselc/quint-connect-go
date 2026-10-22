@@ -25,7 +25,7 @@ type Violation struct {
 	qtest.Run
 	Summary string // the validator's report on Steps
 	// QuintRuns and CacheHits count the cases checked with quint and those
-	// decided from earlier verdicts (see CaseChecker).
+	// decided from earlier verdicts (see caseChecker).
 	QuintRuns, CacheHits int64
 
 	found    bool // a case violated the model
@@ -63,7 +63,7 @@ func FindViolation(t testing.TB, cfg Config, body func(tc hegel.TestCase, rec *R
 	if err != nil {
 		t.Fatalf("quinthegel: %v", err)
 	}
-	cc := NewCaseChecker(c)
+	cc := newCaseChecker(c)
 	var (
 		mu    sync.Mutex
 		found *Violation
@@ -162,7 +162,7 @@ func (v *Violation) Expect(t testing.TB, es ...qtest.Expectation) {
 		}
 		return
 	}
-	qtest.Expect(t, v.Report, es...)
+	v.Run.Expect(t, es...)
 }
 
 // Last returns the last step of the run, or the zero step if it is empty.

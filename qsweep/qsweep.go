@@ -3,7 +3,7 @@
 // pairwise for t = 2), and sequence covering arrays, in which every order
 // of t events appears. Most failures need only a few factors to interact,
 // so a sweep over such rows finds what the full product would, at a small
-// fraction of its runs (qtest.SweepExplore).
+// fraction of its runs (qtest.System.Sweep).
 //
 // Rows are chosen greedily from the whole space, so a constraint (Allow)
 // is any function of a full row, and combinations it rules out are not

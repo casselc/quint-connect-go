@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/casselc/quint-connect-go/qenv/choice"
+	"github.com/casselc/quint-connect-go/qenv/internal/choice"
 )
 
 // A fault point is a place in the code under test where a fault may
@@ -59,7 +59,7 @@ func FaultPoint(ctx context.Context, kind string, crash bool, errs ...error) err
 		names = append(names, "crash")
 	}
 	k := Faults(kind, names...)
-	v := t.sim.Fault(k.Name, 1+len(k.Options))
+	v := t.sim.fault(k.Name, 1+len(k.Options))
 	switch {
 	case v == 0:
 		return nil
@@ -78,9 +78,6 @@ func FaultPoint(ctx context.Context, kind string, crash bool, errs ...error) err
 // position): what woven code does at init, so a coverage report can name
 // the points no run reached.
 func DeclareFault(kind, site string) { choice.DeclareSite(kind, site) }
-
-// DeclaredFaults are the registered fault points: kind -> sites.
-func DeclaredFaults() map[string][]string { return choice.Sites() }
 
 // PointCoverage is what runs did at one fault kind.
 type PointCoverage struct {
@@ -106,7 +103,7 @@ func (p *PointCoverage) Faulted() int {
 }
 
 // A Coverage is the fault coverage of a set of runs: for each fault kind,
-// declared (DeclaredFaults) or met (a double's), how often runs reached it
+// declared (DeclareFault) or met (a double's), how often runs reached it
 // and which of its options they took.
 type Coverage struct {
 	Runs   int
@@ -117,7 +114,7 @@ type Coverage struct {
 }
 
 // CoverageOf computes the coverage of runs from their choices (a
-// Recorder's, or qtest.Explored.Choices) against the declared points.
+// Recorder's, or qtest.Run.Choices) against the declared points.
 func CoverageOf(runs [][]Choice) *Coverage {
 	byKind := map[string]*PointCoverage{}
 	get := func(kind string) *PointCoverage {
@@ -128,7 +125,7 @@ func CoverageOf(runs [][]Choice) *Coverage {
 		}
 		return p
 	}
-	for kind, sites := range DeclaredFaults() {
+	for kind, sites := range choice.Sites() {
 		get(kind).Sites = sites
 	}
 	cov := &Coverage{Runs: len(runs)}
@@ -156,7 +153,7 @@ func CoverageOf(runs [][]Choice) *Coverage {
 		cov.faulted = append(cov.faulted, order)
 	}
 	for _, p := range byKind {
-		p.Names = FaultOptions(p.Kind)
+		p.Names = choice.Options(p.Kind)
 		cov.Points = append(cov.Points, p)
 	}
 	sort.Slice(cov.Points, func(i, j int) bool { return cov.Points[i].Kind < cov.Points[j].Kind })

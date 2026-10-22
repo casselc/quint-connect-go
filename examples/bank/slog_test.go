@@ -26,6 +26,6 @@ func TestSlogStepsConform(t *testing.T) {
 			slog.Group("obs", "src_balance", 3, "dst_balance", final))
 		return mem
 	}
-	qtest.Expect(t, qtest.Validate(t, "bank.binding.yaml", run(2).Steps()).Report, qtest.Conforms())
-	qtest.Expect(t, qtest.Validate(t, "bank.binding.yaml", run(7).Steps()).Report, qtest.Mismatch("transfer"))
+	qtest.Validate(t, "bank.binding.yaml", run(2).Steps()).Expect(t, qtest.Conforms())
+	qtest.Validate(t, "bank.binding.yaml", run(7).Steps()).Expect(t, qtest.Mismatch("transfer"))
 }

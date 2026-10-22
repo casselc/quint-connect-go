@@ -43,7 +43,7 @@ func TestServiceUnderLoadConforms(t *testing.T) {
 		if err := kv.Load(context.Background(), cl.Base, 8, 40, []string{"a", "b"}, 1); err != nil {
 			t.Fatal(err)
 		}
-	}).Expect(t, qtest.Conforms())
+	}, qtest.Global()).Expect(t, qtest.Conforms()) // the server's handlers run on its goroutines
 }
 
 // The server's plain OTel spans, from the same kind of load, converted by

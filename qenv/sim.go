@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/casselc/quint-connect-go/qenv/choice"
+	"github.com/casselc/quint-connect-go/qenv/internal/choice"
 	"github.com/casselc/quint-connect-go/qrun"
 )
 
@@ -66,7 +66,6 @@ type Sim struct {
 	nemeses   []*nemesis
 	onCrash   []func(*Process)
 	keyed     map[any]any // keyed locks and wait groups (keyed.go)
-	onSettle  []func()
 	faultsOff bool
 	settling  bool
 	steps     int
@@ -161,9 +160,9 @@ func (s *Sim) Choose(kind string, n int) int {
 	return v
 }
 
-// Fault makes a fault choice: whether (and which) fault of a kind happens
-// here. 0 is nominal.
-func (s *Sim) Fault(kind string, n int) int { return s.Choose("fault."+kind, n) }
+// fault makes a fault choice: whether (and which) fault of a kind happens
+// here. 0 is nominal. Doubles declare their kinds and choose with FaultOf.
+func (s *Sim) fault(kind string, n int) int { return s.Choose("fault."+kind, n) }
 
 // Now is the virtual time (on the native runtime, the time package's).
 func (s *Sim) Now() time.Time {
@@ -690,10 +689,6 @@ func (s *Sim) Nemesis(name string, enabled func() bool, do func()) {
 	s.nemeses = append(s.nemeses, &nemesis{name: name, enabled: enabled, do: do})
 }
 
-// OnSettle registers a hook run when the simulation settles: a fault
-// that persists (a partition) is healed there.
-func (s *Sim) OnSettle(h func()) { s.onSettle = append(s.onSettle, h) }
-
 // ---- running -----------------------------------------------------------------
 
 // ErrStuck is returned by Run when no task can run, no deadline is set,
@@ -799,22 +794,15 @@ func (s *Sim) Run(d time.Duration) error {
 	}
 }
 
-// Settle turns faults off, runs the OnSettle hooks (healing what
-// persists), and runs until quiet or d has passed: the system's chance to
+// Settle turns faults off and runs until quiet or d has passed: the system's chance to
 // converge, after which properties conditioned on quiescence apply. It
 // runs the canonical schedule (every choice 0): what a run explores is
 // what happened before it, and a settle draws nothing from the Chooser.
 func (s *Sim) Settle(d time.Duration) error {
 	s.faultsOff, s.settling = true, true
 	defer func() { s.settling = false }()
-	for _, h := range s.onSettle {
-		h()
-	}
 	return s.Run(d)
 }
-
-// Faults turns fault choices off or back on (Settle turns them off).
-func (s *Sim) Faults(on bool) { s.faultsOff = !on }
 
 // runnable reports how many tasks are runnable: the queued ones (yielded,
 // new, woken by a Signal or their deadline) and the predicate waiters

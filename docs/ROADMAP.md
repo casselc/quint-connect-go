@@ -382,7 +382,10 @@ recorder opt-in.
   internal-only exports (`Sim.Faults`, `Sim.Native`, `Sim.OnSettle`,
   `Sim.Fault`, `qobs.InContext`, `KeepIn`, `ReplayFiles`, `CheckRuns`,
   `GenerateTest`, the free `qtest.Expect`); qenv/choice and qenv/profile
-  internal, qenv the API.
+  internal, qenv the API. Done. `Sim.Fault`, `GenerateTest`, `DeclaredFaults`,
+  `FaultOptions` and quinthegel's `CaseChecker`/`CheckCase`/`Verdict` are
+  unexported; qenv's aliases of the internal choosers carry their own
+  doc comments.
 - **W4. One way to configure.** qtest's Options only (Config unexported,
   every option documented, `WithOptions` → `Quint`); `System{Binding, Run,
   Opts}`; quinthegel takes `[]qtest.Option`; `ExploreConfig.Coverage` and

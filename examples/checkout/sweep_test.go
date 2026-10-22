@@ -107,7 +107,7 @@ func TestFaultOrders(t *testing.T) {
 				if _, err := checkout.Run(qenv.WithContext(rec, qobs.WithRecorder(context.Background(), qobs.NewRecorder(mem))), checkout.Config{Isolation: qenv.SnapshotIsolation}); err != nil {
 					t.Fatal(err)
 				}
-				qtest.Check(t, binding, mem.Steps())
+				qtest.Validate(t, binding, mem.Steps()).Expect(t, qtest.Conforms())
 				runs = append(runs, rec.Choices)
 				done = len(sc.Remaining()) == 0
 			}

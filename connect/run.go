@@ -161,10 +161,10 @@ func GenerateRun(ctx context.Context, c Config) ([]string, Config, error) {
 	return files, c, err
 }
 
-// GenerateTest runs the `run` named test of the spec with `quint test` and
+// generateTest runs the `run` named test of the spec with `quint test` and
 // returns its trace files. Such traces carry no mbt:: variables: replay
 // them with Config.NondetPath, or validate them instead (package validate).
-func GenerateTest(ctx context.Context, c Config, test string) ([]string, Config, error) {
+func generateTest(ctx context.Context, c Config, test string) ([]string, Config, error) {
 	c, err := c.resolve()
 	if err != nil {
 		return nil, c, err
@@ -236,18 +236,11 @@ func Test(t testing.TB, c Config, test string, newDriver func() Driver) {
 	if c.Dir == "" {
 		c.Dir = t.TempDir()
 	}
-	files, c, err := GenerateTest(context.Background(), c, test)
+	files, c, err := generateTest(context.Background(), c, test)
 	if err != nil {
 		t.Fatalf("connect: generating traces of %s: %v", test, err)
 	}
 	replayAll(t, c, files, newDriver, "test "+test)
-}
-
-// ReplayFiles replays already generated (or recorded and validated) ITF
-// trace files, each on a fresh driver.
-func ReplayFiles(t testing.TB, c Config, files []string, newDriver func() Driver) {
-	t.Helper()
-	replayAll(t, c.FromEnv(), files, newDriver, "replay")
 }
 
 func replayAll(t testing.TB, c Config, files []string, newDriver func() Driver, what string) {

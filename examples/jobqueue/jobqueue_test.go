@@ -10,7 +10,6 @@ import (
 	"github.com/casselc/quint-connect-go/qobs"
 	"github.com/casselc/quint-connect-go/qtest"
 	"github.com/casselc/quint-connect-go/quinthegel"
-	"github.com/casselc/quint-connect-go/validate"
 	"hegel.dev/go/hegel"
 )
 
@@ -54,7 +53,7 @@ func slowWorker(svc *queue.Service, c *clock) {
 // design (at least once), and now of the model.
 func TestTwoLeasesOfOneJob(t *testing.T) {
 	qtest.RequireQuint(t)
-	qtest.RecordAndCheck(t, "jobqueue.binding.yaml", func(*qobs.Recorder) {
+	qtest.Record(t, "jobqueue.binding.yaml", func(*qobs.Recorder) {
 		svc, c := newService(queue.Faithful)
 		ctx := context.Background()
 		w1 := &queue.Worker{Name: "w1", Svc: svc}
@@ -64,7 +63,7 @@ func TestTwoLeasesOfOneJob(t *testing.T) {
 		k, _ := svc.Lease(ctx, "w1") // the same job, again
 		_ = w1.Once(ctx, k)          // completes it
 		_ = w1.Once(ctx, j)          // under the expired lease: performed again, stale ack
-	})
+	}).Expect(t, qtest.Conforms())
 }
 
 // The scenario is a behaviour of the model, and the design's guarantee
@@ -77,19 +76,9 @@ func TestSlowWorkerConformsButRunsTwice(t *testing.T) {
 	run := qtest.Record(t, "jobqueue.binding.yaml", func(*qobs.Recorder) { slowWorker(newService(queue.Faithful)) })
 	run.Expect(t, qtest.Conforms())
 
-	c, err := validate.NewChecker("jobqueue.binding.yaml", validate.Options{Dir: t.TempDir()})
-	if err != nil {
-		t.Fatal(err)
-	}
-	once, err := c.WithInvariants("exactlyOnce")
-	if err != nil {
-		t.Fatal(err)
-	}
-	rep, err := once.Check(context.Background(), run.Steps)
-	if err != nil {
-		t.Fatal(err)
-	}
-	qtest.Expect(t, rep, qtest.Violates("exactlyOnce"))
+	once := qtest.Validate(t, "jobqueue.binding.yaml", run.Steps, qtest.Invariants("exactlyOnce"))
+	once.Expect(t, qtest.Violates("exactlyOnce"))
+	rep := once.Report
 	if inv := rep.Actors[0].Invariants[0]; inv.Failure.Step.Action != "perform" {
 		t.Fatalf("want exactlyOnce violated at a perform:\n%s", rep.Summary())
 	}

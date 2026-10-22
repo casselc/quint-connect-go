@@ -112,9 +112,6 @@ func NewNative(c Chooser, p Platform) *Sim {
 // deadlines passed between machines would compare wrongly.
 func nativeNow() time.Time { return time.Now().Round(0) }
 
-// Native reports whether s runs on the native runtime.
-func (s *Sim) Native() bool { return s.nat != nil }
-
 // release is a seam: whatever a waiter waits for may have changed. Without
 // a Platform it gives up the lock the running task holds.
 func (n *native) release() {
