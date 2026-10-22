@@ -833,7 +833,19 @@ func (s *Sim) maybeNemesis() {
 	if len(on) == 0 {
 		return
 	}
-	if k := s.Choose("fault.nemesis", len(on)+1); k > 0 {
+	k := 0
+	if by := nemesisOf(s.c); by != nil {
+		if !s.settling && !s.faultsOff {
+			names := make([]string, len(on))
+			for i, n := range on {
+				names[i] = n.name
+			}
+			k = by(names)
+		}
+	} else {
+		k = s.Choose("fault.nemesis", len(on)+1)
+	}
+	if k > 0 {
 		if s.Log != nil {
 			s.Log(fmt.Sprintf("%v nemesis %s", s.Elapsed(), on[k-1].name))
 		}

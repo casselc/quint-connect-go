@@ -1,0 +1,44 @@
+# yaml-language-server: $schema=https://datadoghq.dev/orchestrion/schema.json
+#
+# Fault points (DESIGN.md §15.3, §15.11): //quint:fault on a function makes
+# its entry a fault choice of a qenv simulation, and declares the point for
+# coverage. Results are named for the advice if they are not.
+meta:
+  name: github.com/casselc/quint-connect-go/qenv/fault
+  description: Inject a function's own errors, or a crash, at //quint:fault points in qenv simulations.
+
+aspects:
+  - id: quint-fault
+    join-point:
+      function-body:
+        directive: 'quint:fault'
+    advice:
+      - prepend-statements:
+          imports:
+            context: context
+            quintqenv: github.com/casselc/quint-connect-go/qenv
+          template: |-
+            {{- $ctx := .Function.ArgumentOfType "context.Context" -}}
+            {{- $err := .Function.ResultOfType "error" -}}
+            {{- $kind := "" -}}{{- $crash := "false" -}}{{- $errs := "" -}}
+            {{- range .DirectiveArgs "quint:fault" -}}
+            {{- if eq .Key "kind" }}{{ $kind = .Value }}{{ end -}}
+            {{- if eq .Key "crash" }}{{ $crash = .Value }}{{ end -}}
+            {{- if eq .Key "error" }}{{ $errs = printf "%s, %s" $errs .Value }}{{ end -}}
+            {{- end -}}
+            {{- $c := "context.TODO()" }}{{ if ne $ctx "" }}{{ $c = $ctx }}{{ end -}}
+            {{- if eq $err "" -}}
+            _ = quintqenv.FaultPoint({{ $c }}, {{ printf "%q" $kind }}, true)
+            {{- else -}}
+            if __qf := quintqenv.FaultPoint({{ $c }}, {{ printf "%q" $kind }}, {{ $crash }}{{ $errs }}); __qf != nil {
+            	{{ $err }} = __qf
+            	return
+            }
+            {{- end }}
+      - inject-declarations:
+          imports:
+            quintqenv: github.com/casselc/quint-connect-go/qenv
+          template: |-
+            {{- $kind := "" -}}
+            {{- range .DirectiveArgs "quint:fault" }}{{ if eq .Key "kind" }}{{ $kind = .Value }}{{ end }}{{ end -}}
+            func init() { quintqenv.DeclareFault({{ printf "%q" $kind }}, {{ printf "%q" .Function.Name }}) }

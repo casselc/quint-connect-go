@@ -156,6 +156,9 @@ func (f *function) find(list *ast.FieldList, want, prefix string) string {
 	return ""
 }
 
+// Name is the function's name (a method's, without its receiver).
+func (f *function) Name() string { return f.decl.Name.Name }
+
 // ArgumentOfType is the name of the first parameter of the type
 // ("context.Context"), "" if none.
 func (f *function) ArgumentOfType(t string) string {

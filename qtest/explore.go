@@ -45,6 +45,18 @@ type Exploration struct {
 	Runs []*Explored
 }
 
+// Coverage is the runs' fault coverage (qenv.CoverageOf): for each fault
+// kind, declared with //quint:fault or a double's, how many runs reached it
+// and which options they took. A declared point no run reached is a
+// failure path the exploration never tried.
+func (x *Exploration) Coverage() *qenv.Coverage {
+	runs := make([][]qenv.Choice, len(x.Runs))
+	for i, r := range x.Runs {
+		runs[i] = r.Choices
+	}
+	return qenv.CoverageOf(runs)
+}
+
 // Failing returns the runs that violate the model, in seed order.
 func (x *Exploration) Failing() []*Explored {
 	var out []*Explored

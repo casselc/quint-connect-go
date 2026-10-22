@@ -88,6 +88,35 @@ Mapping from quint-connect: `#[quint_run]` → `connect.Run`; `#[quint_test]`
   at the effect seam (each write blocks until the handler of that model step
   releases it). See `examples/edgepublish/mbt`.
 
+## Driving a whole program through its faults (`connect.FaultScript`)
+
+A driver calls the code once per step. For a program that runs by
+itself (a process with its own loop), let the trace choose only the
+environment: its failures and crashes.
+
+```go
+sc, err := connect.FaultScript(tr, connect.FaultMap{
+	"writeFail": func(*connect.Step) *connect.Fault { return &connect.Fault{Kind: "journal.write", Option: 1, Recorded: true} },
+	"restart":   func(*connect.Step) *connect.Fault { return &connect.Fault{Kind: "nemesis.crash.writer", Recorded: true} },
+}, connect.ReplayOptions{})
+sc.Progress = func() int { return len(mem.Steps()) }   // the run's recorded steps
+s := qenv.New(qenv.WithContext(sc, qobs.WithRecorder(ctx, qobs.NewRecorder(mem))))
+// ... deploy, s.Run, then: sc.Remaining() is empty, and
+qtest.Check(t, binding, mem.Steps())
+```
+
+- Each mapped step is a fault: a fault point's or a double's kind and
+  option, or `nemesis.crash.<process>`. It fires at the first choice of
+  its kind once the run has recorded the steps before it in the trace.
+  No other fault happens, and the schedule is nominal (or `sc.Base`'s).
+- `Recorded` says whether the program records the step itself (a failed
+  write, a restart). Steps it does not record don't count toward the
+  next fault's wait.
+- A fault left in `Remaining()`, or recorded actions that differ from
+  the trace, mean the program could not follow it. A model check that
+  fails means it followed the trace's faults but did the wrong thing
+  (connect/faults_test.go: a restart that forgot the durable count).
+
 ## Limits
 
 - Model-driven testing never exercises what the model forbids: the model

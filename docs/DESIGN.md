@@ -1704,3 +1704,54 @@ region taken at two minutes, and the alert checked against the run.
 - With a retry budget the chain has no region: the rule cannot fire, and
   the run has recovered.
 - Without a spike it never fires.
+
+### 15.11 Phase 5 as built
+
+**Fault points.** `qenv.FaultPoint(ctx, kind, crash, errs...)` is a fault
+choice `fault.<kind>` at a point in the code under test.
+- Its options are nominal, then each error in order, then, with crash
+  and inside a process, the crash of the calling task's process. The
+  process is restarted by a task outside it, as the nemesis restarts
+  one. Outside a simulation it returns nil.
+- `//quint:fault kind:K error:E... crash:true` weaves it at a function's
+  entry (`qenv/fault`'s aspect). An injected error returns through the
+  function's named results, which weaving names if they are not. So the
+  error is the package's own, typed as the code expects, not a generic
+  one. A function without an error result can only crash.
+- The same aspect declares the point at init, with a second advice on
+  the same join point: Orchestrion's `inject-declarations`, which qweave
+  now supports, together with several advice per aspect and
+  `.Function.Name`. Written to Orchestrion's schema, checked with qweave
+  only.
+
+**Coverage from choices.** A run's recorded choices already hold every
+fault choice it reached and the option taken. So coverage needs nothing
+from the simulation:
+- `qenv.CoverageOf(runs)` and `qtest.Exploration.Coverage()` count per
+  kind, declared points and doubles' kinds alike, the runs that reached
+  it, the times reached and each option taken;
+- `Unreached` lists the declared points no run reached, and `Unfaulted`
+  those reached but never faulted.
+
+**A Quint trace as a Chooser.** `qenv.Script` makes exactly the faults it
+is given, in order, and no others. Each waits for the steps before it in
+the trace (`Progress`, the run's recorded steps). The schedule is
+nominal, or a base chooser's.
+- `connect.FaultScript(trace, FaultMap)` reads one from a trace: each
+  mapped action is a fault kind and option, or a crash
+  (`nemesis.crash.<process>`).
+- The trace then drives a whole program through its environment, not
+  through a driver: the program makes every other step itself, and its
+  recorded run is checked against the model.
+- A nemesis is chosen by index among the enabled ones, which a trace
+  cannot name. The scheduler now asks a chooser that implements
+  `ChooseNemesis(names)` by name, through the package's wrappers, and a
+  Recorder still records the choice.
+
+`connect/testdata/journal.qnt` is a writer whose writes fail and which
+restarts once:
+- under each of 8 traces, the program, which knows nothing of traces,
+  takes the trace's actions, failed writes and restart included, and
+  conforms;
+- the mutant that keeps its count in memory follows the same traces, and
+  the model rejects its restart (`Mismatch("restart")`).

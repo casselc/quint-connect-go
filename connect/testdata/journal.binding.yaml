@@ -1,0 +1,14 @@
+# The journal writer's steps (faults_test.go) as journal.qnt's actions, the
+# durable count compared at every step.
+spec: journal.qnt
+module: journal
+
+actions:
+  write:
+    expect: 'written == {{.obs.written}}'
+  writeFail:
+    expect: 'written == {{.obs.written}}'
+  restart:
+    expect: 'written == {{.obs.written}}'
+
+invariants: [bounded]

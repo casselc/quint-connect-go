@@ -129,8 +129,10 @@ func (w *fileWeaver) walk(aspects []*Aspect) error {
 			if !w.matches(a.Join, c, parent) {
 				continue
 			}
-			if e := w.advise(a, c, parent); e != nil {
-				w.edits = append(w.edits, e)
+			for _, adv := range a.Advice {
+				if e := w.advise(a, adv, c, parent); e != nil {
+					w.edits = append(w.edits, e)
+				}
 			}
 		}
 		return true
@@ -322,9 +324,10 @@ type exprData struct {
 
 func (e exprData) String() string { return string(e.text) }
 
-func (w *fileWeaver) advise(a *Aspect, c node, parent ast.Node) *edit {
-	adv := a.Advice[0]
+func (w *fileWeaver) advise(a *Aspect, adv Advice, c node, parent ast.Node) *edit {
 	switch adv.Kind {
+	case "inject-declarations":
+		return w.inject(a, adv, c)
 	case "prepend-statements":
 		d, ok := c.n.(*ast.FuncDecl)
 		if !ok {
@@ -486,6 +489,25 @@ func (w *fileWeaver) prepend(a *Aspect, adv Advice, d *ast.FuncDecl) *edit {
 		w.edits = append(w.edits, &edit{start: start, end: end, render: func(func(ast.Node) string) (string, error) { return text, nil }})
 	}
 	return e
+}
+
+// inject adds the advice's declarations at the end of the file. A
+// function-body join point renders them with the function's template data.
+func (w *fileWeaver) inject(a *Aspect, adv Advice, c node) *edit {
+	var data any = tctx{}
+	if d, ok := c.n.(*ast.FuncDecl); ok {
+		directive := functionBodyDirective(a.Join)
+		argsText, _ := directiveArgs(d, directive)
+		data = tctx{fn: &function{decl: d, w: w}, args: splitArgs(argsText), name: directive}
+	}
+	decls, err := w.execute(a, adv, data)
+	end := len(w.src)
+	return &edit{start: end, end: end, render: func(func(ast.Node) string) (string, error) {
+		if err != nil {
+			return "", err
+		}
+		return "\n" + decls + "\n", nil
+	}}
 }
 
 // apply weaves the edits into the source: nested edits are rendered

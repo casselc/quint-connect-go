@@ -80,9 +80,10 @@ func (Directive) join()     {}
 func (PackageFilter) join() {}
 
 // Advice is what is done at a join point: prepend statements to a
-// function's body, or replace an expression.
+// function's body, replace an expression, or add declarations to the
+// join point's file.
 type Advice struct {
-	Kind    string            // "prepend-statements" or "wrap-expression"
+	Kind    string            // "prepend-statements", "wrap-expression" or "inject-declarations"
 	Imports map[string]string // alias -> import path the template may use
 	tmpl    *template.Template
 	text    string
@@ -203,7 +204,7 @@ func Load(path string) ([]*Aspect, []Skipped, error) {
 		var why string
 		for _, adv := range a.Advice {
 			for kind, node := range adv {
-				if kind != "prepend-statements" && kind != "wrap-expression" {
+				if kind != "prepend-statements" && kind != "wrap-expression" && kind != "inject-declarations" {
 					why = "advice " + kind
 					continue
 				}
@@ -221,9 +222,9 @@ func Load(path string) ([]*Aspect, []Skipped, error) {
 				asp.Advice = append(asp.Advice, Advice{Kind: kind, Imports: body.Imports, tmpl: t, text: body.Template})
 			}
 		}
-		if why != "" || len(asp.Advice) != 1 {
+		if why != "" || len(asp.Advice) == 0 {
 			if why == "" {
-				why = "more than one advice"
+				why = "no advice"
 			}
 			skipped = append(skipped, Skipped{path, a.ID, why})
 			continue

@@ -34,6 +34,7 @@ qobs/ qtrace/ otelio/ convert/ load/   recording, schema/reconstruction, OTLP, s
 binding/ validate/ qtest/              binding YAML, quint-test-based validator, test helpers (Expect, Explore)
 qenv/         deterministic simulation: scheduler, virtual time, processes, choosers; Store, Queue, Service doubles
 qenv/weave/   Orchestrion aspects: sync locks, wait groups and //qenv:go goroutines simulated inside qenv, real outside
+qenv/fault/   the //quint:fault aspect: fault points (qenv.FaultPoint) with the function's own errors, declared for coverage
 qgosim/       separate module: qenv and whole programs in gosim (the fork: branch gosim-fork, ./fetch-gosim.sh)
 qweave/       separate module: weaves Orchestrion aspects with types into a go -overlay (cmd/qweave); also gosim's
 qload/ qmeta/ load simulation (open/closed-loop clients, servers, triggers); CTMC, recovery property, alert rules
@@ -153,6 +154,12 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   Chooser: code under test must use `qenv.Go`, `qenv.Now`, `qenv.Sleep` and
   the doubles, and iterate maps in sorted order where the order matters.
   `qenv.Replay` panics on the first divergence.
+- A fault point's options are nominal, then its errors in the order
+  named, then the crash (`qenv.FaultPoint`). A Script's or a trace's
+  option numbers depend on that order: keep it. A scripted crash is a
+  nemesis by name (`nemesis.crash.<process>`): the scheduler asks a
+  chooser with `ChooseNemesis` instead of choosing among enabled
+  nemeses by index, which no trace can name.
 - Option 0 of every qenv choice is nominal (no fault, canonical order).
   Keep that convention in new doubles: it is what makes Hegel's shrinking
   remove faults.

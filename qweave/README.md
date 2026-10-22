@@ -27,8 +27,8 @@ on the original lines. qgosim feeds the same overlay to gosim's translator
   - `directive` on the enclosing statement;
   - `package-filter: {root: true}`;
   - the combinators `all-of`, `one-of` and `not`.
-- Advice: `prepend-statements` and `wrap-expression`.
-- Template data, as Orchestrion names it: `.Function.ArgumentOfType` and
+- Advice: `prepend-statements`, `wrap-expression` and `inject-declarations` (added at the end of the join point's file), several per aspect.
+- Template data, as Orchestrion names it: `.Function.Name`, `.Function.ArgumentOfType` and
   `.ResultOfType` (unnamed results are named for the advice),
   `.DirectiveArgs`, `.AST.Fun.X`, `.AST.Fun.Sel` and `.AST.Args`, and the
   expression itself (`{{ . }}`).

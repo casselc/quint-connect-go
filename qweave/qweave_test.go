@@ -114,3 +114,45 @@ func TestRolesFixtureRuns(t *testing.T) {
 		t.Fatalf("%v\n%s", err, out)
 	}
 }
+
+// qenv/fault's aspects (prepend-statements and inject-declarations on one
+// join point): //quint:fault methods return their package's own error or
+// crash in a simulation, unnamed results are named for the advice, and
+// every point is declared for coverage. The fixture's test fails unwoven.
+func TestFaultFixtureRuns(t *testing.T) {
+	if testing.Short() {
+		t.Skip("builds the fixture")
+	}
+	r, err := qweave.Weave(qweave.Config{Dir: "testdata/fault"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var src string
+	for name, b := range r.Files {
+		if strings.HasSuffix(name, filepath.Join("store", "store.go")) {
+			src = string(b)
+		}
+	}
+	for _, want := range []string{
+		`func (s *Store) Get(ctx context.Context, k string) (__qw_res0 string, __qw_res1 error) {`,
+		`quintqenv.FaultPoint(ctx, "store.get", false, ErrUnavailable)`,
+		`quintqenv.FaultPoint(ctx, "store.put", true)`,
+		`func init() { quintqenv.DeclareFault("store.flush", "Flush") }`,
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("woven store.go lacks %s:\n%s", want, src)
+		}
+	}
+	overlay, err := r.WriteOverlay(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("go", "test", "-count=1", "-v", "-overlay="+overlay, "./...")
+	cmd.Dir = "testdata/fault"
+	cmd.Env = os.Environ()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	t.Logf("%s", out)
+}
