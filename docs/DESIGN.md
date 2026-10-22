@@ -2664,3 +2664,15 @@ simulation (a fuzz corpus, gosim's host side); the virtual-time profile
 is `qenv/profile`. qenv re-exports both, so no caller changed. OTelSink
 stayed in qobs: qobs reads a step's thread from the span in its context,
 so it needs otel/trace whatever the sink's package.
+
+**Faults (V11).** One registry (`choice.Declare`, `DeclareSite`) holds
+each kind's option names and sites, so a recorded choice names its
+option (`fault.rpc.counter.request=duplicate(2/3)`), a nemesis is
+recorded by name (its options are the nemeses enabled at that moment,
+which no declaration can name), and `FaultPoint` declares its kind from
+its errors and `crash`. Declaring it made the numbering a rule: the
+crash option exists whether or not the caller is in a process (outside
+one it is nominal), and one kind has one option list. Scripts were a
+strict order: a fault whose phase had passed blocked all later ones.
+Each kind's faults are now in order and kinds independent, with
+`Follows` for an order across kinds.

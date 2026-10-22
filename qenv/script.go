@@ -10,7 +10,9 @@ import (
 
 // A Scripted fault is one fault a Script makes happen: at the first choice
 // of Kind ("fault.<kind>", or "nemesis.<name>" for a nemesis such as
-// "nemesis.crash.payments") once the run has taken After steps.
+// "nemesis.crash.payments") once the run has taken After steps, the
+// script's earlier faults of the same kind have happened, and so have the
+// ones it Follows.
 type Scripted struct {
 	Kind string
 	// Option is the fault choice's option; Name, if set, names it instead
@@ -18,6 +20,11 @@ type Scripted struct {
 	Option int
 	Name   string
 	After  int
+	// Follows are the indices (in Script.Faults) of faults of other kinds
+	// that must happen first: "a, then b" when the order matters. Faults
+	// of different kinds are otherwise independent, so one whose phase has
+	// passed blocks no other.
+	Follows []int
 }
 
 func (s Scripted) String() string {
@@ -27,9 +34,10 @@ func (s Scripted) String() string {
 	return fmt.Sprintf("%s=%d after %d steps", s.Kind, s.Option, s.After)
 }
 
-// Script is a Chooser that makes exactly the faults it is given, in order,
-// and no others: a model trace's crashes and failures imposed on the
-// program (connect.FaultScript), while the program does the rest. Every
+// Script is a Chooser that makes exactly the faults it is given, in their
+// partial order (each kind's in order, others as Follows says), and no
+// others: a model trace's crashes and failures imposed on the program
+// (connect.FaultScript), while the program does the rest. Every
 // other fault choice is nominal, and non-fault choices are Base's (nil:
 // nominal, the canonical schedule).
 //
@@ -43,23 +51,43 @@ type Script struct {
 	Progress func() int
 
 	mu   sync.Mutex
-	next int
+	done []bool
 }
 
-func (s *Script) due(kind string) bool {
-	if s.next >= len(s.Faults) || s.Faults[s.next].Kind != kind {
-		return false
+// due returns the fault of kind that may happen now, or -1: the first of
+// its kind not done, if what it follows is done and its steps are taken.
+func (s *Script) due(kind string) int {
+	if s.done == nil {
+		s.done = make([]bool, len(s.Faults))
 	}
-	if s.Faults[s.next].After == 0 {
-		return true
+	for i, f := range s.Faults {
+		if f.Kind != kind || s.done[i] {
+			continue
+		}
+		for _, j := range f.Follows {
+			if j < 0 || j >= len(s.Faults) || j == i {
+				panic(fmt.Sprintf("qenv: script fault %d (%v) follows %d, which is not another fault of the script", i, f, j))
+			}
+			if !s.done[j] {
+				return -1
+			}
+		}
+		if f.After > 0 && s.progress() < f.After {
+			return -1
+		}
+		return i
 	}
+	return -1
+}
+
+func (s *Script) progress() int {
 	if s.Progress != nil {
-		return s.Progress() >= s.Faults[s.next].After
+		return s.Progress()
 	}
 	if r := qobs.From(nil); r != nil {
-		return r.Count() >= s.Faults[s.next].After
+		return r.Count()
 	}
-	return true // no recorder to wait for
+	return 1 << 30 // no recorder to wait for
 }
 
 // Choose implements Chooser.
@@ -73,10 +101,11 @@ func (s *Script) Choose(kind string, n int) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	k := strings.TrimPrefix(kind, "fault.")
-	if !s.due(k) {
+	i := s.due(k)
+	if i < 0 {
 		return 0
 	}
-	f := s.Faults[s.next]
+	f := s.Faults[i]
 	v := f.Option
 	if f.Name != "" {
 		v = slices.Index(FaultOptions(k), f.Name) + 1
@@ -90,7 +119,7 @@ func (s *Script) Choose(kind string, n int) int {
 	if v >= n {
 		return 0 // this choice does not offer the option (a read of a kind whose write can lose its response): wait for one that does
 	}
-	s.next++
+	s.done[i] = true
 	return v
 }
 
@@ -101,8 +130,8 @@ func (s *Script) ChooseNemesis(enabled []string) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for i, name := range enabled {
-		if s.due("nemesis." + name) {
-			s.next++
+		if j := s.due("nemesis." + name); j >= 0 {
+			s.done[j] = true
 			return i + 1
 		}
 	}
@@ -121,7 +150,13 @@ func (s *Script) Entropy(n int) []byte {
 func (s *Script) Remaining() []Scripted {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return append([]Scripted(nil), s.Faults[s.next:]...)
+	var out []Scripted
+	for i, f := range s.Faults {
+		if s.done == nil || !s.done[i] {
+			out = append(out, f)
+		}
+	}
+	return out
 }
 
 // nemesisChooser chooses a nemesis by name (Script).
@@ -139,7 +174,11 @@ func nemesisOf(c Chooser) func(enabled []string) int {
 			}
 			return func(enabled []string) int {
 				v := by(enabled)
-				x.Choices = append(x.Choices, Choice{Kind: "fault.nemesis", N: len(enabled) + 1, Value: v})
+				c := Choice{Kind: "fault.nemesis", N: len(enabled) + 1, Value: v}
+				if v > 0 {
+					c.Name = enabled[v-1]
+				}
+				x.Choices = append(x.Choices, c)
 				return v
 			}
 		case nemesisChooser:

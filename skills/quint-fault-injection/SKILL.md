@@ -135,7 +135,9 @@ quinthegel.Shrink(t, sys, hegel.WithTestCases(50)).Expect(t, qtest.Violates("cha
     to make the rate per virtual second (`qload.Experiment` does this
     when it injects faults).
   - A bug with a one-step window needs a higher rate:
-    `Kinds: {"fault.nemesis": 0.05}`.
+    `qenv.DefaultRates.Set("nemesis", 0.05)` (a kind as reports print
+    it; `Set` returns a copy). `qenv.NoFaults` runs the schedule's
+    choices only (a zero `Rates` is the default rates).
   - Turn whole kinds off with `{"fault.kube": 0}`, or per run with
     `qenv.Swarm`.
 - **Shrinking:**
@@ -151,7 +153,10 @@ quinthegel.Shrink(t, sys, hegel.WithTestCases(50)).Expect(t, qtest.Violates("cha
   name). A read that cannot lose a response takes
   `request.Only("unavailable")`, a prefix. Scripts name the option
   (`qenv.Scripted{Kind: "db.request", Name: "lostResponse"}`), which
-  waits for a choice that offers it, and coverage lists options by name.
+  waits for a choice that offers it, and coverage lists options by name,
+  as do recorded runs (`fault.db.request=lostResponse(2/3)`). A kind has
+  one option list: `qenv.Faults` panics if a second declaration differs.
+  `qenv.FaultPoint` declares its own (its errors' names, `crash`).
 - **Extending qenv** (a new double, a scheduler change): run its tests
   with `QENV_CHECK=1` (or `s.Check = true`). The scheduler then verifies
   its own invariants at every step. `TestSchedulerSemantics` states its

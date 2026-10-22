@@ -129,11 +129,17 @@ func RunOn(s *qenv.Sim, cfg Config) error {
 		if d := s.Choose("sched.s3.latency", 4); d > 0 {
 			qenv.Sleep(ctx, time.Duration(d)*5*time.Second)
 		}
-		n := 3
+		k := qenv.Faults("s3."+op.Kind, "fail", "ambiguous") // the options' names, for coverage and scripts
 		if cfg.NoAmbiguous {
-			n = 2
+			k = k.Only("fail")
 		}
-		return publisher.Fault(s.Fault("s3."+op.Kind, n))
+		switch s.FaultOf(k) {
+		case "fail":
+			return publisher.Fail
+		case "ambiguous":
+			return publisher.Ambiguous
+		}
+		return publisher.Apply
 	}
 	e := &exporter{s: s, cfg: cfg, store: store, exported: map[string]bool{}}
 	e.stopTicking = func() bool { return len(e.exported) >= cfg.Requests }

@@ -105,11 +105,17 @@ type Choice struct {
 	// (a Recorder's, through the run's step recorder): which step a fault
 	// came after. Replay ignores it.
 	Step int
+	// Name is the option's name, when it has one: a declared kind's
+	// (Declare), or the nemesis chosen. Replay ignores it.
+	Name string
 }
 
 func (c Choice) String() string {
 	if c.Kind == "entropy" {
 		return fmt.Sprintf("entropy/%d", c.N)
+	}
+	if c.Name != "" {
+		return fmt.Sprintf("%s=%s(%d/%d)", c.Kind, c.Name, c.Value, c.N)
 	}
 	return fmt.Sprintf("%s=%d/%d", c.Kind, c.Value, c.N)
 }
@@ -160,10 +166,33 @@ func EntropyOf(c Chooser) func(n int) []byte {
 
 // Rates gives the probability that a fault choice is not nominal, by kind.
 // A kind matches its own entry, else the longest entry that is a prefix of
-// it ("fault.rpc" covers "fault.rpc.response"), else Default.
+// it ("fault.rpc" covers "fault.rpc.response"), else Default. A zero Rates
+// in an ExploreConfig (and wherever a default applies) is DefaultRates;
+// NoFaults is none at all.
 type Rates struct {
 	Default float64
 	Kinds   map[string]float64
+}
+
+// NoFaults makes every fault choice nominal: a run with the schedule's
+// choices only.
+var NoFaults = Rates{Kinds: map[string]float64{"fault": 0}}
+
+// Set returns r with kind's rate p. kind is as reports print it
+// ("rpc.payments.request", "nemesis") or with its "fault." prefix, and
+// covers the kinds it is a prefix of; r itself is not changed:
+//
+//	rates := qenv.DefaultRates.Set("rpc.payments.response", 0.3)
+func (r Rates) Set(kind string, p float64) Rates {
+	if !IsFault(kind) {
+		kind = "fault." + kind
+	}
+	out := Rates{Default: r.Default, Kinds: make(map[string]float64, len(r.Kinds)+1)}
+	for k, v := range r.Kinds {
+		out.Kinds[k] = v
+	}
+	out.Kinds[kind] = p
+	return out
 }
 
 // Of returns the rate of a kind.
@@ -225,8 +254,20 @@ type Recorder struct {
 // Choose implements Chooser.
 func (r *Recorder) Choose(kind string, n int) int {
 	v := r.C.Choose(kind, n)
-	r.Choices = append(r.Choices, Choice{Kind: kind, N: n, Value: v, Step: r.progress()})
+	c := Choice{Kind: kind, N: n, Value: v, Step: r.progress()}
+	if IsFault(kind) && v > 0 {
+		c.Name = OptionName(kind, v)
+	}
+	r.Choices = append(r.Choices, c)
 	return v
+}
+
+// Name names the last choice recorded (the nemesis the simulation chose:
+// its options are the nemeses enabled then, which no declaration names).
+func (r *Recorder) Name(name string) {
+	if len(r.Choices) > 0 {
+		r.Choices[len(r.Choices)-1].Name = name
+	}
 }
 
 // progress is the run's step count: its recorder is the one the calling

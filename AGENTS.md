@@ -243,8 +243,11 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   the doubles, and iterate maps in sorted order where the order matters.
   `qenv.Replay` panics on the first divergence.
 - A fault point's options are nominal, then its errors in the order
-  named, then the crash (`qenv.FaultPoint`). A Script's or a trace's
-  option numbers depend on that order: keep it. A scripted crash is a
+  named, then the crash (`qenv.FaultPoint`, which declares them as its
+  kind: the errors' FaultName or text, and `crash`, nominal outside a
+  process). A Script's or a trace's option numbers depend on that order:
+  keep it. One kind has one option list: two sites of a kind with other
+  errors panic in `qenv.Faults`; give them their own kinds. A scripted crash is a
   nemesis by name (`nemesis.crash.<process>`): the scheduler asks a
   chooser with `ChooseNemesis` instead of choosing among enabled
   nemeses by index, which no trace can name.
@@ -263,10 +266,11 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   binding compares (checkout's cancel never carried the stock). Mutants
   equivalent under the environment (dropped acks, retries' boundaries)
   survive by right: read the report, do not assert a score.
-- A Script imposes its faults in strict order, each waiting for its kind:
-  a fault of a phase that has passed (checkout's API faults happen only
-  while orders are placed) blocks every later one. Script ordered pairs,
-  and keep `qsweep.Sequences` for events that recur.
+- A Script's faults are in a partial order: each kind's in order, other
+  kinds independent unless a fault `Follows` them (connect.FaultScript
+  chains a trace's faults; an ordered pair says b follows a). It was a
+  strict order, where a fault of a phase that had passed (checkout's API
+  faults happen only while orders are placed) blocked every later one.
 - A chooser that wraps another implements `Unwrap() qenv.Chooser`
   (`qenv.Wrapper`): `New`, `ContextOf`, `EntropyOf` and nemeses by name
   look through the chain (`qenv.As[T]`). A wrapper without it hides the

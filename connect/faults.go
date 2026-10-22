@@ -43,7 +43,12 @@ func FaultScript(tr *itf.Trace, faults FaultMap, opt ReplayOptions) (*qenv.Scrip
 		}
 		if f, ok := faults[s.Action]; ok {
 			if fault := f(s); fault != nil {
-				sc.Faults = append(sc.Faults, qenv.Scripted{Kind: fault.Kind, Option: fault.Option, Name: fault.Name, After: recorded})
+				// in the trace's order: each fault follows the one before
+				f := qenv.Scripted{Kind: fault.Kind, Option: fault.Option, Name: fault.Name, After: recorded}
+				if n := len(sc.Faults); n > 0 {
+					f.Follows = []int{n - 1}
+				}
+				sc.Faults = append(sc.Faults, f)
 				if fault.Recorded {
 					recorded++
 				}

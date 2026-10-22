@@ -20,7 +20,7 @@ func TestScript(t *testing.T) {
 	var log []string
 	sc := &qenv.Script{
 		Faults: []qenv.Scripted{
-			{Kind: "test.write", Option: 1, After: 2},
+			{Kind: "test.scripted", Option: 1, After: 2},
 			{Kind: "nemesis.crash.writer", After: 4},
 		},
 		Progress: func() int { return len(log) },
@@ -33,7 +33,7 @@ func TestScript(t *testing.T) {
 			return
 		}
 		for range 6 {
-			if err := qenv.FaultPoint(ctx, "test.write", false, errUnavailable); errors.Is(err, errUnavailable) {
+			if err := qenv.FaultPoint(ctx, "test.scripted", false, errUnavailable); errors.Is(err, errUnavailable) {
 				log = append(log, "fail")
 			} else {
 				log = append(log, "write")
@@ -60,12 +60,12 @@ func TestScript(t *testing.T) {
 // on the run's own recorder: its fault lands after the steps before it.
 func TestChoicesAlignToSteps(t *testing.T) {
 	mem := &qobs.MemorySink{}
-	sc := &qenv.Script{Faults: []qenv.Scripted{{Kind: "test.write", Option: 1, After: 2}}}
+	sc := &qenv.Script{Faults: []qenv.Scripted{{Kind: "test.scripted", Option: 1, After: 2}}}
 	rec := &qenv.Recorder{C: sc}
 	s := qenv.New(qenv.WithContext(rec, qobs.WithRecorder(context.Background(), qobs.NewRecorder(mem))))
 	s.Process("writer", false, func(ctx context.Context) {
 		for range 4 {
-			qobs.Record(ctx, "write", qenv.FaultPoint(ctx, "test.write", false, errUnavailable))
+			qobs.Record(ctx, "write", qenv.FaultPoint(ctx, "test.scripted", false, errUnavailable))
 		}
 	})
 	if err := s.Run(time.Minute); err != nil {
@@ -81,7 +81,7 @@ func TestChoicesAlignToSteps(t *testing.T) {
 	}
 	var at []int
 	for _, c := range rec.Choices {
-		if c.Kind == "fault.test.write" {
+		if c.Kind == "fault.test.scripted" {
 			at = append(at, c.Step)
 		}
 	}
@@ -101,7 +101,7 @@ func TestEncodeChoices(t *testing.T) {
 		for _, name := range []string{"a", "b", "c"} {
 			s.Process(name, true, func(ctx context.Context) {
 				for i := range 5 {
-					if qenv.FaultPoint(ctx, "test.write", false, errUnavailable) != nil {
+					if qenv.FaultPoint(ctx, "test.scripted", false, errUnavailable) != nil {
 						log = append(log, fmt.Sprintf("%s%d!", name, i))
 					} else {
 						log = append(log, fmt.Sprintf("%s%d", name, i))
@@ -168,4 +168,51 @@ func TestNamedFaultOptions(t *testing.T) {
 		}
 	}()
 	kv.Only("lostResponse")
+}
+
+// Rates are set by kind as reports print it, without touching the rates
+// they start from; NoFaults leaves every fault nominal.
+func TestRatesSet(t *testing.T) {
+	r := qenv.DefaultRates.Set("rpc.payments.response", 0.3)
+	if r.Of("fault.rpc.payments.response") != 0.3 || r.Of("fault.rpc.payments.request") != qenv.DefaultRates.Default {
+		t.Errorf("set: %+v", r)
+	}
+	if qenv.DefaultRates.Of("fault.rpc.payments.response") != qenv.DefaultRates.Default {
+		t.Error("Set changed DefaultRates")
+	}
+	if qenv.NoFaults.Of("fault.nemesis") != 0 || qenv.NoFaults.Of("fault.store.get") != 0 {
+		t.Errorf("NoFaults: %+v", qenv.NoFaults)
+	}
+}
+
+// Faults of different kinds are independent: a fault whose phase has
+// passed (the first kind never comes) no longer blocks the next, unless
+// the next follows it.
+func TestScriptPartialOrder(t *testing.T) {
+	run := func(sc *qenv.Script) []string {
+		var got []string
+		s := qenv.New(sc)
+		defer s.Close()
+		s.Spawn("w", func(ctx context.Context) {
+			for range 3 {
+				if qenv.FaultPoint(ctx, "test.second", false) != nil {
+					got = append(got, "second")
+				}
+				qenv.Sleep(ctx, time.Second)
+			}
+		})
+		if err := s.Run(time.Minute); err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+	never := qenv.Scripted{Kind: "test.never", Option: 1}
+	sc := &qenv.Script{Faults: []qenv.Scripted{never, {Kind: "test.second", Option: 1}}}
+	if got := run(sc); len(got) != 1 || len(sc.Remaining()) != 1 {
+		t.Errorf("independent: got %v, remaining %v", got, sc.Remaining())
+	}
+	sc = &qenv.Script{Faults: []qenv.Scripted{never, {Kind: "test.second", Option: 1, Follows: []int{0}}}}
+	if got := run(sc); len(got) != 0 || len(sc.Remaining()) != 2 {
+		t.Errorf("following: got %v, remaining %v", got, sc.Remaining())
+	}
 }

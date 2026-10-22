@@ -26,8 +26,11 @@ type (
 // NewProfile is profile.New.
 func NewProfile() *Profile { return profile.New() }
 
-// DefaultRates are choice.DefaultRates.
-var DefaultRates = choice.DefaultRates
+// DefaultRates are choice.DefaultRates; NoFaults, choice.NoFaults.
+var (
+	DefaultRates = choice.DefaultRates
+	NoFaults     = choice.NoFaults
+)
 
 // WithContext is choice.WithContext.
 func WithContext(c Chooser, ctx context.Context) Chooser { return choice.WithContext(c, ctx) }

@@ -281,7 +281,12 @@ names what it needs.
   `qenv.NoFaults` and rates set by kind as reports print it
   (`Rates.Set("rpc.x.request", p)`), a zero `Rates` documented as
   `DefaultRates`; crashes per virtual second by default; Script with a
-  partial order (per kind, `After` for dependencies).
+  partial order (per kind, `After` for dependencies). *Done,* but crashes
+  per virtual second by default go with R2 (they change every
+  exploration's crash frequency, so the tests' rates would need
+  retuning, like V12's CrashWindow default). The registry is choice's
+  (Declare, DeclareSite); recorded choices carry the option's name, a
+  nemesis its own; `Rates.Set`, `NoFaults`; Script's `Follows`.
 - **V12. Replay stability** (needs V11). Choice streams carry a format
   version (a corpus header); `qenv.Replay` reports a divergence (step,
   expected kind, got) as an error; then `Service.CrashWindow` on by

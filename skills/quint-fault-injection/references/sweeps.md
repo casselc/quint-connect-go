@@ -30,9 +30,10 @@ sys.Sweep(t, qtest.Sweep{Factors: space, Explore: qtest.ExploreConfig{Seeds: 20}
   and one only where the provider's responses are lost: rows without
   provider faults claim `qtest.Violates("settledCorrectly")` and
   `qtest.None(qtest.Violates("chargedAtMostOnce"))`.
-- Orders of faults: a `qenv.Script` per ordered pair (`{a, b}`) imposes
-  both orders of every pair, and `Remaining` names an order the system
-  cannot produce. `qsweep.Sequences` (every order of t events in few
-  sequences) fits only events that recur through a run, such as crashes
-  and partitions: a Script waits for each kind in turn, and a phase that
-  has passed does not come back.
+- Orders of faults: a `qenv.Script` per ordered pair (`{a, b}` with b's
+  `Follows: []int{0}`) imposes both orders of every pair, and
+  `Remaining` names an order the system cannot produce. Without
+  `Follows`, faults of different kinds are independent (each kind's in
+  order): a fault whose phase has passed blocks no other.
+  `qsweep.Sequences` (every order of t events in few sequences) fits
+  only events that recur through a run, such as crashes and partitions.

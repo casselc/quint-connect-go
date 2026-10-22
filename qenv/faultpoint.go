@@ -6,7 +6,8 @@ import (
 	"slices"
 	"sort"
 	"strings"
-	"sync"
+
+	"github.com/casselc/quint-connect-go/qenv/choice"
 )
 
 // A fault point is a place in the code under test where a fault may
@@ -22,11 +23,26 @@ type InjectedError struct{ Kind string }
 
 func (e *InjectedError) Error() string { return "qenv: injected fault " + e.Kind }
 
+// FaultName names the option of an error a fault point can return, in
+// coverage and scripts (Scripted.Name).
+func (e *InjectedError) FaultName() string { return "injected" }
+
+// faultName is an error's option name: its FaultName, else its text.
+func faultName(err error) string {
+	if n, ok := err.(interface{ FaultName() string }); ok {
+		return n.FaultName()
+	}
+	return err.Error()
+}
+
 // FaultPoint is a fault choice at a point of kind: nil (nominal), one of
-// errs, or, with crash and inside a process, the crash of the calling
-// task's process here, which is then restarted (as the nemesis does). With
-// no errs and no crash its fault is an InjectedError. Outside a
-// simulation, nil.
+// errs, or, with crash, the crash of the calling task's process here, which
+// is then restarted (as the nemesis does); outside a process the crash
+// option is nominal, so the option numbers are the same at every call.
+// With no errs and no crash its fault is an InjectedError. The point
+// declares its kind (Faults): its options are named after the errors
+// (FaultName, else the error's text) and "crash", so coverage and scripts
+// name them. Outside a simulation, nil.
 func FaultPoint(ctx context.Context, kind string, crash bool, errs ...error) error {
 	t := taskOf(ctx)
 	if t == nil {
@@ -35,17 +51,22 @@ func FaultPoint(ctx context.Context, kind string, crash bool, errs ...error) err
 	if len(errs) == 0 && !crash {
 		errs = []error{&InjectedError{kind}}
 	}
-	n := 1 + len(errs)
-	crash = crash && t.proc != nil
-	if crash {
-		n++
+	names := make([]string, 0, len(errs)+1)
+	for _, err := range errs {
+		names = append(names, faultName(err))
 	}
-	v := t.sim.Fault(kind, n)
+	if crash {
+		names = append(names, "crash")
+	}
+	k := Faults(kind, names...)
+	v := t.sim.Fault(k.Name, 1+len(k.Options))
 	switch {
 	case v == 0:
 		return nil
 	case v <= len(errs):
 		return errs[v-1]
+	case t.proc == nil:
+		return nil // the crash option, with no process to crash
 	}
 	p := t.proc
 	t.sim.spawn(t.sim.base, "restart."+p.Name, nil, func(context.Context) { p.Restart() })
@@ -53,35 +74,13 @@ func FaultPoint(ctx context.Context, kind string, crash bool, errs ...error) err
 	return nil
 }
 
-var (
-	declMu   sync.Mutex
-	declared = map[string][]string{}
-)
-
 // DeclareFault registers a fault point of kind at site (a function, a
 // position): what woven code does at init, so a coverage report can name
 // the points no run reached.
-func DeclareFault(kind, site string) {
-	declMu.Lock()
-	defer declMu.Unlock()
-	for _, s := range declared[kind] {
-		if s == site {
-			return
-		}
-	}
-	declared[kind] = append(declared[kind], site)
-}
+func DeclareFault(kind, site string) { choice.DeclareSite(kind, site) }
 
 // DeclaredFaults are the registered fault points: kind -> sites.
-func DeclaredFaults() map[string][]string {
-	declMu.Lock()
-	defer declMu.Unlock()
-	out := make(map[string][]string, len(declared))
-	for k, v := range declared {
-		out[k] = append([]string(nil), v...)
-	}
-	return out
-}
+func DeclaredFaults() map[string][]string { return choice.Sites() }
 
 // PointCoverage is what runs did at one fault kind.
 type PointCoverage struct {

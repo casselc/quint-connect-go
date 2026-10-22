@@ -101,7 +101,7 @@ func TestFaultOrders(t *testing.T) {
 			}
 			done := false
 			for seed := uint64(1); seed <= 3 && !done; seed++ {
-				sc := &qenv.Script{Base: qenv.NewSeeded(seed), Faults: []qenv.Scripted{{Kind: a, Option: 1}, {Kind: b, Option: 1}}}
+				sc := &qenv.Script{Base: qenv.NewSeeded(seed), Faults: []qenv.Scripted{{Kind: a, Option: 1}, {Kind: b, Option: 1, Follows: []int{0}}}}
 				rec := &qenv.Recorder{C: sc}
 				mem := &qobs.MemorySink{}
 				if _, err := checkout.Run(qenv.WithContext(rec, qobs.WithRecorder(context.Background(), qobs.NewRecorder(mem))), checkout.Config{Isolation: qenv.SnapshotIsolation}); err != nil {

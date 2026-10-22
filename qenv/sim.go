@@ -917,6 +917,9 @@ func (s *Sim) maybeNemesis() {
 		}
 	} else {
 		k = s.Choose("fault.nemesis", len(on)+1)
+		if r, ok := As[*Recorder](s.c); ok && k > 0 {
+			r.Name(on[k-1].name) // which nemesis, not its index among those enabled then
+		}
 	}
 	if k > 0 {
 		if s.Log != nil {

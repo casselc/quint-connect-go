@@ -3,7 +3,8 @@ package qenv
 import (
 	"fmt"
 	"slices"
-	"sync"
+
+	"github.com/casselc/quint-connect-go/qenv/choice"
 )
 
 // A FaultKind is a kind of fault and its options' names, nominal (option
@@ -15,37 +16,18 @@ type FaultKind struct {
 	Options []string
 }
 
-var (
-	kindsMu sync.Mutex
-	kinds   = map[string][]string{}
-)
-
 // Faults declares a fault kind: name as Sim.Fault takes it ("kube.request")
-// and its options in order. Declaring it again with other options panics:
-// option numbers would change meaning.
+// and its options in order (choice.Declare: the one registry, which also
+// holds the sites DeclareFault registers). Declaring it again with other
+// options panics: option numbers would change meaning.
 func Faults(name string, options ...string) FaultKind {
-	kindsMu.Lock()
-	defer kindsMu.Unlock()
-	if prev, ok := kinds[name]; ok && !slices.Equal(prev, options) {
-		panic(fmt.Sprintf("qenv: fault kind %s declared with options %v, then %v", name, prev, options))
-	}
-	kinds[name] = append([]string(nil), options...)
+	choice.Declare(name, options...)
 	return FaultKind{Name: name, Options: append([]string(nil), options...)}
 }
 
 // FaultOptions are a declared kind's option names (by Sim.Fault's name,
 // with or without the "fault." prefix), or nil.
-func FaultOptions(kind string) []string {
-	kindsMu.Lock()
-	defer kindsMu.Unlock()
-	if k, ok := kinds[kind]; ok {
-		return k
-	}
-	if len(kind) > 6 && kind[:6] == "fault." {
-		return kinds[kind[6:]]
-	}
-	return nil
-}
+func FaultOptions(kind string) []string { return choice.Options(kind) }
 
 // Only is the kind restricted to its first options, named, for a call that
 // cannot fail in the others (a read cannot lose an update's response).

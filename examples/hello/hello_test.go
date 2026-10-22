@@ -32,8 +32,7 @@ func TestNoDedupeCountsRetries(t *testing.T) {
 	qtest.RequireQuint(t)
 	system(NoDedupe).Explore(t, qtest.ExploreConfig{Seeds: 30, Rates: lossy}).
 		Expect(t, qtest.Some(qtest.Rejects("apply")), qtest.Some(qtest.Conforms()))
-	noFaults := qenv.Rates{Kinds: map[string]float64{"fault": 0}} // a zero Rates is the default rates
-	system(NoDedupe).Explore(t, qtest.ExploreConfig{Seeds: 5, Rates: noFaults}).Expect(t, qtest.Conforms())
+	system(NoDedupe).Explore(t, qtest.ExploreConfig{Seeds: 5, Rates: qenv.NoFaults}).Expect(t, qtest.Conforms())
 }
 
 // Hegel makes every choice of the same System and shrinks NoDedupe's
