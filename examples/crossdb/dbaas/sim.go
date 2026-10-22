@@ -29,11 +29,14 @@ type SimClient struct {
 	Timeout time.Duration
 }
 
+// throttle is the cloud refusing a request for its rate limit.
+var throttle = qenv.Faults("dbaas.throttle", "throttled")
+
 // NewSim serves cloud in s, on the virtual clock, and returns its client.
 func NewSim(s *qenv.Sim, cloud *Cloud) *SimClient {
 	cloud.Now = s.Now
 	svc := qenv.NewService(s, "dbaas", nil, func(ctx context.Context, r simReq) (simResp, error) {
-		if s.Fault("dbaas.throttle", 2) == 1 {
+		if s.FaultOf(throttle) == "throttled" {
 			return simResp{Err: ErrThrottled}, nil
 		}
 		var out simResp

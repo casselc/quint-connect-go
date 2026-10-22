@@ -48,6 +48,9 @@ type Service[Req, Resp any] struct {
 	Proc    *Process
 	handler func(ctx context.Context, req Req) (Resp, error)
 	sim     *Sim
+	// the service's fault kinds: a request dropped or delivered twice, a
+	// response lost
+	request, response FaultKind
 	// Calls counts handler invocations.
 	Calls int
 	// Capacity, if set, queues requests for workers (set before the run).
@@ -104,7 +107,9 @@ func NewService[Req, Resp any](s *Sim, name string, p *Process, handler func(ctx
 	if p == nil {
 		p = s.Process(name, false, func(context.Context) {})
 	}
-	return &Service[Req, Resp]{Name: name, Proc: p, handler: handler, sim: s}
+	return &Service[Req, Resp]{Name: name, Proc: p, handler: handler, sim: s,
+		request:  Faults("rpc."+name+".request", "drop", "duplicate"),
+		response: Faults("rpc."+name+".response", "lost")}
 }
 
 type result[Resp any] struct {
@@ -119,10 +124,10 @@ func (svc *Service[Req, Resp]) Call(ctx context.Context, req Req, timeout time.D
 	s := svc.sim
 	res := &result[Resp]{}
 	deliveries := 1
-	switch s.Fault("rpc."+svc.Name+".request", 3) {
-	case 1:
+	switch s.FaultOf(svc.request) {
+	case "drop":
 		deliveries = 0
-	case 2:
+	case "duplicate":
 		deliveries = 2
 	}
 	if svc.Proc.Down() {
@@ -147,7 +152,7 @@ func (svc *Service[Req, Resp]) Call(ctx context.Context, req Req, timeout time.D
 			if !first {
 				return // the duplicate's response is dropped as a stray
 			}
-			if s.Fault("rpc."+svc.Name+".response", 2) == 1 {
+			if s.FaultOf(svc.response) == "lost" {
 				return
 			}
 			res.resp, res.err, res.done = resp, err, true

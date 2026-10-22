@@ -97,6 +97,9 @@ func (q *Queue) Receive(ctx context.Context) *Delivery {
 	return d
 }
 
+// queueAck is a lost acknowledgement: the message is delivered again.
+var queueAck = Faults("queue.ack", "lost")
+
 // Ack acknowledges a delivery. The acknowledgement may be lost
 // ("fault.queue.ack"): the message is then delivered again.
 func (d *Delivery) Ack(ctx context.Context) {
@@ -106,7 +109,7 @@ func (d *Delivery) Ack(ctx context.Context) {
 		return
 	}
 	delete(q.held, d)
-	if q.sim.Fault("queue.ack", 2) == 1 {
+	if q.sim.FaultOf(queueAck) == "lost" {
 		q.requeue(d)
 	}
 }

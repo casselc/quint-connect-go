@@ -129,6 +129,13 @@ quinthegel.Shrink(t, sys, hegel.WithTestCases(50)).Expect(t, qtest.Violates("cha
   `rec.Env` records the run's choices too: `qenv.Replay(v.Choices)`
   repeats the shrunk failure outside Hegel, a regression test with no
   Hegel in it. State the failure with `v.Expect(t, qtest.Rejects(...))`.
+- **A new double's faults:** declare the kind's options by name,
+  `var request = qenv.Faults("db.request", "unavailable", "lostResponse")`,
+  and choose with `s.FaultOf(request)` (it returns "" or the option's
+  name). A read that cannot lose a response takes
+  `request.Only("unavailable")`, a prefix. Scripts name the option
+  (`qenv.Scripted{Kind: "db.request", Name: "lostResponse"}`), which
+  waits for a choice that offers it, and coverage lists options by name.
 - **Extending qenv** (a new double, a scheduler change): run its tests
   with `QENV_CHECK=1` (or `s.Check = true`). The scheduler then verifies
   its own invariants at every step. `TestSchedulerSemantics` states its

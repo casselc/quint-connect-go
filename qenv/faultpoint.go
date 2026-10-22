@@ -91,6 +91,8 @@ type PointCoverage struct {
 	Reached int      // times it was reached, over all runs
 	// Injected counts each option taken (index 0: nominal).
 	Injected []int
+	// Names are the options' names, for a declared kind (Faults).
+	Names []string
 }
 
 // Faulted is how often a fault (any option but nominal) was taken.
@@ -155,6 +157,7 @@ func CoverageOf(runs [][]Choice) *Coverage {
 		cov.faulted = append(cov.faulted, order)
 	}
 	for _, p := range byKind {
+		p.Names = FaultOptions(p.Kind)
 		cov.Points = append(cov.Points, p)
 	}
 	sort.Slice(cov.Points, func(i, j int) bool { return cov.Points[i].Kind < cov.Points[j].Kind })
@@ -273,7 +276,19 @@ func (c *Coverage) String() string {
 		case p.Faulted() == 0:
 			state = "never faulted"
 		}
-		fmt.Fprintf(&b, "  %-32s %-13s runs %d/%d, reached %d, options %v", p.Kind, state, p.Runs, c.Runs, p.Reached, p.Injected)
+		opts := fmt.Sprint(p.Injected)
+		if len(p.Names) > 0 {
+			var named []string
+			for i, n := range p.Injected {
+				name := "nominal"
+				if i > 0 && i <= len(p.Names) {
+					name = p.Names[i-1]
+				}
+				named = append(named, fmt.Sprintf("%s %d", name, n))
+			}
+			opts = "[" + strings.Join(named, ", ") + "]"
+		}
+		fmt.Fprintf(&b, "  %-32s %-13s runs %d/%d, reached %d, options %s", p.Kind, state, p.Runs, c.Runs, p.Reached, opts)
 		if len(p.Sites) > 0 {
 			fmt.Fprintf(&b, " (%s)", strings.Join(p.Sites, ", "))
 		}

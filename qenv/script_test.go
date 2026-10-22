@@ -131,3 +131,41 @@ func TestEncodeChoices(t *testing.T) {
 		t.Errorf("faults from no bytes: %v", got)
 	}
 }
+
+// Options by name: a script naming lostResponse waits through the reads,
+// which cannot lose a response, and fires at the first update; coverage
+// names the options; a restriction that is not a prefix is refused.
+func TestNamedFaultOptions(t *testing.T) {
+	kv := qenv.Faults("test.kv", "unavailable", "lostResponse")
+	sc := &qenv.Script{Faults: []qenv.Scripted{{Kind: "test.kv", Name: "lostResponse"}}}
+	rec := &qenv.Recorder{C: sc}
+	s := qenv.New(rec)
+	var got []string
+	s.Process("client", false, func(ctx context.Context) {
+		for _, op := range []string{"get", "get", "update", "update"} {
+			k := kv
+			if op == "get" {
+				k = kv.Only("unavailable")
+			}
+			got = append(got, op+":"+s.FaultOf(k))
+			qenv.Sleep(ctx, time.Millisecond)
+		}
+	})
+	if err := s.Run(time.Second); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	if want := []string{"get:", "get:", "update:lostResponse", "update:"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("faults %v, want %v", got, want)
+	}
+	cov := qenv.CoverageOf([][]qenv.Choice{rec.Choices})
+	if p := cov.Point("test.kv"); p == nil || !reflect.DeepEqual(p.Names, []string{"unavailable", "lostResponse"}) || !strings.Contains(cov.String(), "lostResponse 1") {
+		t.Errorf("coverage:\n%s", cov)
+	}
+	defer func() {
+		if recover() == nil {
+			t.Error("Only(lostResponse), not a prefix, was accepted")
+		}
+	}()
+	kv.Only("lostResponse")
+}

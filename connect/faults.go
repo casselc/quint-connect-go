@@ -12,8 +12,10 @@ import (
 // recorded as such); a step it does not record (a crash) does not count
 // toward the steps the next faults wait for.
 type Fault struct {
-	Kind     string
-	Option   int
+	Kind   string
+	Option int
+	// Name names the option instead, for a declared kind (qenv.Faults).
+	Name     string
 	Recorded bool
 }
 
@@ -41,7 +43,7 @@ func FaultScript(tr *itf.Trace, faults FaultMap, opt ReplayOptions) (*qenv.Scrip
 		}
 		if f, ok := faults[s.Action]; ok {
 			if fault := f(s); fault != nil {
-				sc.Faults = append(sc.Faults, qenv.Scripted{Kind: fault.Kind, Option: fault.Option, After: recorded})
+				sc.Faults = append(sc.Faults, qenv.Scripted{Kind: fault.Kind, Option: fault.Option, Name: fault.Name, After: recorded})
 				if fault.Recorded {
 					recorded++
 				}

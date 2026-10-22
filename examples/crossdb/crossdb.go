@@ -68,17 +68,19 @@ var ErrUnavailable = errors.New("kube: the API server did not answer")
 // kubeAPI is the fake API server behind interceptors: every request is a
 // seam, and may fail ("fault.kube.request" 1) or, for a write, be applied
 // with its response lost (2).
+var kubeRequest = qenv.Faults("kube.request", "unavailable", "lostResponse")
+
 func kubeAPI(s *qenv.Sim, raw client.WithWatch) client.Client {
 	write := func(ctx context.Context, apply func() error) error {
 		qenv.Yield(ctx)
-		f := s.Fault("kube.request", 3)
-		if f == 1 {
+		f := s.FaultOf(kubeRequest)
+		if f == "unavailable" {
 			return ErrUnavailable
 		}
 		if err := apply(); err != nil {
 			return err
 		}
-		if f == 2 {
+		if f == "lostResponse" {
 			return ErrUnavailable
 		}
 		return nil
@@ -86,7 +88,7 @@ func kubeAPI(s *qenv.Sim, raw client.WithWatch) client.Client {
 	return interceptor.NewClient(raw, interceptor.Funcs{
 		Get: func(ctx context.Context, cl client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
 			qenv.Yield(ctx)
-			if s.Fault("kube.request", 2) == 1 {
+			if s.FaultOf(kubeRequest.Only("unavailable")) != "" {
 				return ErrUnavailable
 			}
 			err := cl.Get(ctx, key, obj, opts...)

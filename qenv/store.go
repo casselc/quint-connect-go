@@ -331,7 +331,7 @@ func (tx *Tx) Commit() error {
 	for _, h := range tx.hooks {
 		h()
 	}
-	if st.CommitFaults && len(tx.order) > 0 && st.sim.Fault("store.commit", 2) == 1 {
+	if st.CommitFaults && len(tx.order) > 0 && st.sim.FaultOf(storeCommit) == "unknownOutcome" {
 		return ErrUnknownOutcome
 	}
 	return nil
@@ -403,3 +403,6 @@ func (st *Store) Load(key string, val any) {
 	st.seq++
 	st.rows[key] = append(st.rows[key], version{seq: st.seq, val: val})
 }
+
+// storeCommit is a commit applied whose outcome the client never learns.
+var storeCommit = Faults("store.commit", "unknownOutcome")

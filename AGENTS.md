@@ -182,6 +182,12 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   (`qenv.Wrapper`): `New`, `ContextOf`, `EntropyOf` and nemeses by name
   look through the chain (`qenv.As[T]`). A wrapper without it hides the
   run's context and entropy.
+- A double declares its fault kinds by name (`qenv.Faults("kube.request",
+  "unavailable", "lostResponse")`) and chooses with `Sim.FaultOf`, which
+  returns the option's name. A call that cannot fail in some options takes
+  a prefix (`k.Only("unavailable")`), so an option's number means one
+  thing at every call. Coverage and scripts name options from the
+  declaration.
 - Option 0 of every qenv choice is nominal (no fault, canonical order).
   Keep that convention in new doubles: it is what makes Hegel's shrinking
   remove faults.

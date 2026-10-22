@@ -2111,3 +2111,28 @@ qgosim's entropy wrapper do. `As[T](c)` finds the first `T` in the chain,
 and the lookups walk it. A Recorder still intercepts what it passes on,
 to record it. The hand re-hoisting is gone, and so is the gotcha that a
 wrapper of a `WithContext` chooser must keep the context outermost.
+
+## 25. Fault options by name (U5, S3)
+
+A fault choice was an index, and the same kind took different option
+counts at different calls: `kube.request` has 2 options on a Get (fail)
+and 3 on an Update (fail, applied with the response lost). Coverage's
+`Injected[2]` then meant nothing without knowing the call, and a
+`Scripted{Option: 2}` panicked if a Get came up first.
+
+`qenv.Faults(name, options...)` declares a kind's options, nominal
+unnamed, and `Sim.FaultOf(kind)` returns "" or the option's name.
+`kind.Only(...)` restricts a call to a prefix of the options, and only to
+a prefix, so an option's number means the same option at every call. A
+non-prefix panics. With that invariant:
+- coverage names options from the declaration ("lostResponse 13");
+- `Scripted.Name` maps to the option's number;
+- a choice that does not offer the scripted option leaves the fault
+  waiting, where it panicked before. The reads pass, and the first update
+  loses its response.
+
+The doubles (RPC, queue, store), kubesim and crossdb declare their kinds;
+nothing in the byte rule, the recordings or the rates changed. The
+`fault.` prefix in rates, `Without` and `Swarm` is still a second
+spelling; changing it would break every rate table, so it stays until a
+breaking release.

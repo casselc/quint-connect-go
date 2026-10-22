@@ -135,6 +135,6 @@ the rest, each after the U items it depends on.
   verdict that changes with the service-time shape.
 - A3: done (DESIGN §23): `qenv.Bytes`/`FromBytes`/`EncodeChoices`,
   `System.Fuzz`, `VerdictCache`; CI fuzzes checkout for 60 s.
-- U5 first half (S2): chooser `Unwrap` and `qenv.As` (DESIGN §24). S3,
-  declared fault kinds with named options, is next: it changes
-  `Scripted.Option` and the doubles.
+- U5: chooser `Unwrap` and `qenv.As` (DESIGN §24); fault options by name,
+  additive (DESIGN §25: `Faults`, `FaultOf`, `Only`, `Scripted.Name`). The
+  `fault.` prefix in rates stays until a breaking release.

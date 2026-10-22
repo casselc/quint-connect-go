@@ -44,6 +44,10 @@ import (
 // server; for a write, it may or may not have been applied.
 var ErrUnavailable = errors.New("kubesim: the API server did not answer")
 
+// kubeRequest is a request that failed, or, for an update, was applied
+// with its response lost: the caller cannot tell them apart.
+var kubeRequest = qenv.Faults("kube.request", "unavailable", "lostResponse")
+
 // Cluster is a simulated member cluster.
 type Cluster struct {
 	Name string
@@ -87,21 +91,21 @@ func NewCluster(s *qenv.Sim, name, image string) *Cluster {
 	c.Client = interceptor.NewClient(raw, interceptor.Funcs{
 		Get: func(ctx context.Context, cl client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
 			qenv.Yield(ctx)
-			if s.Fault("kube.request", 2) == 1 {
+			if s.FaultOf(kubeRequest.Only("unavailable")) != "" {
 				return ErrUnavailable
 			}
 			return cl.Get(ctx, key, obj, opts...)
 		},
 		Update: func(ctx context.Context, cl client.WithWatch, obj client.Object, opts ...client.UpdateOption) error {
 			qenv.Yield(ctx)
-			f := s.Fault("kube.request", 3)
-			if f == 1 {
+			f := s.FaultOf(kubeRequest)
+			if f == "unavailable" {
 				return ErrUnavailable
 			}
 			if err := c.update(ctx, obj, opts...); err != nil {
 				return err
 			}
-			if f == 2 {
+			if f == "lostResponse" {
 				return ErrUnavailable // applied; the response is lost
 			}
 			return nil

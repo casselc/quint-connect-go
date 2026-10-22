@@ -3,6 +3,7 @@ package qenv
 import (
 	"fmt"
 	"github.com/casselc/quint-connect-go/qobs"
+	"slices"
 	"strings"
 	"sync"
 )
@@ -11,12 +12,18 @@ import (
 // of Kind ("fault.<kind>", or "nemesis.<name>" for a nemesis such as
 // "nemesis.crash.payments") once the run has taken After steps.
 type Scripted struct {
-	Kind   string
-	Option int // the fault choice's option (ignored for a nemesis)
+	Kind string
+	// Option is the fault choice's option; Name, if set, names it instead
+	// (a declared kind's, Faults). Ignored for a nemesis.
+	Option int
+	Name   string
 	After  int
 }
 
 func (s Scripted) String() string {
+	if s.Name != "" {
+		return fmt.Sprintf("%s=%s after %d steps", s.Kind, s.Name, s.After)
+	}
 	return fmt.Sprintf("%s=%d after %d steps", s.Kind, s.Option, s.After)
 }
 
@@ -69,9 +76,19 @@ func (s *Script) Choose(kind string, n int) int {
 	if !s.due(k) {
 		return 0
 	}
-	v := s.Faults[s.next].Option
-	if v <= 0 || v >= n {
-		panic(fmt.Sprintf("qenv: script fault %v: %s has %d options", s.Faults[s.next], kind, n))
+	f := s.Faults[s.next]
+	v := f.Option
+	if f.Name != "" {
+		v = slices.Index(FaultOptions(k), f.Name) + 1
+		if v == 0 {
+			panic(fmt.Sprintf("qenv: script fault %v: %s has no option %q (its options: %v)", f, kind, f.Name, FaultOptions(k)))
+		}
+	}
+	if v <= 0 {
+		panic(fmt.Sprintf("qenv: script fault %v: option %d is nominal; script the fault's option, from 1", f, v))
+	}
+	if v >= n {
+		return 0 // this choice does not offer the option (a read of a kind whose write can lose its response): wait for one that does
 	}
 	s.next++
 	return v
