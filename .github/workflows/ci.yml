@@ -180,6 +180,9 @@ jobs:
           KEEP=1 KILL=1 ./kwok-demo.sh
           if KEEP=1 MUTATION=ignore-observed-generation ./kwok-demo.sh; then echo "mutant passed"; exit 1; fi
           if KILL=1 MUTATION=in-memory-progress ./kwok-demo.sh; then echo "mutant passed"; exit 1; fi
+          # pods timed by a production trace (kwok Stages from its lifetimes), on clusters of their own
+          TRACE=../../sktrace/testdata/cronjob.sktrace KEEP=1 ./kwok-demo.sh
+          if TRACE=../../sktrace/testdata/cronjob.sktrace MUTATION=ignore-observed-generation ./kwok-demo.sh; then echo "mutant passed"; exit 1; fi
 
   crossdb:
     runs-on: ubuntu-latest

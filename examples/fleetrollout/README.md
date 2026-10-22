@@ -36,11 +36,25 @@ go test ./...                                                        # in this m
 ./kwok-demo.sh                                                       # the real controller on three kwok clusters
 MUTATION=ignore-observed-generation ./kwok-demo.sh
 KILL=1 MUTATION=in-memory-progress ./kwok-demo.sh
+TRACE=../../sktrace/testdata/cronjob.sktrace ./kwok-demo.sh          # pods timed by a production trace
 ```
 
 kwok's binary runtime needs no Docker. It downloads etcd and the
 Kubernetes binaries. Install it with
 `go install sigs.k8s.io/kwok/cmd/{kwokctl,kwok}@v0.7.0`.
+
+With `TRACE=` the members' pods take as long as a production trace's pods
+did. `cmd/kwok-stages` (`KwokStagesFromTrace`) writes kwok Stages from the
+trace's pod lifetimes: kwok's default pod stages, with one weighted
+pod-ready stage per quantile (`sktrace.Quantiles`, `SPEED` times faster,
+default 10), so each is equally likely. These are the readiness options
+`Config.PodTimes` gives the simulated members
+(`TestRolloutWithMeasuredPodTimes`). A Job's pods run that long once
+ready. The clusters are named `fleet-trace-m*`, apart from the default
+ones. With the CronJob trace (30 s, 30 s and 45 s, so 3 s to 4.5 s), the
+faithful controller conforms and `IgnoreObservedGeneration` still violates
+`withinBudget`. `TestKwokStagesFromTrace` loads the stages with kwok's own
+config loader and matches pods with its lifecycle package.
 
 ## What each bug looks like
 
@@ -106,4 +120,5 @@ Under a production workload (`TestRolloutUnderProductionWorkload`):
 | `fleet.go` | the simulated fleet: `Run(chooser, config)`, with an optional production workload (`Config.Workload`, a SimKube trace) |
 | `cmd/fleet-controller` | the real controller (multicluster-runtime, static `clusters` provider, uncached reads, durable step log); `-verify` for the final reads |
 | `kwok/fleet.yaml`, `kwok-demo.sh` | the members' node and Deployment; the end-to-end run |
+| `kwokstages.go`, `cmd/kwok-stages` | kwok pod Stages timed by a trace's lifetimes (`TRACE=` in the demo) |
 | `model/fleet.qnt`, `fleet.binding.yaml` | the model and its binding (a new controller process is a `restart`) |
