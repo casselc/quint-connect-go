@@ -318,6 +318,10 @@ func (l *LinuxOS) SysOpenat(dirfd int, path string, flags int, mode uint32, invo
 	// just get rid of this
 	flags &= ^syscall.O_CLOEXEC
 
+	// Since Go 1.25, os opens directories with O_DIRECTORY.
+	wantDir := flags&syscall.O_DIRECTORY != 0
+	flags &= ^syscall.O_DIRECTORY
+
 	// TODO: some rules about paths; component length; total length; allow characters?
 	// TODO: check mode
 
@@ -344,6 +348,12 @@ func (l *LinuxOS) SysOpenat(dirfd int, path string, flags int, mode uint32, invo
 	inode, err := l.machine.filesystem.OpenFile(dirInode, path, flags)
 	if err != nil {
 		return 0, err
+	}
+	if wantDir {
+		if st, err := l.machine.filesystem.Statfd(inode); err != nil || !st.IsDir {
+			// TODO: release the inode's reference taken by OpenFile?
+			return 0, syscall.ENOTDIR
+		}
 	}
 
 	// TODO: add reference here? or in OpenFile? help this is strange.

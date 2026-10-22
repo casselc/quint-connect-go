@@ -72,6 +72,15 @@ var keepAsmPackagesGo123 = map[string]bool{
 	"vendor/golang.org/x/crypto/chacha20poly1305":  true,
 	"vendor/golang.org/x/crypto/sha3":              true,
 	"hash/crc32":                                   true,
+	"crypto/internal/fips140/aes":                  true,
+	"crypto/internal/fips140/aes/gcm":              true,
+	"crypto/internal/fips140/bigmod":               true,
+	"crypto/internal/fips140/edwards25519/field":   true,
+	"crypto/internal/fips140/nistec":               true,
+	"crypto/internal/fips140/sha256":               true,
+	"crypto/internal/fips140/sha3":                 true,
+	"crypto/internal/fips140/sha512":               true,
+	"crypto/internal/fips140/subtle":               true,
 
 	"net/url":  true, // XXX: linkname setpath nonsense
 	"net/http": true, // XXX: linkname roundtrip nonsense
@@ -126,7 +135,10 @@ func loadPackages(patterns []string, b gosimtool.BuildConfig, mode packages.Load
 
 	// apply build config to packages config
 	// TODO: build tags plan (rename files, force GOOS and GOARCH)
-	tags := []string{"sim"}
+	// purego: since Go 1.24 the crypto assembly (crypto/internal/fips140/...)
+	// refers to package-level Go variables, which translation moves into
+	// per-machine globals. Use the pure Go implementations instead.
+	tags := []string{"sim", "purego"}
 	if b.Race {
 		tags = append(tags, "race")
 	}
@@ -526,6 +538,8 @@ func translatePackages(cache *cache.Cache, listPatterns []string, rootOutputDir 
 			pkgWithTypesAndAst: pkgsWithTypesAndAst[pkgId],
 		})
 	})
+
+	exitIfMissingBodies()
 
 	for pkgId, res := range allResults {
 		hash := packageHashes[pkgId]

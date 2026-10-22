@@ -106,6 +106,9 @@ type scheduler struct {
 
 	fastrander fastrander
 
+	// chooser, if set, makes every bounded choice (choose.go).
+	chooser Chooser
+
 	clock *clock
 
 	nextEventID int
@@ -198,7 +201,7 @@ func (s *scheduler) pickRandomOtherGoroutine(g *goroutine) *goroutine {
 	if len(s.goroutines) == 1 {
 		return nil
 	}
-	idx := fastrandn(uint32(len(s.goroutines) - 1))
+	idx := s.choose("sched.other", uint32(len(s.goroutines)-1))
 	if s.goroutines[idx] == g {
 		idx++
 	}
@@ -265,7 +268,7 @@ func (s *scheduler) Run() error {
 			return fmt.Errorf("all goroutines blocked\n\n%s", string(buf))
 		}
 
-		pick := s.runnable[s.fastrander.fastrandn(uint32(len(s.runnable)))]
+		pick := s.runnable[s.choose("sched", uint32(len(s.runnable)))]
 
 		if s.checksummer != nil {
 			s.checksummer.recordIntInt(checksumKeyRunPick, uint64(pick.ID), uint64(s.fastrander.state))
@@ -338,6 +341,12 @@ func Seed() int64 {
 }
 
 func run(f func(), seed int64, enableChecksum bool, captureLog bool, logLevelOverride string, simLogger io.Writer, extraenv []string) internalRunResult {
+	return runWith(f, seed, nil, enableChecksum, captureLog, logLevelOverride, simLogger, extraenv)
+}
+
+// runWith is run with a chooser making the choices (choose.go); nil keeps
+// the seeded generator.
+func runWith(f func(), seed int64, chooser Chooser, enableChecksum bool, captureLog bool, logLevelOverride string, simLogger io.Writer, extraenv []string) internalRunResult {
 	if !runtimeInitialized {
 		panic("not yet initialized")
 	}
@@ -371,6 +380,10 @@ func run(f func(), seed int64, enableChecksum bool, captureLog bool, logLevelOve
 
 	scheduler := newScheduler(seed, logger, checksummer, extraenv)
 	defer setgs(scheduler)()
+	if chooser != nil {
+		scheduler.chooser = chooser
+		scheduler.fastrander.state = uint64(chooser.Choose("seed", 1<<16))
+	}
 
 	InitSteps()
 

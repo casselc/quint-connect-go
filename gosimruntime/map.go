@@ -28,6 +28,10 @@ type mapElem[K comparable, V any] struct {
 	present bool
 }
 
+// MapImpl names the implementation of Map, for the constraint
+// ~struct{ Impl *MapImpl[K, V] } that ~map[K]V translates to.
+type MapImpl[K comparable, V any] = mapImpl[K, V]
+
 type mapImpl[K comparable, V any] struct {
 	// underlying maps keys to a position in small concatenated with values
 	underlying map[K]int32
@@ -246,7 +250,7 @@ func (m Map[K, V]) Set(k K, v V) {
 		m.resizeLater()
 	}
 
-	freeIdx := int(fastrandn(uint32(len(m.Impl.free))))
+	freeIdx := int(gs.get().choose("map.free", uint32(len(m.Impl.free))))
 	idx := m.Impl.free[freeIdx]
 	m.Impl.free[freeIdx] = m.Impl.free[len(m.Impl.free)-1]
 	m.Impl.free = m.Impl.free[:len(m.Impl.free)-1]
@@ -353,7 +357,7 @@ func (m Map[K, V]) Iter() MapIter[K, V] {
 		return MapIter[K, V]{}
 	}
 	size := len(m.Impl.values) + len(m.Impl.small)
-	start := int(fastrandn(uint32(size)))
+	start := int(gs.get().choose("map", uint32(size)))
 	return MapIter[K, V]{
 		impl:   m.Impl,
 		size:   size,

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"go/token"
 	"log/slog"
-	"os"
 	"regexp"
 	"slices"
 	"strconv"
@@ -123,6 +122,17 @@ func (t *packageTranslator) rewriteStdlibEmptyAndLinkname(c *dstutil.Cursor) {
 	if !ok {
 		return
 	}
+	// Hooks and linknames name functions; a method of the same name (like
+	// internal/synctest's Bubble.Run next to Run) is not one of them.
+	if decl.Recv != nil {
+		return
+	}
+	// Generic intrinsics cannot be linknamed to a hook: give them an empty
+	// body instead.
+	if emptyBodyGo126[packageSelector{Pkg: t.pkgPath, Selector: decl.Name.Name}] {
+		decl.Body = &dst.BlockStmt{}
+		return
+	}
 
 	// XXX: this misses some linkname stuff
 	// XXX: this wrongly assumes a linkname is going to be part of a FuncDecl's Decs; they can be anywhere in the code
@@ -215,8 +225,7 @@ func (t *packageTranslator) rewriteStdlibEmptyAndLinkname(c *dstutil.Cursor) {
 		} else if t.keepAsmPkgs[t.pkgPath] {
 			slog.Debug("keeping asm header", "pkg", t.pkgPath, "name", decl.Name.Name)
 		} else {
-			slog.Error("missing function body", "pkg", t.pkgPath, "name", decl.Name.Name)
-			os.Exit(1)
+			reportMissingBody(t.pkgPath, decl.Name.Name)
 		}
 	}
 

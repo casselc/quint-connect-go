@@ -39,6 +39,8 @@ type runConfig struct {
 	Seed     int64
 	ExtraEnv []string
 	Simtrace string
+	// Remote makes the runner the chooser of this run (choose.go).
+	Remote bool
 }
 
 // Copied in metatesting.RunResult. Keep in sync.
@@ -218,7 +220,11 @@ func TestMain(rt Runtime) {
 			continue
 		}
 
-		result := run(func() {
+		var chooser Chooser
+		if req.Remote {
+			chooser = &remoteChooser{in: in, out: out}
+		}
+		result := runWith(func() {
 			// TODO: add an entrypoint that takes a single test?
 			// TODO: fail gracefully with non-existent tests?
 			ok := rt.TestEntrypoint(req.Test, "", []Test{
@@ -230,7 +236,7 @@ func TestMain(rt Runtime) {
 			if !ok {
 				SetAbortError(ErrTestFailed)
 			}
-		}, seed, enableTracer, captureLog, logLevelOverride, io.Discard, req.ExtraEnv)
+		}, seed, chooser, enableTracer, captureLog, logLevelOverride, io.Discard, req.ExtraEnv)
 
 		metaResult := runResult{
 			Seed:      result.Seed,
@@ -242,7 +248,11 @@ func TestMain(rt Runtime) {
 			metaResult.Err = result.Err.Error()
 		}
 
-		if err := out.Encode(metaResult); err != nil {
+		var msg any = metaResult
+		if req.Remote {
+			msg = childMsg{Result: &metaResult}
+		}
+		if err := out.Encode(msg); err != nil {
 			log.Fatal(err)
 		}
 	}

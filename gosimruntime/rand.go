@@ -13,7 +13,7 @@ func Fastrand64() uint64 {
 }
 
 func Fastrandn(n uint32) uint32 {
-	return fastrandn(n)
+	return gs.get().choose("rand", n)
 }
 
 type fastrander struct {

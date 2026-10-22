@@ -7,6 +7,7 @@
 package reflect
 
 import (
+	"iter"
 	"reflect" //gosim:notranslate
 	"unsafe"
 
@@ -552,4 +553,49 @@ func (v Value) Comparable() bool {
 
 func (v Value) Equal(u Value) bool {
 	return v.inner.Equal(u.inner)
+}
+
+// TypeAssert is v.Interface().(T) without allocating (Go 1.25).
+func TypeAssert[T any](v Value) (T, bool) {
+	return reflect.TypeAssert[T](v.inner)
+}
+
+// Seq is reflect.Value.Seq, with maps and values wrapped.
+func (v Value) Seq() iter.Seq[Value] {
+	if v.kind == wrappedMap {
+		return func(yield func(Value) bool) {
+			for it := v.MapRange(); it.Next(); {
+				if !yield(it.Key()) {
+					return
+				}
+			}
+		}
+	}
+	return func(yield func(Value) bool) {
+		for x := range v.inner.Seq() {
+			if !yield(wrapValue(x)) {
+				return
+			}
+		}
+	}
+}
+
+// Seq2 is reflect.Value.Seq2, with maps and values wrapped.
+func (v Value) Seq2() iter.Seq2[Value, Value] {
+	if v.kind == wrappedMap {
+		return func(yield func(Value, Value) bool) {
+			for it := v.MapRange(); it.Next(); {
+				if !yield(it.Key(), it.Value()) {
+					return
+				}
+			}
+		}
+	}
+	return func(yield func(Value, Value) bool) {
+		for x, y := range v.inner.Seq2() {
+			if !yield(wrapValue(x), wrapValue(y)) {
+				return
+			}
+		}
+	}
 }

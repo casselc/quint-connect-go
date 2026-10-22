@@ -283,6 +283,14 @@ func (t *packageTranslator) rewriteMapLen(c *dstutil.Cursor) {
 }
 
 func (t *packageTranslator) rewriteMapType(c *dstutil.Cursor) {
+	// internal/sync's HashTrieMap (sync.Map since Go 1.24) declares a
+	// map[K]V only to take the runtime's hasher from its type descriptor.
+	// It must stay a real map type.
+	// TODO: the runtime hasher is seeded per process, so sync.Map.Range
+	// order is not deterministic across runs.
+	if t.pkgPath == "internal/sync" {
+		return
+	}
 	// map type
 	if mapType, ok := c.Node().(*dst.MapType); ok {
 		c.Replace(&dst.IndexListExpr{
@@ -294,16 +302,21 @@ func (t *packageTranslator) rewriteMapType(c *dstutil.Cursor) {
 		})
 	}
 
-	// for generics, eject the outer ~ on map...
+	// for generics, ~map[K]V becomes ~struct{ Impl *MapImpl[K, V] }, the
+	// underlying type of every translated map type, so that named map types
+	// (like textproto.MIMEHeader passed to maps.Keys) still satisfy it.
 	if unary, ok := c.Node().(*dst.UnaryExpr); ok && unary.Op == token.TILDE {
 		if mapType, ok := unary.X.(*dst.MapType); ok {
-			c.Replace(&dst.IndexListExpr{
-				X: t.newRuntimeSelector("Map"),
-				Indices: []dst.Expr{
-					mapType.Key,
-					t.apply(mapType.Value).(dst.Expr),
-				},
-			})
+			unary.X = &dst.StructType{Fields: &dst.FieldList{List: []*dst.Field{{
+				Names: []*dst.Ident{dst.NewIdent("Impl")},
+				Type: &dst.StarExpr{X: &dst.IndexListExpr{
+					X: t.newRuntimeSelector("MapImpl"),
+					Indices: []dst.Expr{
+						mapType.Key,
+						t.apply(mapType.Value).(dst.Expr),
+					},
+				}},
+			}}}}
 		}
 	}
 }
