@@ -123,7 +123,8 @@ func TestRunFindsBug(t *testing.T) {
 func TestUnimplementedAction(t *testing.T) {
 	needQuint(t)
 	msg := catch(t, func(ft *fakeT) {
-		Run(ft, Config{Spec: "testdata/bank.qnt", MaxSamples: 5, MaxSteps: 10}, func() Driver {
+		// seeded: a random seed's five traces sometimes took no transfer
+		Run(ft, Config{Spec: "testdata/bank.qnt", MaxSamples: 5, MaxSteps: 10, Seed: "0x1"}, func() Driver {
 			d := &bankDriver{}
 			return DriverFunc(func(s *Step) error {
 				if s.Action == "transfer" {
