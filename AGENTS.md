@@ -288,7 +288,10 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   context finds its run through its goroutine: qenv registers each
   task's goroutine and the simulation's creator (`qrun`,
   `qenv/goroutine.go`). Explore and Experiment runs are strict
-  (`qobs.Strict`), so a step from a goroutine started with `go` panics.
+  (`qobs.Strict`), so a step from a goroutine started with `go` fails
+  the exploration (`qobs.Escaped`; `Series.Escaped` for an Experiment).
+  It once panicked, on a goroutine nothing could recover, killing the
+  test binary.
   `quintgo lint -sim .` (in CI) flags `go` statements and wall-clock
   calls in files that import qenv, tests included; `//qenv:ok` exempts a
   line (give the reason after it).

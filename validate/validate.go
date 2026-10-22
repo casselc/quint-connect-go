@@ -61,6 +61,11 @@ type Result struct {
 	// "error" issue was validated anyway, but a pass means little.
 	Issues []qtrace.Issue
 
+	// Constants are the instance checked against ("NAME = expr"), printed
+	// with a failure: a run that fails at its first step is most often
+	// checked against the wrong instance.
+	Constants []string
+
 	Module string // the generated .qnt
 	ITF    string // ITF of the replayed trace, when it conforms
 	Calls  []binding.Call
@@ -118,7 +123,7 @@ func Validate(ctx context.Context, b *binding.Binding, m *binding.Model, t *qtra
 	if err != nil {
 		return nil, err
 	}
-	res := &Result{Actor: t.Actor, Issues: t.Issues}
+	res := &Result{Actor: t.Actor, Issues: t.Issues, Constants: p.ConstantList()}
 	return res, evaluate(ctx, b.ModuleSpec(p), [][]binding.Call{p.Calls}, base, opt, []*Result{res})[0]
 }
 
@@ -479,6 +484,9 @@ func (r *Result) Summary() string {
 			fmt.Fprintf(&b, "%s", i.Failure.describe("    "))
 		}
 	}
+	if !r.OK() && len(r.Constants) > 0 {
+		fmt.Fprintf(&b, "  instance: %s\n", strings.Join(r.Constants, ", "))
+	}
 	fmt.Fprintf(&b, "  module: %s\n", r.Module)
 	if r.ITF != "" {
 		fmt.Fprintf(&b, "  itf: %s\n", r.ITF)
@@ -490,17 +498,17 @@ func (f *Failure) describe(pfx string) string {
 	var b strings.Builder
 	switch f.Kind {
 	case "disabled":
-		fmt.Fprintf(&b, "%sstep [%d] is not a transition of the model from the state reached\n", pfx, f.Index)
+		fmt.Fprintf(&b, "%sstep %d is not a transition of the model from the state reached\n", pfx, f.Index+1)
 	case "state":
-		fmt.Fprintf(&b, "%safter step [%d] the model's state does not match what was observed\n", pfx, f.Index)
+		fmt.Fprintf(&b, "%safter step %d the model's state does not match what was observed\n", pfx, f.Index+1)
 	case "invariant":
 		if f.Index < 0 {
 			fmt.Fprintf(&b, "%sviolated in the initial state\n", pfx)
 		} else {
-			fmt.Fprintf(&b, "%sviolated after step [%d]\n", pfx, f.Index)
+			fmt.Fprintf(&b, "%sviolated after step %d\n", pfx, f.Index+1)
 		}
 	default:
-		fmt.Fprintf(&b, "%sfailed at step [%d]\n", pfx, f.Index)
+		fmt.Fprintf(&b, "%sfailed at step %d\n", pfx, f.Index+1)
 	}
 	if f.Call != "" {
 		fmt.Fprintf(&b, "%s  quint:    %s\n", pfx, f.Call)
@@ -512,11 +520,14 @@ func (f *Failure) describe(pfx string) string {
 		fmt.Fprintf(&b, "%s  observed: %s\n", pfx, f.Note)
 	}
 	if s := f.Step; s != nil {
+		// the step as recorded: its own sequence number, and where it came
+		// from (a log line, a span), which differ from the step's number
+		// in the run when steps were skipped or interleave other actors'
+		where := fmt.Sprintf("seq %d", s.Seq)
 		if s.Source != "" {
-			fmt.Fprintf(&b, "%s  observed: seq %d %s (%s)\n", pfx, s.Seq, s.String(), s.Source)
-		} else {
-			fmt.Fprintf(&b, "%s  observed: seq %d %s\n", pfx, s.Seq, s.String())
+			where += ", " + s.Source
 		}
+		fmt.Fprintf(&b, "%s  observed: %s (%s)\n", pfx, s.String(), where)
 		if len(s.Obs) > 0 {
 			fmt.Fprintf(&b, "%s  obs:      %s\n", pfx, obsString(s.Obs))
 		}
@@ -524,7 +535,11 @@ func (f *Failure) describe(pfx string) string {
 			fmt.Fprintf(&b, "%s  error:    %s\n", pfx, s.Error)
 		}
 	}
-	fmt.Fprintf(&b, "%s  %s\n", pfx, f.Quint)
+	if f.Kind == "error" {
+		// quint's own message only where the report has no reading of it:
+		// a disabled step, a state mismatch and an invariant are said above
+		fmt.Fprintf(&b, "%s  %s\n", pfx, f.Quint)
+	}
 	if len(f.State) > 0 {
 		when := "before the step"
 		if f.StateAfter {

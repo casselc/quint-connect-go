@@ -125,7 +125,8 @@ func explore(t testing.TB, bindingPath string, cfg ExploreConfig, scenario func(
 		cfg.Parallel = runtime.GOMAXPROCS(0)
 	}
 	c := config(t, cfg.Opts)
-	defer qobs.Strict()() // a step with nowhere to go panics, rather than vanish from its run
+	defer qobs.Strict()() // a step with nowhere to go fails the exploration, rather than vanish from its run
+	mark, _ := qobs.Escaped(0)
 	seeds := make([]uint64, cfg.Seeds)
 	for i := range seeds {
 		seeds[i] = uint64(i + 1)
@@ -173,6 +174,9 @@ func explore(t testing.TB, bindingPath string, cfg ExploreConfig, scenario func(
 		}()
 	}
 	wg.Wait()
+	if n, msgs := qobs.Escaped(mark); len(msgs) > 0 {
+		t.Errorf("quintgo: %d steps were recorded from outside the runs while they ran (a test in parallel may have recorded some); the first:\n%s", n-mark, msgs[0])
+	}
 	for i, r := range x.Runs {
 		if r == nil { // the scenario failed t from its goroutine before the run ended
 			t.Errorf("quintgo: seed %d did not finish: the scenario failed the test (above)", seeds[i])
@@ -356,16 +360,16 @@ func (x *Exploration) Expect(t testing.TB, claims ...Claim) {
 		case j.ok && j.show >= 0 && !every:
 			r := x.Runs[j.show]
 			if !r.Report.OK() {
-				t.Logf("quintgo: %d of %d runs violate the model; seed %d shows %s:\n%s", bad, len(x.Runs), r.Seed, c, x.describe(t, r))
+				t.Logf("quintgo: %d of %d runs violate the model; seed %d shows %s:\n%s", bad, len(x.Runs), r.Seed, describeClaim(c), x.describe(t, r))
 			}
 		case j.ok:
 		case j.show >= 0:
 			failedAny = true
-			what := "show"
 			if every {
-				what = "do not show"
+				t.Errorf("quintgo: want %s in every run; %d of %d runs do not have it%s; the first:\n%s", describeClaim(c), j.n, len(x.Runs), x.atStart(), x.describe(t, x.Runs[j.show]))
+			} else {
+				t.Errorf("quintgo: want %s in no run; %d of %d runs have it%s; the first:\n%s", describeClaim(c), j.n, len(x.Runs), x.atStart(), x.describe(t, x.Runs[j.show]))
 			}
-			t.Errorf("quintgo: %d of %d runs %s %s%s; the first:\n%s", j.n, len(x.Runs), what, describeClaim(c), x.atStart(), x.describe(t, x.Runs[j.show]))
 		case bad == 0:
 			failedAny = true
 			t.Errorf("quintgo: all %d runs conform; want %s%s%s", len(x.Runs), c, x.unfaulted(), x.unscripted())

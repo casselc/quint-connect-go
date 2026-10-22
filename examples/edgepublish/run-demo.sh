@@ -24,7 +24,7 @@ verdict() { # file -> one line: conformance, failing step, invariants, exit stat
   local out; out=$("$OUT/quintgo" validate "$@" 2>&1); local rc=$?
   [ -n "${VERBOSE:-}" ] && echo "$out"
   printf '  %-9s %-28s exit %d  %s\n' "$name" "$(grep -m1 -o 'input .*: [a-zA-Z/ -]*$' <<<"$out" | sed 's/^input [^:]*: //')" "$rc" \
-    "$(grep -E 'conformance:|invariant .*: (FAIL|PASS)|step \[[0-9]+\]|violated after' <<<"$out" | sed -E 's/^ +//; s/ is not a transition.*/ disabled/; s/the model.s state does not match.*/state mismatch/' | paste -sd ';' -)"
+    "$(grep -E 'conformance:|invariant .*: (FAIL|PASS)|step [0-9]+ |violated after' <<<"$out" | sed -E 's/^ +//; s/ is not a transition.*/ disabled/; s/the model.s state does not match.*/state mismatch/' | paste -sd ';' -)"
 }
 
 for sc in ${SCENARIOS:-happy rotation-race ambiguous-seal manifest-first no-lock}; do

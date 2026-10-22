@@ -130,7 +130,7 @@ An at-least-once queue performs a job twice when a lease expires while
 its worker is still working. Keep such properties in the model
 (`exactlyOnce`) but out of the binding's `invariants`. Check them on
 demand (`quintgo validate -invariants exactlyOnce`,
-`Checker.WithInvariants`). "Conforms, exactlyOnce FAIL at step [i]" then
+`Checker.WithInvariants`). "Conforms, exactlyOnce FAIL at step i" then
 says when a real run hit the design's limit.
 
 ## 9. Abstraction and cost

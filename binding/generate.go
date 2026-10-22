@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -185,7 +186,7 @@ func (b *Binding) Plan(m *Model, t *qtrace.Trace) (*Plan, error) {
 		if m != nil {
 			ps, ok := m.Actions[s.Action]
 			if !ok {
-				return nil, fmt.Errorf("step %d: %s is not an action of %s", i, s.Action, m.Module)
+				return nil, fmt.Errorf("step %d%s: %s: record the step under the model's action name", i+1, where(s), m.notAnAction(s.Action))
 			}
 			params = ps
 		} else {
@@ -207,7 +208,12 @@ func (b *Binding) Plan(m *Model, t *qtrace.Trace) (*Plan, error) {
 			tpl := ab.Template(p)
 			v, err := render(tpl, data, funcs)
 			if err != nil {
-				return nil, fmt.Errorf("step %d (%s, %s): arg %s (template %s, signature %s): %w", i, s.Action, s.Source, p.Name, tpl, sig(m, s.Action), err)
+				if f, ok := missingField(err); ok {
+					return nil, fmt.Errorf("step %d (%s%s): parameter %s of %s reads the step's field %q, which the step does not have (%s). "+
+						"Record %q with the step, or map the parameter to a field it has in the binding:\n  actions:\n    %s:\n      args: { %s: '{{.FIELD}}' }",
+						i+1, s.Action, where(s), p.Name, sig(m, s.Action), f, hasFields(s), f, s.Action, p.Name)
+				}
+				return nil, fmt.Errorf("step %d (%s%s): parameter %s (template %s, signature %s): %w", i+1, s.Action, where(s), p.Name, tpl, sig(m, s.Action), err)
 			}
 			c.Args[p.Name] = v
 			vals = append(vals, v)
@@ -218,7 +224,11 @@ func (b *Binding) Plan(m *Model, t *qtrace.Trace) (*Plan, error) {
 		}
 		if ab.Expect != "" {
 			if c.Expect, err = render(ab.Expect, data, funcs); err != nil {
-				return nil, fmt.Errorf("step %d (%s): expect: %w", i, s.Action, err)
+				if f, ok := missingField(err); ok {
+					return nil, fmt.Errorf("step %d (%s%s): the binding's expect for %s reads the step's field %q, which the step does not have (%s): "+
+						"record it with the step (observations as \"obs.NAME\")", i+1, s.Action, where(s), s.Action, f, hasFields(s))
+				}
+				return nil, fmt.Errorf("step %d (%s%s): expect: %w", i+1, s.Action, where(s), err)
 			}
 		}
 		plan.Calls = append(plan.Calls, c)
@@ -332,7 +342,7 @@ func RenderBatch(ms ModuleSpec, runs [][]Call, qntPath string) ([]*Generated, er
 				text := it.ref
 				if it.call >= 0 {
 					if comment {
-						pr("    // [%d] %s", it.call, describe(calls[it.call]))
+						pr("    // step %d: %s", it.call+1, describe(calls[it.call]))
 					}
 					text = step(calls[it.call])
 				}
@@ -565,4 +575,40 @@ func sig(m *Model, action string) string {
 		return action
 	}
 	return m.Signature(action)
+}
+
+var reMissing = regexp.MustCompile(`at <\.([\w.]+)>: map has no entry for key`)
+
+// missingField is the step field a template read and the step lacks
+// ("obs.balance", "amount"), from text/template's missingkey error.
+func missingField(err error) (string, bool) {
+	m := reMissing.FindStringSubmatch(err.Error())
+	if m == nil {
+		return "", false
+	}
+	return strings.TrimPrefix(m[1], "args."), true
+}
+
+// hasFields lists the fields a step has, for a message about one it lacks.
+func hasFields(s *qtrace.Step) string {
+	var fs []string
+	for k := range s.Args {
+		fs = append(fs, k)
+	}
+	for k := range s.Obs {
+		fs = append(fs, "obs."+k)
+	}
+	if len(fs) == 0 {
+		return "it has no fields"
+	}
+	sort.Strings(fs)
+	return "it has: " + strings.Join(fs, ", ")
+}
+
+// where is a step's source for messages (", line 3"), if known.
+func where(s *qtrace.Step) string {
+	if s.Source == "" {
+		return ""
+	}
+	return ", " + s.Source
 }

@@ -34,7 +34,7 @@ func (e Expectation) String() string { return e.desc }
 // Conforms: every actor's run is a behaviour of the model and satisfies
 // its invariants.
 func Conforms() Expectation {
-	return Expectation{"the run conforms and satisfies every invariant", func(r *validate.Report) bool { return r.OK() }, true, nil, nil}
+	return Expectation{"conformance, with every invariant holding", func(r *validate.Report) bool { return r.OK() }, true, nil, nil}
 }
 
 func failed(r *validate.Report, kind, action string) bool {
@@ -50,13 +50,13 @@ func failed(r *validate.Report, kind, action string) bool {
 // Rejects: the model cannot take an observed step of this action (an
 // implementation bug, or a wrong binding). "" matches any action.
 func Rejects(action string) Expectation {
-	return Expectation{desc: fmt.Sprintf("a %s step the model cannot take", orAny(action)), check: func(r *validate.Report) bool { return failed(r, "disabled", action) }, actions: named(action)}
+	return Expectation{desc: fmt.Sprintf("%s the model cannot take", aStep(action)), check: func(r *validate.Report) bool { return failed(r, "disabled", action) }, actions: named(action)}
 }
 
 // Mismatch: after a step of this action, the observed state differs from
 // the model's (the binding's expect fails). "" matches any action.
 func Mismatch(action string) Expectation {
-	return Expectation{desc: fmt.Sprintf("a state mismatch after a %s step", orAny(action)), check: func(r *validate.Report) bool { return failed(r, "state", action) }, actions: named(action)}
+	return Expectation{desc: fmt.Sprintf("a state mismatch after %s", aStep(action)), check: func(r *validate.Report) bool { return failed(r, "state", action) }, actions: named(action)}
 }
 
 // Violates: the run is a behaviour of the model, and the model's invariant
@@ -143,11 +143,15 @@ func describeOr(es []Expectation) string {
 	return strings.Join(s, ", or ")
 }
 
-func orAny(action string) string {
-	if action == "" {
-		return "model"
+// aStep is "a step", "a ship step", "an apply step".
+func aStep(action string) string {
+	switch {
+	case action == "":
+		return "a step"
+	case strings.ContainsRune("aeiouAEIOU", rune(action[0])):
+		return "an " + action + " step"
 	}
-	return action
+	return "a " + action + " step"
 }
 
 // A Claim is what a test expects of a set of runs (Exploration.Expect,

@@ -57,18 +57,17 @@ Scenarios and actual results (`validate` exits 0 or 1):
 |---|---|---|
 | `happy` | 3 concurrent pushes (steps interleave), a failed Parquet write and its retry, rotation, background seal, crash, new epoch, close | **PASS**, 28 steps (27 observed + inferred `crash`) |
 | `rotation-race` | a push is held in its table insert while the clock moves on; the next push must wait for rotation | **PASS** |
-| `ambiguous-seal` | a manifest PUT lands but reports failure; the retry commits again; the seal counts 1 of 2 | conforms, but `sealMatchesManifests` fails after step [15] and `committedNoDuplicatePayload` after step [7]: the model's known finding F1/F3, now seen in running code |
-| `manifest-first` | MUTANT: the manifest is written before the table insert | **FAIL** at step [1]: `writeManifest(px(1, 1, 1, 1, ParquetDone), Ok)` is not a transition (QNT513) |
-| `no-lock` | MUTANT: the push drops the shared lock before its writes | **FAIL** at step [1]: `rotateGen` is not enabled while a push is in flight; `quintgo steps` shows batch 1 committed into generation 1 after its `sealGen` |
+| `ambiguous-seal` | a manifest PUT lands but reports failure; the retry commits again; the seal counts 1 of 2 | conforms, but `sealMatchesManifests` fails after step 16 and `committedNoDuplicatePayload` after step 8: the model's known finding F1/F3, now seen in running code |
+| `manifest-first` | MUTANT: the manifest is written before the table insert | **FAIL** at step 2: `writeManifest(px(1, 1, 1, 1, ParquetDone), Ok)` is not a transition (QNT513) |
+| `no-lock` | MUTANT: the push drops the shared lock before its writes | **FAIL** at step 2: `rotateGen` is not enabled while a push is in flight; `quintgo steps` shows batch 1 committed into generation 1 after its `sealGen` |
 
 ```
 === scenario manifest-first
 actor edge-1/traces: 6 steps
   conformance: FAIL
-    step [1] is not a transition of the model from the state reached
+    step 2 is not a transition of the model from the state reached
       quint:    writeManifest(px(1, 1, 1, 1, ParquetDone), Ok)
-      observed: seq 2 writeManifest(batch=1, gen=g20260924T100000, payload=req-1) (span efdc40821aced020)
-      Error [QNT513]: Cannot continue in `then` because the highlighted expression evaluated to false
+      observed: writeManifest(batch=1, gen=g20260924T100000, payload=req-1) (seq 2, span efdc40821aced020)
 ```
 
 Each scenario, each of the three paths (`run-demo.sh` output):
@@ -79,16 +78,16 @@ Each scenario, each of the three paths (`run-demo.sh` output):
   steps     native step log              exit 0  conformance: PASS;invariant commitImpliesData: PASS;invariant sealMatchesManifests: PASS;invariant committedNoDuplicatePayload: PASS
   itf       model-level ITF              exit 0  conformance: PASS;invariant commitImpliesData: PASS;invariant sealMatchesManifests: PASS;invariant committedNoDuplicatePayload: PASS
 === scenario ambiguous-seal
-  otel      OTLP/JSON spans              exit 1  conformance: PASS;...;invariant sealMatchesManifests: FAIL;violated after step [15];invariant committedNoDuplicatePayload: FAIL;violated after step [7]
-  steps     native step log              exit 1  conformance: PASS;...;invariant sealMatchesManifests: FAIL;violated after step [15];invariant committedNoDuplicatePayload: FAIL;violated after step [7]
-  itf       model-level ITF              exit 1  conformance: PASS;...;invariant sealMatchesManifests: FAIL;violated after step [15];invariant committedNoDuplicatePayload: FAIL;violated after step [7]
+  otel      OTLP/JSON spans              exit 1  conformance: PASS;...;invariant sealMatchesManifests: FAIL;violated after step 16;invariant committedNoDuplicatePayload: FAIL;violated after step 8
+  steps     native step log              exit 1  conformance: PASS;...;invariant sealMatchesManifests: FAIL;violated after step 16;invariant committedNoDuplicatePayload: FAIL;violated after step 8
+  itf       model-level ITF              exit 1  conformance: PASS;...;invariant sealMatchesManifests: FAIL;violated after step 16;invariant committedNoDuplicatePayload: FAIL;violated after step 8
 === scenario manifest-first
-  otel      OTLP/JSON spans              exit 1  conformance: FAIL;step [1] disabled
-  steps     native step log              exit 1  conformance: FAIL;step [1] disabled
-  itf       model-level ITF              exit 1  conformance: FAIL;step [1] disabled
+  otel      OTLP/JSON spans              exit 1  conformance: FAIL;step 2 disabled
+  steps     native step log              exit 1  conformance: FAIL;step 2 disabled
+  itf       model-level ITF              exit 1  conformance: FAIL;step 2 disabled
 ```
 
-(`rotation-race` passes on all three; `no-lock` fails at step [1] on all three.)
+(`rotation-race` passes on all three; `no-lock` fails at step 2 on all three.)
 
 ## The publisher in a simulation (`sim/`, woven by `qenv/weave`)
 

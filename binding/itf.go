@@ -53,7 +53,7 @@ func (b *Binding) planITF(p *Plan) ([]byte, error) {
 		for name, expr := range c.Args {
 			v, err := itf.ParseQuint(expr)
 			if err != nil {
-				return nil, fmt.Errorf("call [%d] %s, parameter %s: %w", i, c.Action, name, err)
+				return nil, fmt.Errorf("step %d (%s), parameter %s: %w", i+1, c.Action, name, err)
 			}
 			picks[name] = itf.Some(v)
 		}
@@ -70,7 +70,7 @@ func (b *Binding) planITF(p *Plan) ([]byte, error) {
 			for k, x := range c.Step.Obs {
 				v, err := itf.FromGo(x)
 				if err != nil {
-					return nil, fmt.Errorf("call [%d] obs.%s: %w", i, k, err)
+					return nil, fmt.Errorf("step %d obs.%s: %w", i+1, k, err)
 				}
 				st["obs::"+k] = v
 				varSet["obs::"+k] = true

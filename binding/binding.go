@@ -107,7 +107,7 @@ func (b *Binding) Lint(m *Model) []string {
 		a := b.Actions[name]
 		ps, ok := m.Actions[name]
 		if !ok {
-			errs = append(errs, fmt.Sprintf("action %s: not an action of %s (have: %s)", name, m.Module, strings.Join(m.ActionNames(), ", ")))
+			errs = append(errs, "action "+m.notAnAction(name))
 			continue
 		}
 		want := map[string]bool{}
@@ -130,7 +130,7 @@ func (b *Binding) Lint(m *Model) []string {
 	}
 	if b.Restart != "" {
 		if ps, ok := m.Actions[b.Restart]; !ok {
-			errs = append(errs, fmt.Sprintf("restart: %s is not an action of %s", b.Restart, m.Module))
+			errs = append(errs, "restart: "+m.notAnAction(b.Restart))
 		} else if len(ps) != 0 {
 			errs = append(errs, fmt.Sprintf("restart: %s takes parameters; a restart action must take none", m.Signature(b.Restart)))
 		}

@@ -9,7 +9,7 @@ mkdir -p "$OUT"
 echo "# output in $OUT"
 (cd ../.. && go build -o "$OUT/quintgo" ./cmd/quintgo) || exit 2
 go run ./cmd/jobqueue -steps "$OUT/steps.jsonl" -mutation "${MUTATION:-}" || exit 2
-show() { grep -E 'issue|conformance|invariant|step \[|quint:|observed:|RESULT|violated'; }
+show() { grep -E 'issue|conformance|invariant|step [0-9]+ |quint:|observed:|RESULT|violated'; }
 echo; echo "\$ quintgo validate -binding jobqueue.binding.yaml steps.jsonl"
 "$OUT/quintgo" validate -binding jobqueue.binding.yaml -dir "$OUT/v" "$OUT/steps.jsonl" > "$OUT/verdict.txt"; rc=$?
 show < "$OUT/verdict.txt"

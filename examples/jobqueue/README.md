@@ -26,7 +26,7 @@ $ quintgo validate -binding jobqueue.binding.yaml steps.jsonl
 $ quintgo validate -binding jobqueue.binding.yaml -invariants exactlyOnce steps.jsonl
   conformance: PASS
   invariant exactlyOnce: FAIL
-    violated after step [58]
+    violated after step 59
       quint:    perform("w2", 4)
 ```
 

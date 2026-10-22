@@ -206,10 +206,10 @@ quintgo validate -binding bank.binding.yaml -convert bank.convert.yaml spans.jso
 ```
 actor default: 10 steps
   conformance: FAIL
-    after step [2] the model's state does not match what was observed
+    after step 3 the model's state does not match what was observed
       quint:    deposit("carol", 2)
       expect:   balances.get("carol") == 4
-      observed: seq 3 deposit(account=carol, amount=2)
+      observed: deposit(account=carol, amount=2) (seq 3)
       obs:      balance=4
 ```
 
@@ -290,7 +290,7 @@ task of the simulation. A step recorded without it, for example with
 `context.Background()`, still lands in its run: qenv knows which
 simulation each of its goroutines belongs to (its tasks, and the goroutine
 that created it). During such runs recording is strict (`qobs.Strict`): a
-step with nowhere to go panics, naming the fix, rather than vanish. That
+step with nowhere to go fails the exploration, naming the fix, rather than vanish. That
 happens only for a goroutine started with `go`, which `quintgo lint -sim
 DIR` flags, along with wall-clock time. Tests are checked too (a
 System's `Run` closure lives in one); mark a deliberate real goroutine or
@@ -401,7 +401,7 @@ r := qmeta.Assess(x, "markPaid", qmeta.Trigger{Slowdown: 3, Duration: time.Minut
 | `connect` | MBT driver runtime: `Run`, `Test`, `Replay`, `Switch`, `Pick[T]`, `StateDriver`, `GenerateRun`/`GenerateTest` ; `FaultScript` (a trace's faults imposed on a whole program in qenv) |
 | `quinthegel` | Hegel integration: `Test` (modes `Batched`/`Each`/`After`/`Off`), `FindViolation` (expected failures, shrunk), `Recorder`, `CaseChecker`/`CheckCase`, `Replay`, `Traces`; the Hegel adapters of other packages: `Chooser` (qenv's choices from a test case), `FindTrigger` (qmeta's trigger search, `.Expect(t, found)`) ; `Shrink(t, sys)` (a `qtest.System` under Hegel, its failure replayable from `Violation.Choices`) |
 | `itf` | ITF traces: `Parse`, `Value`, `Decode`/`Encode` (Go ⇄ Quint values), `ParseQuint` (Quint literals) |
-| `qobs` | runtime recorder: `Record`, `SlogHandler` (log records with `quint.action` as steps), `Thread`, `WithRecorder` (a context's own recorder, so runs in parallel record apart), a run's state found from its context or goroutine (`qrun`), `Strict` (a step with nowhere to go panics); sinks `MemorySink`, `FileSink`/`DurableFileSink`/`JSONLSink`, `OTelSink`, `Tee`; `orchestrion.yml` |
+| `qobs` | runtime recorder: `Record`, `SlogHandler` (log records with `quint.action` as steps), `Thread`, `WithRecorder` (a context's own recorder, so runs in parallel record apart), a run's state found from its context or goroutine (`qrun`), `Strict` (a step with nowhere to go is logged, `Escaped`, and fails the exploration); sinks `MemorySink`, `FileSink`/`DurableFileSink`/`JSONLSink`, `OTelSink`, `Tee`; `orchestrion.yml` |
 | `qtrace` | the step schema, `Reconstruct` (ordering, gaps, restarts), step log I/O; `Filter` (select actors, actions and a window; pseudonymize identifiers; keep only what the binding reads: `quintgo steps -out`) |
 | `otelio` | OTLP/JSON file exporter and reader; SDK spans to steps |
 | `convert` | an application's own spans to steps, by YAML rules |

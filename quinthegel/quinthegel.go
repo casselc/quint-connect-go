@@ -302,7 +302,7 @@ func Render(steps []qtrace.Step) string {
 		if i > 0 && s.Process != steps[i-1].Process {
 			fmt.Fprintf(&b, "  -- process %d (restart)\n", p)
 		}
-		fmt.Fprintf(&b, "  [%d] %s\n", i, s.String())
+		fmt.Fprintf(&b, "  %d. %s\n", i+1, s.String())
 	}
 	return b.String()
 }

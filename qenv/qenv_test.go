@@ -522,17 +522,18 @@ func TestBackgroundStepsFindTheirRun(t *testing.T) {
 	}
 }
 
-// While a run is strict, a step with nowhere to go panics with what to do.
+// While a run is strict, a step with nowhere to go is logged with what to
+// do. It once panicked, on a goroutine no run owns, which killed the test
+// binary instead of failing the run.
 func TestStrictStepWithNowhereToGo(t *testing.T) {
 	release := qobs.Strict()
 	defer release()
-	defer func() {
-		r := recover()
-		if msg, _ := r.(string); !strings.Contains(msg, "qenv.Go") {
-			t.Fatalf("got %v, want a panic naming qenv.Go", r)
-		}
-	}()
+	mark, _ := qobs.Escaped(0)
 	qobs.Record(context.Background(), "lost", nil) //qenv:ok a step with nowhere to go
+	n, msgs := qobs.Escaped(mark)
+	if n != mark+1 || len(msgs) != 1 || !strings.Contains(msgs[0], "qenv.Go") {
+		t.Fatalf("got %d escaped since %d: %v; want one naming qenv.Go", n, mark, msgs)
+	}
 }
 
 // A task killed by a crash stays frozen, and unwinds only when the

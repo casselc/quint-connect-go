@@ -12,5 +12,5 @@ echo "# output in $OUT"
 go run ./cmd/retrystorm-report -out "$OUT/report" -lambda "${LAMBDA:-9}" -steps "$OUT/steps.jsonl" -mutation "${MUTATION:-}" || exit 2
 echo; echo "\$ quintgo validate -binding retrystorm.binding.yaml steps.jsonl"
 "$OUT/quintgo" validate -binding retrystorm.binding.yaml -dir "$OUT/v" "$OUT/steps.jsonl" > "$OUT/verdict.txt"; rc=$?
-grep -E 'issue|conformance|invariant|step \[|quint:|observed:|RESULT|violated' "$OUT/verdict.txt"
+grep -E 'issue|conformance|invariant|step [0-9]+ |quint:|observed:|RESULT|violated' "$OUT/verdict.txt"
 exit $rc

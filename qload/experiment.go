@@ -124,6 +124,10 @@ type Point struct {
 type Series struct {
 	Tick   time.Duration
 	Points []Point
+	// Escaped are steps recorded from outside the run while it ran (a
+	// goroutine started with go): the run is strict, and its counts miss
+	// them (qobs.Escaped).
+	Escaped []string
 }
 
 // Count is the number of steps of an action recorded in [from, to) (by
@@ -187,6 +191,7 @@ func (x Experiment) Run(seed uint64, tr Trigger, horizon time.Duration) *Series 
 		c = sc
 	}
 	defer qobs.Strict()()
+	mark, _ := qobs.Escaped(0)
 	cnt := &counter{n: map[string]int{}, next: x.Sink}
 	s := qenv.New(qenv.WithContext(c, qobs.WithRecorder(context.Background(), qobs.NewRecorder(cnt, qobs.WithActor(x.Actor)))))
 	defer s.Close()
@@ -244,5 +249,6 @@ func (x Experiment) Run(seed uint64, tr Trigger, horizon time.Duration) *Series 
 		}
 	})
 	_ = s.Run(horizon)
+	_, series.Escaped = qobs.Escaped(mark)
 	return series
 }

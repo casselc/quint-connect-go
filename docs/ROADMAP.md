@@ -238,7 +238,13 @@ names what it needs.
   action says "did you mean" and lists them; QNT508 out of reports; one
   step numbering; failing reports print the instance's constants; the
   strict-recording panic is a failed run, not a dead test binary; "a
-  apply" and "do not show the run conforms" reworded.
+  apply" and "do not show the run conforms" reworded. *Done:* reports
+  number steps from 1 ("step 2"), the recorded seq and source after the
+  step; quint's error line only for errors the report cannot read; a
+  failing report's `instance:` line; a missing field names the step's
+  fields and the `args:` fix; unknown actions say "did you mean"; a
+  strict run's escaped step is logged (`qobs.Escaped`) and fails the
+  exploration.
 - **V8. Quiet Hegel, and claiming nothing found.** `FindViolation` and
   `Shrink` default to Hegel's quiet verbosity and no reproduction blob
   for an expected failure (`QUINTGO_VERBOSE=1` restores them);

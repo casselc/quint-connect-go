@@ -102,7 +102,7 @@ func (c *Checker) CheckBatch(ctx context.Context, runs [][]qtrace.Step, perProce
 				errs[i] = fmt.Errorf("actor %s: %w", t.Actor, err)
 				break
 			}
-			it := &item{run: i, trace: t, plan: p, res: &Result{Actor: t.Actor, Issues: t.Issues}}
+			it := &item{run: i, trace: t, plan: p, res: &Result{Actor: t.Actor, Issues: t.Issues, Constants: p.ConstantList()}}
 			reports[i].Actors = append(reports[i].Actors, it.res)
 			k := strings.Join(p.ConstantList(), ", ")
 			if _, ok := groups[k]; !ok {

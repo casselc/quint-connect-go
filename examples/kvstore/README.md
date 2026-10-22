@@ -25,9 +25,9 @@ MUTATION=revision-on-conflict ./run-demo.sh
 ```
 $ quintgo validate -binding kv.binding.yaml -convert kv.convert.yaml spans.jsonl      (MUTATION=stale-cas)
   conformance: FAIL
-    step [111] is not a transition of the model from the state reached
+    step 112 is not a transition of the model from the state reached
       quint:    cas("a", 39, "y", Ok)
-      observed: seq 112 cas(expected=39, key=a, value=y) (span 85ea63b66b1bd28e)
+      observed: cas(expected=39, key=a, value=y) (seq 112, span 85ea63b66b1bd28e)
       obs:      revision=46
 ```
 

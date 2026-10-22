@@ -146,9 +146,12 @@ func SetDiscard(f func() bool) { discard.Store(&f) }
 
 // Strict turns on, until release is called, the rule that a step must have
 // somewhere to go: a step with no recorder in its context, no run for its
-// goroutine and no global recorder panics instead of being dropped.
-// Simulated runs (qtest.Explore, qload.Experiment) are strict: a dropped
-// step would make a correct run fail the model, or hide a bug.
+// goroutine and no global recorder is logged as escaped (Escaped) instead
+// of being dropped silently. Simulated runs (qtest.Explore,
+// qload.Experiment) are strict, and fail when a step escaped: a dropped
+// step would make a correct run fail the model, or hide a bug. It is a
+// log, not a panic: the step comes from a goroutine no run owns, whose
+// panic nothing could recover, and it would kill the test binary.
 func Strict() (release func()) {
 	strict.Add(1)
 	var once sync.Once
@@ -179,10 +182,37 @@ func Record(ctx context.Context, action string, err error, kv ...any) {
 		return // interrupted work with nowhere to report it
 	}
 	if strict.Load() > 0 {
-		panic(fmt.Sprintf("qobs: step %q has no recorder: its context carries none, its goroutine belongs to no "+
-			"simulated run, and no global recorder is installed. A goroutine started with `go` is outside the "+
-			"simulation: start it with qenv.Go, or record through a context from the run (qenv.WithContext).", action))
+		escaped.Lock()
+		escaped.n++
+		if len(escaped.msgs) < maxEscaped {
+			escaped.msgs = append(escaped.msgs, fmt.Sprintf("qobs: step %q has no recorder: its context carries none, its goroutine belongs to no "+
+				"simulated run, and no global recorder is installed. A goroutine started with `go` is outside the "+
+				"simulation: start it with qenv.Go, or record through a context from the run (qenv.WithContext).", action))
+		}
+		escaped.Unlock()
 	}
+}
+
+// escaped logs the steps strict runs could not place, process-wide: their
+// goroutine names no run, so no run can be told.
+var escaped struct {
+	sync.Mutex
+	n    int
+	msgs []string // the first maxEscaped
+}
+
+const maxEscaped = 1000
+
+// Escaped returns the number of steps that escaped strict runs so far,
+// and the messages of those after mark (an earlier count): a strict run
+// takes the count when it starts and reports what escaped while it ran.
+func Escaped(mark int) (n int, since []string) {
+	escaped.Lock()
+	defer escaped.Unlock()
+	if mark < len(escaped.msgs) {
+		since = append(since, escaped.msgs[mark:]...)
+	}
+	return escaped.n, since
 }
 
 type threadKey struct{}

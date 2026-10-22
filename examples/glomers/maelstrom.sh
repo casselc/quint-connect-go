@@ -43,7 +43,7 @@ for c in ${@:-echo uniqueids broadcast gcounter kafka}; do
     echo "--- quintgo validate -noitf -binding $b ($(cat "$steps"/*.jsonl | wc -l) steps)"
     v=$(basename "$b" .yaml)
     "$OUT/bin/quintgo" validate -noitf -binding "$b" -dir "$OUT/v-$v" "$steps"/*.jsonl > "$OUT/$v.validate" || status=1
-    grep -E 'issue|conformance|invariant|step \[|quint:|RESULT' "$OUT/$v.validate"
+    grep -E 'issue|conformance|invariant|step [0-9]+ |quint:|RESULT' "$OUT/$v.validate"
   done
 done
 exit $status

@@ -19,6 +19,6 @@ for _ in $(seq 50); do curl -s -o /dev/null 127.0.0.1:18080/kv/a && break; sleep
 kill -INT $srv; wait $srv
 
 echo; echo "\$ quintgo validate -binding kv.binding.yaml steps.jsonl"
-"$OUT/quintgo" validate -binding kv.binding.yaml -dir "$OUT/v-steps" "$OUT/steps.jsonl" | grep -E 'input|conformance|invariant|step \[|quint:|expect:|observed:|obs:|RESULT'
+"$OUT/quintgo" validate -binding kv.binding.yaml -dir "$OUT/v-steps" "$OUT/steps.jsonl" | grep -E 'input|conformance|invariant|step [0-9]+ |quint:|expect:|observed:|obs:|RESULT'
 echo; echo "\$ quintgo validate -binding kv.binding.yaml -convert kv.convert.yaml spans.jsonl"
-"$OUT/quintgo" validate -binding kv.binding.yaml -convert kv.convert.yaml -dir "$OUT/v-spans" "$OUT/spans.jsonl" | grep -E 'input|conformance|invariant|step \[|quint:|expect:|observed:|obs:|RESULT'
+"$OUT/quintgo" validate -binding kv.binding.yaml -convert kv.convert.yaml -dir "$OUT/v-spans" "$OUT/spans.jsonl" | grep -E 'input|conformance|invariant|step [0-9]+ |quint:|expect:|observed:|obs:|RESULT'

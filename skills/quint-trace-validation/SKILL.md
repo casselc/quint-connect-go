@@ -139,9 +139,9 @@ quintgo validate -noitf -binding app.binding.yaml clean.jsonl
 
 | Verdict | Meaning | Usual cause |
 |---|---|---|
-| `step [i] is not a transition` (disabled, QNT513) | the model cannot take the observed step from the state reached | implementation bug; or a wrong binding (argument mapping, missing restart, wrong outcome) |
+| `step i is not a transition` (disabled, QNT513) | the model cannot take the observed step from the state reached | implementation bug; or a wrong binding (argument mapping, missing restart, wrong outcome) |
 | `state does not match what was observed` (QNT508) | the step was possible but `expect` fails; the report shows `expect:`, `obs:` and the model's state after the step | implementation computed a different state, or a wrong `expect`/observation |
-| `invariant X: FAIL, violated after step [i]` | the run is a behaviour of the model, and the model's own property fails on it | a **design** bug the model already allows, now seen in real code |
+| `invariant X: FAIL, violated after step i` | the run is a behaviour of the model, and the model's own property fails on it | a **design** bug the model already allows, now seen in real code |
 | `issue: error gap` | sequence numbers are missing: steps were lost or sampled | fix the pipeline; the pass is unsound |
 | `issue: warn overlap` / `cycle` | two incarnations interleave / contradictory order keys | instrumentation identity or order keys are wrong |
 
