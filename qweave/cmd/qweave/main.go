@@ -26,8 +26,10 @@ func run() int {
 	tool := flag.String("tool", "", "the tool file naming the aspect packages (default: orchestrion.tool.go, else gosim.tool.go)")
 	verbose := flag.Bool("v", false, "list the woven files and the aspects skipped")
 	chdir := flag.String("C", "", "change to `dir` first (the module to weave and build)")
+	cover := flag.Bool("cover", false, "instrument the main module's blocks for qcover (which code each model step ran)")
+	coverPkg := flag.String("coverpkg", "", "with -cover, only packages with these comma-separated import path prefixes")
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: qweave [-C dir] [-tool file] [-v] go <command> [arguments]")
+		fmt.Fprintln(os.Stderr, "usage: qweave [-C dir] [-tool file] [-cover [-coverpkg prefixes]] [-v] go <command> [arguments]")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -42,7 +44,10 @@ func run() int {
 		flag.Usage()
 		return 2
 	}
-	cfg := qweave.Config{Tool: *tool}
+	cfg := qweave.Config{Tool: *tool, Cover: *cover}
+	if *coverPkg != "" {
+		cfg.CoverPkgs = strings.Split(*coverPkg, ",")
+	}
 	for i, a := range args[2:] {
 		if t, ok := strings.CutPrefix(a, "-tags="); ok {
 			cfg.Tags = strings.Split(t, ",")

@@ -30,6 +30,36 @@ type Config struct {
 	Env []string
 	// GOSIM prefers gosim.tool.go over orchestrion.tool.go.
 	GOSIM bool
+	// Cover instruments every block of the main module's packages (test
+	// files aside) for qcover: which code each model step ran. The
+	// toolkit's own packages (its examples aside) are never instrumented:
+	// qcover's Hit would count itself, and qenv's scheduler is not code
+	// under test.
+	Cover bool
+	// CoverPkgs, if set, limits Cover to packages with these import path
+	// prefixes.
+	CoverPkgs []string
+}
+
+const toolkit = "github.com/casselc/quint-connect-go"
+
+// covers reports whether Cover instruments the package path.
+func (c Config) covers(path string, main bool) bool {
+	if !c.Cover || !main {
+		return false
+	}
+	if (path == toolkit || strings.HasPrefix(path, toolkit+"/")) && !strings.HasPrefix(path, toolkit+"/examples/") {
+		return false
+	}
+	if len(c.CoverPkgs) == 0 {
+		return true
+	}
+	for _, p := range c.CoverPkgs {
+		if path == p || strings.HasPrefix(path, strings.TrimSuffix(p, "/")+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 // A Result is the woven files, by the path of the file they replace.
@@ -152,7 +182,7 @@ func Weave(c Config) (*Result, error) {
 	for _, s := range skipped {
 		r.Skipped = append(r.Skipped, s.String())
 	}
-	if len(aspects) == 0 {
+	if len(aspects) == 0 && !c.Cover {
 		return r, nil
 	}
 	patterns := c.Patterns
@@ -172,7 +202,7 @@ func Weave(c Config) (*Result, error) {
 		if visitErr != nil || p.Module == nil || len(p.Errors) > 0 {
 			return // the standard library, or a package that does not build
 		}
-		pi := pkgInfo{fset: pc.Fset, info: p.TypesInfo, path: p.PkgPath, root: p.Module.Main}
+		pi := pkgInfo{fset: pc.Fset, info: p.TypesInfo, path: p.PkgPath, root: p.Module.Main, cover: c.covers(p.PkgPath, p.Module.Main), modDir: p.Module.Dir}
 		for i, f := range p.Syntax {
 			name := p.CompiledGoFiles[i]
 			if done[name] {

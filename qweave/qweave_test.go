@@ -43,23 +43,27 @@ func TestWeaveSyncFixture(t *testing.T) {
 // The woven fixture runs in a qenv simulation: tasks sleep inside the
 // critical sections of the embedded lock and the method-value unlock, and
 // no increment is lost. Unwoven, the real locks block qenv's scheduler.
+// With -cover too: a block's coverage call goes before an advised
+// statement that starts it, not inside its wrapped expression.
 func TestWovenFixtureRuns(t *testing.T) {
 	if testing.Short() {
 		t.Skip("builds the fixture")
 	}
-	r, err := qweave.Weave(qweave.Config{Dir: "testdata/sync"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	overlay, err := r.WriteOverlay(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	cmd := exec.Command("go", "test", "-count=1", "-overlay="+overlay, "./...")
-	cmd.Dir = "testdata/sync"
-	cmd.Env = os.Environ()
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("%v\n%s", err, out)
+	for _, cover := range []bool{false, true} {
+		r, err := qweave.Weave(qweave.Config{Dir: "testdata/sync", Cover: cover})
+		if err != nil {
+			t.Fatal(err)
+		}
+		overlay, err := r.WriteOverlay(t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		cmd := exec.Command("go", "test", "-count=1", "-overlay="+overlay, "./...")
+		cmd.Dir = "testdata/sync"
+		cmd.Env = os.Environ()
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("cover=%v: %v\n%s", cover, err, out)
+		}
 	}
 }
 
@@ -149,6 +153,38 @@ func TestFaultFixtureRuns(t *testing.T) {
 	}
 	cmd := exec.Command("go", "test", "-count=1", "-v", "-overlay="+overlay, "./...")
 	cmd.Dir = "testdata/fault"
+	cmd.Env = os.Environ()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	t.Logf("%s", out)
+}
+
+// -cover instruments the main module's blocks for qcover, and the woven
+// fixture attributes them to its steps.
+func TestCoverFixtureRuns(t *testing.T) {
+	if testing.Short() {
+		t.Skip("builds the fixture")
+	}
+	r, err := qweave.Weave(qweave.Config{Dir: "testdata/cover", Cover: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Files) != 1 {
+		t.Fatalf("woven %d files, want store.go alone (test files are not instrumented)", len(r.Files))
+	}
+	for _, b := range r.Files {
+		if src := string(b); !strings.Contains(src, "quintqcover.Hit(__qcov_") || !strings.Contains(src, "quintqcover.Register([]quintqcover.Block{") {
+			t.Errorf("not instrumented:\n%s", src)
+		}
+	}
+	overlay, err := r.WriteOverlay(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("go", "test", "-count=1", "-v", "-overlay="+overlay, "./...")
+	cmd.Dir = "testdata/cover"
 	cmd.Env = os.Environ()
 	out, err := cmd.CombinedOutput()
 	if err != nil {

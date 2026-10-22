@@ -18,6 +18,7 @@ package qrole
 
 import (
 	"context"
+	"github.com/casselc/quint-connect-go/qrun"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -47,17 +48,19 @@ func New() *Roles {
 // Default is the registry of contexts that carry none (WithRoles).
 var Default = New()
 
-type key struct{}
+var rolesKey = qrun.NewKey[*Roles]("roles")
 
 // WithRoles makes ctx record into r: one registry per simulated run, as
 // qobs.WithRecorder does for steps.
 func WithRoles(ctx context.Context, r *Roles) context.Context {
-	return context.WithValue(ctx, key{}, r)
+	return qrun.With(ctx, rolesKey, r)
 }
 
-// From returns ctx's registry, or Default.
+// From returns the registry of ctx or, if it carries none (woven calls in
+// a function with no context pass context.TODO()), of the goroutine's
+// run (qrun); else Default.
 func From(ctx context.Context) *Roles {
-	if r, ok := ctx.Value(key{}).(*Roles); ok {
+	if r, ok := qrun.Get(ctx, rolesKey); ok && r != nil {
 		return r
 	}
 	return Default

@@ -45,7 +45,7 @@ func (f Finding) String() string { return f.Pos + ": " + f.What + ": " + f.Fix }
 //   - the wall clock (time.Now, Since, Until, Sleep, After, AfterFunc, Tick,
 //     NewTimer, NewTicker): virtual time does not pass for it;
 //   - steps recorded with context.Background() or TODO(): they find their
-//     run through the goroutine (qobs.SetFallback), but the task's context
+//     run through the goroutine (qrun), but the task's context
 //     says so directly, and keeps working if the code moves to a goroutine
 //     of its own.
 //

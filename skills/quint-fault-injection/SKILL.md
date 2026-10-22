@@ -157,6 +157,28 @@ func (s *Store) Write(ctx context.Context, k, v string) error
   and `OneWay` say which pairs of fault kinds ran together, and in which
   orders: fault-handling bugs are often two faults together.
 
+## 4a''. Which code each step ran: `qweave -cover`
+
+```sh
+go run -C path/to/qweave ./cmd/qweave -C . -cover [-coverpkg your/module/pkg] go test -run TestX ./...
+```
+
+```go
+x := qtest.Explore(t, binding, qtest.ExploreConfig{Seeds: 30, Coverage: true}, scenario)
+t.Log(x.CodeCoverage()) // never run, run by no step, outcomes that ran the same code
+```
+
+- Skip the test when `len(qcover.Blocks()) == 0` (not woven).
+- "Never run" after a conforming exploration: an error path whose fault
+  was never taken (check `x.Coverage()`), code the model's environment
+  rules out, dead code, or a scenario the model does not describe.
+- "Run by no step" is code no step of its own task explains: clients
+  whose steps the services record, relays, setup, or work after a task's
+  last step. A worker's code there means a missing step.
+- Two outcomes of an action that ran the same code: the model tells them
+  apart and the code does not. That is fine when the outcome is the
+  environment's (a lost response), and a question when it is the code's.
+
 ## 4a'. Sweep the configuration space: covering arrays (`qsweep`, `qtest.SweepExplore`)
 
 When the product of configurations grows (isolation level × sizes ×

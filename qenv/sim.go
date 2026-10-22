@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/casselc/quint-connect-go/qrun"
 	"os"
 	"runtime/debug"
 	"sort"
@@ -246,7 +247,7 @@ func (s *Sim) spawn(parent context.Context, name string, p *Process, fn func(ctx
 		t.inc = p.Incarnation
 	}
 	s.tasks = append(s.tasks, t)
-	ctx := context.WithValue(parent, ctxKey{}, t)
+	ctx := qrun.With(context.WithValue(parent, ctxKey{}, t), qrun.Task, any(t))
 	t.ctx = ctx
 	if s.nat != nil {
 		s.spawnNative(t, fn)

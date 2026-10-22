@@ -10,6 +10,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/casselc/quint-connect-go/qcover"
 	"github.com/casselc/quint-connect-go/qenv"
 	"github.com/casselc/quint-connect-go/qobs"
 	"github.com/casselc/quint-connect-go/qtrace"
@@ -26,6 +27,8 @@ type Explored struct {
 	// a failing run.
 	Interrupted []qtrace.Step
 	Report      *validate.Report
+	// Code is the run's code coverage, with ExploreConfig.Coverage.
+	Code *qcover.Counts
 }
 
 // Faults are the run's fault choices that were not nominal.
@@ -57,6 +60,17 @@ func (x *Exploration) Coverage() *qenv.Coverage {
 	return qenv.CoverageOf(runs)
 }
 
+// CodeCoverage is the runs' code coverage read against their steps
+// (ExploreConfig.Coverage): what no run ran, what ran under no step, and
+// the outcomes of an action that ran the same code.
+func (x *Exploration) CodeCoverage() *qcover.Summary {
+	runs := make([]*qcover.Counts, len(x.Runs))
+	for i, r := range x.Runs {
+		runs[i] = r.Code
+	}
+	return qcover.Summarize(runs)
+}
+
 // Failing returns the runs that violate the model, in seed order.
 func (x *Exploration) Failing() []*Explored {
 	var out []*Explored
@@ -82,6 +96,9 @@ type ExploreConfig struct {
 	// that created it); one recorded from a goroutine started with `go`
 	// has nowhere to go and panics (qobs.Strict).
 	Parallel int
+	// Coverage collects each run's code coverage, by step (qcover; the
+	// code must be woven with qweave -cover): Exploration.CodeCoverage.
+	Coverage bool
 }
 
 // Explore runs scenario once per seed, each time with a seeded qenv chooser
@@ -118,9 +135,16 @@ func Explore(t testing.TB, bindingPath string, cfg ExploreConfig, scenario func(
 			ch := qenv.NewSeeded(seed)
 			ch.Rates = cfg.Rates
 			rec := &qenv.Recorder{C: ch}
-			r := qobs.NewRecorder(mem, c.Recorder...)
-			scenario(qenv.WithContext(rec, qobs.WithRecorder(context.Background(), r)))
-			x.Runs[i] = &Explored{Seed: seed, Steps: mem.Steps(), Choices: rec.Choices, Interrupted: r.Interrupted()}
+			var sink qobs.Sink = mem
+			ctx := context.Background()
+			var code *qcover.Counts
+			if cfg.Coverage {
+				code = qcover.NewCounts()
+				ctx, sink = qcover.WithCounts(ctx, code), code.Sink(mem)
+			}
+			r := qobs.NewRecorder(sink, c.Recorder...)
+			scenario(qenv.WithContext(rec, qobs.WithRecorder(ctx, r)))
+			x.Runs[i] = &Explored{Seed: seed, Steps: mem.Steps(), Choices: rec.Choices, Interrupted: r.Interrupted(), Code: code}
 			runs[i] = mem.Steps()
 		}()
 	}

@@ -365,6 +365,8 @@ r := qmeta.Assess(x, "markPaid", qmeta.Trigger{Slowdown: 3, Duration: time.Minut
 | `qload` | load on qenv: `Experiment` (an application under open- or closed-loop load, goodput from its model steps, probes, seeded streams, `Trigger`s); `Simulate` (an abstract server and clients with timeouts, retries, backoff, budgets or a `Retrier` under test) |
 | `qrole` | load roles: `//quint:serve`, `//quint:operation`, `//quint:call` (woven by its aspects, or `Serve`/`Operation`/`Call`) measure a server's requests (u) and the orbit (v); OTel gauges (`Instrument`) |
 | `qmeta` | metastability: a CTMC (`Field`/`SVG`, `HittingTimes`, `RecoveryWithin`, `Expect`/`ExpectAll`, `Calibrate`/`CalibrateTimeout` from observed series via `Trajectories`), alerts (`Region`: states unlikely to recover in time; `Rules`: a Prometheus rule group over qrole's metrics), the recovery property (`Recovers`, `Assess`, `Mostly`; judged against the healthy goodput within the counts' noise), and `System`/`TriggerSpace` for Hegel's trigger search (`quinthegel.FindTrigger`, `SearchTrigger`) |
+| `qcover` | code coverage by model step: blocks woven by `qweave -cover`, attributed to each task's next step; `Summarize` (never run, run by no step, outcomes that ran the same code); `ExploreConfig.Coverage`, `Exploration.CodeCoverage` |
+| `qrun` | a run's state (`Key[T]`, `Get`): from the context, else the goroutine's run; what qobs, qrole and qcover look up |
 | `qsweep` | covering arrays: `Cover` (every t-way combination of factor values, with constraints), `Missing`, `Sequences` (every order of t events) |
 | `load` | read OTLP/JSON, a step log or ITF, detected by content |
 | `skills` | the agent skills below, embedded; install targets |

@@ -3,6 +3,7 @@ package qenv
 import (
 	"bytes"
 	"context"
+	"github.com/casselc/quint-connect-go/qrun"
 	"runtime"
 	"strconv"
 	"sync"
@@ -15,7 +16,7 @@ import (
 // creates them), and the goroutine that created it (which runs it, and
 // records around it). qobs asks for a step whose context carries no
 // recorder, so that context.Background() inside a simulation records into
-// the simulation's run (qobs.SetFallback). Go has no goroutine-local
+// the simulation's run (qrun.SetResolver). Go has no goroutine-local
 // storage; the goroutine id comes from the runtime's stack header, read
 // only when a task starts and on that fallback path.
 var owners struct {
@@ -43,13 +44,18 @@ func init() {
 		o, ok := ownerOf(goid())
 		return ok && o.t != nil && o.t.killed
 	})
-	qobs.SetFallback(func() (*qobs.Recorder, bool) {
+	qrun.SetResolver(func() (context.Context, bool) {
+		if live.Load() == 0 {
+			return nil, false
+		}
 		o, ok := ownerOf(goid())
 		if !ok {
 			return nil, false
 		}
-		r := qobs.InContext(o.s.base)
-		return r, r != nil
+		if o.t != nil {
+			return o.t.ctx, true
+		}
+		return o.s.base, true // the goroutine that created the simulation
 	})
 }
 

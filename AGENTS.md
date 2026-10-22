@@ -38,6 +38,7 @@ qenv/fault/   the //quint:fault aspect: fault points (qenv.FaultPoint) with the 
 qgosim/       separate module: qenv and whole programs in gosim (the fork: branch gosim-fork, ./fetch-gosim.sh)
 qweave/       separate module: weaves Orchestrion aspects with types into a go -overlay (cmd/qweave); also gosim's
 qload/ qmeta/ load simulation (open/closed-loop clients, servers, triggers); CTMC, recovery property, alert rules
+qcover/ qrun/ code coverage by model step (woven by qweave -cover); a run's state found from its context or goroutine
 qsweep/       covering arrays (pairwise and t-way rows with constraints, sequence covering); qtest.SweepExplore runs them
 qrole/        load roles (//quint:serve, //quint:operation, //quint:call; aspects in orchestrion.yml): u and v as gauges
 cmd/quintgo/  CLI
@@ -161,6 +162,15 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   nemesis by name (`nemesis.crash.<process>`): the scheduler asks a
   chooser with `ChooseNemesis` instead of choosing among enabled
   nemeses by index, which no trace can name.
+- A run's state (its recorder, role registry, coverage counts) is found
+  through `qrun`: the context, else the goroutine's run (qenv's
+  resolver). A new kind of per-run state is a `qrun.Key`, never a
+  package-level default that runs in parallel would share.
+- `qweave -cover` instruments the main module only, never the toolkit's
+  own packages (examples aside): qcover's `Hit` would count itself. A
+  block's code is attributed to its task's next step, so a client whose
+  step a service records shows as "run by no step": read that list as
+  code no step of its own task explains, not as dead code.
 - A Script imposes its faults in strict order, each waiting for its kind:
   a fault of a phase that has passed (checkout's API faults happen only
   while orders are placed) blocks every later one. Script ordered pairs,

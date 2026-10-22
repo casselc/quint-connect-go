@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/casselc/quint-connect-go/qrun"
 	"reflect"
 	"sync"
 	"sync/atomic"
@@ -107,30 +108,25 @@ func SetGlobal(r *Recorder) { global.Store(r) }
 // Global returns the installed recorder, or nil.
 func Global() *Recorder { return global.Load() }
 
-type recorderKey struct{}
+var recorderKey = qrun.NewKey[*Recorder]("recorder")
 
 // WithRecorder returns a context whose steps Record sends to r rather than
 // to the global recorder. Runs in parallel (seeds of an exploration,
 // simulations of a trigger search) each record into their own: a qenv
 // simulation passes its context to every task (qenv.WithContext).
 func WithRecorder(ctx context.Context, r *Recorder) context.Context {
-	return context.WithValue(ctx, recorderKey{}, r)
+	return qrun.With(ctx, recorderKey, r)
 }
 
 // InContext returns the recorder WithRecorder put in ctx, or nil.
 func InContext(ctx context.Context) *Recorder {
-	if ctx != nil {
-		if r, ok := ctx.Value(recorderKey{}).(*Recorder); ok {
-			return r
-		}
-	}
-	return nil
+	r, _ := qrun.In(ctx, recorderKey)
+	return r
 }
 
 var (
-	fallback atomic.Pointer[func() (*Recorder, bool)]
-	discard  atomic.Pointer[func() bool]
-	strict   atomic.Int64
+	discard atomic.Pointer[func() bool]
+	strict  atomic.Int64
 )
 
 // SetDiscard installs a check, made for every step, of whether the calling
@@ -141,13 +137,6 @@ var (
 // not happen: it goes to the recorder's Interrupted list, not to its sink.
 // qenv installs the check.
 func SetDiscard(f func() bool) { discard.Store(&f) }
-
-// SetFallback installs where a step whose context carries no recorder goes
-// before the global recorder: f returns the recorder of the run the calling
-// goroutine belongs to, and whether it belongs to one. qenv installs it, so
-// that a step recorded with context.Background() inside a simulation still
-// lands in its own run, even with runs in parallel.
-func SetFallback(f func() (*Recorder, bool)) { fallback.Store(&f) }
 
 // Strict turns on, until release is called, the rule that a step must have
 // somewhere to go: a step with no recorder in its context, no run for its
@@ -161,22 +150,18 @@ func Strict() (release func()) {
 }
 
 // From returns the recorder Record uses for ctx: the one WithRecorder set;
-// else that of the run the goroutine belongs to (SetFallback); else the
-// global one (nil if none).
+// else that of the run the goroutine belongs to (qrun.Get: a step recorded
+// with context.Background() inside a simulation still lands in its own
+// run, even with runs in parallel); else the global one (nil if none).
 func From(ctx context.Context) *Recorder {
-	if r := InContext(ctx); r != nil {
+	if r, ok := qrun.Get(ctx, recorderKey); ok && r != nil {
 		return r
-	}
-	if f := fallback.Load(); f != nil {
-		if r, ok := (*f)(); ok {
-			return r
-		}
 	}
 	return global.Load()
 }
 
 // Record records one step through the context's recorder (WithRecorder),
-// its goroutine's run's (SetFallback) or the global one; a no-op when
+// its goroutine's run's (qrun) or the global one; a no-op when
 // there is none, unless a run is Strict. This is the function
 // //quint:action advice calls.
 func Record(ctx context.Context, action string, err error, kv ...any) {

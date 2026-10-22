@@ -1823,3 +1823,74 @@ run conforms.
 - Rows with other stocks than the binding's failed every run until the
   sweep passed the model the row's `STOCK`: sizes are factors of the
   model too.
+
+## 17. Code coverage by model step (`qcover`, `qweave -cover`, `qrun`)
+
+The fault coverage of §15.11 says which faults runs tried. This says which
+code they ran, step by step, so coverage can be read against the model
+(docs/ROADMAP.md A1).
+
+**Why weave, not Go's `-cover`.**
+- Go's counters are global to the process: runs in parallel (Explore's
+  seeds) would mix.
+- Reading them mid-run means parsing an internal file format.
+- qweave already rewrites the code under test, so it inserts the
+  counters itself. `qweave -cover` puts a call of `qcover.Hit(id)` at the
+  start of every straight-line run of statements, splitting after
+  compound or branching statements as cmd/cover does, on the line it
+  starts so positions do not move. Each file registers its blocks in a
+  package variable.
+- Only the main module is instrumented, and never the toolkit's own
+  packages, its examples aside: qcover would count itself, and qenv's
+  scheduler is not code under test. `-coverpkg` narrows it further.
+
+**Attribution.** A block finds its run's `Counts` and its task through the
+goroutine.
+- The blocks a task runs between two of its steps are its next step's,
+  because steps are recorded where they take effect, at the end of the
+  code that made them.
+- Blocks are attributed per task, not per stretch of time, so an
+  interleaved task's code never lands in another task's step. Two tasks
+  interleaving at every step, in four parallel runs, pass under `-race`.
+- Code that causes a step in another task is "run, but by no step of the
+  task that ran it". That covers a client whose step the service records,
+  a relay, setup, and code after a task's last step: the report lists it
+  by function.
+
+**The report** (`Exploration.CodeCoverage()`, `qcover.Summary`):
+- statements covered;
+- blocks never run, by function;
+- code run by no step;
+- the blocks each action and outcome ran;
+- outcomes of one action that ran the same code: the model tells them
+  apart, and these runs' code does not.
+
+On checkout under exploration, 30 seeds cover 76.8% of the shop's
+statements. The fixture (qweave/testdata/cover) shows each category: a
+fault branch is put/error's alone, a get records both outcomes from the
+same code, Compact never runs, and setup and Close run under no step.
+
+**One lookup of a run's state (`qrun`).** qcover needed what qobs and qrole
+already had, in different shapes: a value carried by the run's context,
+found from the goroutine when the context carries none.
+- qrole had no goroutine fallback. Its woven calls in a function with no
+  context passed `context.TODO()` and counted into `qrole.Default`,
+  shared by runs in parallel.
+- `qrun.Key[T]`, `qrun.Get` (the context, then the goroutine's run: a
+  task's context, or the simulation's for the goroutine that created it)
+  and one resolver installed by qenv now serve all three.
+- Every task's context names its task (`qrun.Task`), for state kept per
+  task.
+- `qobs.SetFallback` is gone.
+
+**Found on the way.**
+- A switch's or select's body is a block of clauses, not statements. A
+  coverage call before `case` does not compile; the clauses are
+  instrumented, not the body.
+- An insertion at the offset where an aspect replaces an expression
+  (`mu.Lock()` woven by qenv/weave at the start of a block) must go
+  before the replacement, not inside it. qweave orders an insertion
+  first among the edits that start at its offset; the sync fixture runs
+  woven with `-cover` too.
+- A test binary's generated main is in the build cache, outside the
+  module: it is not instrumented.

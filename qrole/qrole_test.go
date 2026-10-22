@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 
+	"github.com/casselc/quint-connect-go/qenv"
 	"github.com/casselc/quint-connect-go/qrole"
 )
 
@@ -72,5 +74,30 @@ func TestInstrument(t *testing.T) {
 	}
 	if got[qrole.MetricServeInflight+"/api"] != 1 || got[qrole.MetricOrbit+"/api"] != 2 {
 		t.Errorf("gauges %v", got)
+	}
+}
+
+// A woven call in a function with no context passes context.TODO(): it
+// still counts into its own run's registry (through the goroutine's run),
+// not into Default, which runs in parallel would share.
+func TestRolesOfTheGoroutinesRun(t *testing.T) {
+	r := qrole.New()
+	s := qenv.New(qenv.WithContext(qenv.Nominal{}, qrole.WithRoles(context.Background(), r)))
+	s.Process("worker", false, func(context.Context) {
+		done := qrole.Serve(context.TODO(), "api")
+		if q := r.Queue("api"); q != 1 {
+			t.Errorf("queue %d in the run's registry", q)
+		}
+		done(nil)
+	})
+	if err := s.Run(time.Second); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	if ok, _ := r.Served("api"); ok != 1 {
+		t.Errorf("served %d", ok)
+	}
+	if ok, _ := qrole.Default.Served("api"); ok != 0 {
+		t.Error("counted into Default")
 	}
 }

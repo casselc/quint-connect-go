@@ -8,6 +8,7 @@ import (
 	"go/format"
 	"go/token"
 	"go/types"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -21,6 +22,10 @@ type pkgInfo struct {
 	info *types.Info
 	path string
 	root bool // in the main module (package-filter root)
+	// cover instruments the file's blocks (Config.Cover); modDir is the
+	// module's directory, for the blocks' file names
+	cover  bool
+	modDir string
 }
 
 // An edit replaces src[start:end] (an insertion when they are equal). Its
@@ -71,6 +76,11 @@ func weaveFile(p pkgInfo, file *ast.File, src []byte, name string, aspects []*As
 	}
 	if err := w.walk(aspects); err != nil {
 		return nil, nil, err
+	}
+	// the module's own files: not tests, not generated ones in the build
+	// cache (a test binary's main)
+	if p.cover && !strings.HasSuffix(name, "_test.go") && p.modDir != "" && strings.HasPrefix(name, p.modDir+string(filepath.Separator)) {
+		w.instrument()
 	}
 	if len(w.edits) == 0 {
 		return nil, w.skipped, nil
@@ -517,6 +527,12 @@ func (w *fileWeaver) apply() ([]byte, error) {
 	sort.SliceStable(edits, func(i, j int) bool {
 		if edits[i].start != edits[j].start {
 			return edits[i].start < edits[j].start
+		}
+		// an insertion goes before an edit that replaces text at its
+		// offset (a block's coverage call before a wrapped expression that
+		// starts the block), not inside it
+		if zi, zj := edits[i].start == edits[i].end, edits[j].start == edits[j].end; zi != zj {
+			return zi
 		}
 		return edits[i].end > edits[j].end
 	})

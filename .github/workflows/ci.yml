@@ -33,7 +33,9 @@ jobs:
       - name: simulation code stays in the simulation
         run: go run ./cmd/quintgo lint -sim .
       - name: test (qenv self-checks)
-        run: QENV_CHECK=1 go test -short -count=1 ./qenv/ ./qload/ ./qtest/
+        run: QENV_CHECK=1 go test -short -count=1 ./qenv/ ./qload/ ./qtest/ ./qcover/ ./qrun/
+      - name: code coverage by model step (checkout woven by qweave -cover)
+        run: go run -C qweave ./cmd/qweave -C .. -cover -coverpkg github.com/casselc/quint-connect-go/examples/checkout go test -count=1 -run TestCodeCoverage -v ./examples/checkout/
       - name: test (typescript backend)
         run: QUINT_BACKEND=typescript go test -short -count=1 ./connect/ ./validate/ ./examples/bank/
       - name: example app demos
