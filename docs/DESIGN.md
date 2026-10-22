@@ -2267,3 +2267,44 @@ The review's other parts of P8 wait: coverage gaps as expectations
 (`Reaches`, `NoSurvivors`) need a decision on what a test may demand of
 chance (a pair of kinds is reached in most seeds, not all), and a JSON
 form next to `QUINTGO_KEEP` needs the reports' types to marshal.
+
+## 30. Choreo models (examples/twophase)
+
+[Choreo](https://github.com/informalsystems/choreo) is Informal's
+framework for distributed protocols in Quint: nodes with local state, a
+message soup (messages are delivered by being in a node's inbox, never
+lost or reordered away), and listeners returning the transitions a node
+can take. Its `step` picks a node and a transition itself:
+`nondet v = oneOf(processes)` in the framework and `nondet transition =
+oneOf(transitions)` in `process_transitions`. Two consequences for us:
+- a recorded step says "p2 prepared"; nothing in a `step`-only model can
+  be called with that;
+- `quint run --mbt` reports `mbt::actionTaken = step` and a transition
+  record, which a driver could only match by its post-state.
+
+Choreo already has the deterministic form: `choreo::step_with(node,
+listener, effects)` runs one listener for one node (its own tests use it),
+and `with_cue(...).perform(...)` one transition with parameters. A model
+that names each transition as an action of its node over `step_with`, and
+chooses among those in `step`, is a model like any other: bindings call
+`prepare("p2")`, `--mbt` names the action and the node, and connect
+compares a driver's state with `choreo::s.system`. So "supporting Choreo"
+needed no code: connect already strips the `m::choreo::` qualifiers, and
+the replay module imports the model, whose relative imports find the
+vendored framework.
+
+What the example taught:
+- Choreo's message soup is a good fit for an implementation over a lossy
+  network: a lost message is a transition not yet taken, a duplicate is a
+  message already in the set. Retries need no model of their own.
+- The implementation's protocol state is the model's local state, so the
+  steps are recorded where the stage changes, in the node's store
+  (OnCommit): a crash after the commit keeps the step.
+- `choreo::s` is module-private; a binding's expectations need a def
+  (`stage(n)`) in the model.
+- Choreo's listeners leave role guards to the local state; the named
+  action should check the node is of the right kind, since the node now
+  comes from the code.
+- Of three mutants, the model's traces (connect) catch one (committing on
+  the first vote); the two that need a late decision or a crash show
+  only in explored runs: the same split as bank's, now on a protocol.

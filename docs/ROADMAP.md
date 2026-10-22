@@ -152,3 +152,5 @@ the rest, each after the U items it depends on.
 - U8 (P8): one evidence report (DESIGN §29): `Exploration.Evidence`,
   `Swept.Evidence`. Coverage gaps as expectations and a JSON form wait;
   P7 (the skills restructure) is next.
+- Choreo (DESIGN §30): examples/twophase, a Choreo model with named
+  transitions; no toolkit change needed.

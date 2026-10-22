@@ -50,6 +50,7 @@ examples/glomers      Gossip Glomers on a Maelstrom runtime + simulator (maelstr
                       cmd/* run under real Maelstrom (maelstrom.sh)
 examples/kvstore      app: HTTP KV service with CAS (kvserver, kvload); concurrency, span conversion
 examples/jobqueue     app: at-least-once queue with leases and restarts; design-level verdicts
+examples/twophase     app: two-phase commit on qenv against a Choreo model (vendored choreo.qnt); named transitions, connect and Explore
 examples/checkout     app: checkout saga on qenv (isolation levels, outbox, idempotency, crashes); cmd/checkout-sim; under load (load.go)
 examples/fleetrollout separate module: multicluster-runtime controller, simulated (kubesim) and on kwok (kwok-demo.sh)
 examples/crossdb      separate module: Crossplane provider (crossplane-runtime) for a dbaas, simulated and on kind with Crossplane (kind/)
@@ -145,6 +146,13 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   (`binding.RenderModule` handles this).
 - Hegel's `TestCase.Errorf` aborts the test case (unlike `testing.T`).
   `hegel.Test` cannot express "expected to fail": use `hegel.Run`.
+- Choreo models (examples/twophase): Choreo's `step` picks a node and a
+  transition, which no recorded step or `--mbt` trace can name. Give each
+  transition a named action of its node (`choreo::step_with(node, f, ...)`)
+  and choose among them in `step`. `choreo::s` is not visible outside the
+  model's module: bindings and runs read state through a def
+  (`stage(n)`). connect's `StatePath: [s, system]` reaches the nodes (the
+  `m::choreo::` qualifiers are stripped).
 - Long replays are split into `.then` segments of 20 (`binding.segmentSteps`):
   Quint's Rust evaluator rejects chains nested much past 50. A disabled
   last step is reported by quint as QNT511 at the run's own line, and a

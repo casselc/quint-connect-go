@@ -81,6 +81,33 @@ the state and on how invariants are written:
   `validate.Options{NoITF: true}`) when you don't need the ITF of a
   conforming run: it holds the full state at every step.
 
+## Choreo models
+
+[Choreo](https://github.com/informalsystems/choreo) specs work with every
+workflow once each transition is a named action
+(examples/twophase/model/twophase.qnt):
+
+```quint
+action step_with(v: Node, listener: LocalContext => Set[Transition]): bool =
+  choreo::step_with(v, listener, (c, _) => c)
+action prepare(node: Node): bool = all { PARTICIPANTS.contains(node), step_with(node, spontaneously_prepares) }
+action decideCommit: bool = step_with(COORDINATOR, decides_on_commit)
+action step = { nondet node = PARTICIPANTS.oneOf()  any { prepare(node), decideCommit, ... } }
+def stage(n: Node): Stage = choreo::s.system.get(n).stage   // for bindings: choreo::s is module-private
+```
+
+- Choreo's own `choreo::step(main_listener, ...)` picks the transition
+  inside the framework: a recorded step cannot say which, and
+  `mbt::actionTaken` is always `step`. Keep it for simulation if you
+  like; bind and drive the named actions.
+- A guard the listener leaves implicit (a transition that only makes
+  sense for participants) belongs in the named action too
+  (`PARTICIPANTS.contains(node)`): the recorded node is the code's claim.
+- connect: `StatePath: []string{"s", "system"}` compares a driver's
+  per-node state with `choreo::s.system`.
+- Vendor `choreo.qnt` and `spells/basicSpells.qnt` next to the model
+  (Apache-2.0): its import paths are relative.
+
 ## Workflow
 
 ```sh

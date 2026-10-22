@@ -45,6 +45,7 @@ jobs:
           examples/kvstore/run-demo.sh
           examples/jobqueue/run-demo.sh
           SEEDS=15 examples/checkout/run-demo.sh
+          examples/twophase/run-demo.sh
           examples/retrystorm/run-demo.sh
 
   edgepublish:

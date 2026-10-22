@@ -1,0 +1,20 @@
+# Recorded two-phase commit steps as calls of model/twophase.qnt's named
+# transitions (choreo::step_with of the node that takes them). Every
+# parameter is the step field of its name; each participant's step says
+# the stage it reached, compared with the model's.
+spec: model/twophase.qnt
+module: twophase
+constants:
+  PARTICIPANTS: 'Set("p1", "p2", "p3")'
+actions:
+  prepare:
+    expect: 'stage({{.node}}) == Prepared'
+  abort:
+    expect: 'stage({{.node}}) == Aborted'
+  abortAsInstructed:
+    expect: 'stage({{.node}}) == Aborted'
+  commitAsInstructed:
+    expect: 'stage({{.node}}) == Committed'
+  decideCommit: {}
+  decideAbort: {}
+invariants: [consistency, commitIsDecided]
