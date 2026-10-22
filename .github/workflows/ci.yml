@@ -128,7 +128,7 @@ jobs:
       - name: vet
         run: go vet ./... && go vet -tags sim ./broadcast/cluster/ ./checkout/ && (cd ../../qgosim && go vet ./... && go vet -tags sim ./...)
       - name: test (broadcast and checkout on gosim, choices from qenv)
-        run: go test -short -count=1 -timeout 30m ./...
+        run: go test -p 1 -short -count=1 -timeout 30m ./...
 
   maelstrom:
     runs-on: ubuntu-latest

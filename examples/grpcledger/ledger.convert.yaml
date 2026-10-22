@@ -6,6 +6,10 @@
 # steps (a domain clock: docs/instrumentation.md).
 actor: =ledger
 recorder: =ledger
+# each request is its own thread: spans of concurrent requests start and
+# end in any order, so one shared thread would assert their time order as
+# program order and contradict ledger.seq
+thread: span_id
 rules:
   - span: "ledger.v1.Ledger/*"
     where: { ledger.action: transfer }

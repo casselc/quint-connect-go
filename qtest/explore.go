@@ -187,7 +187,11 @@ func explore(t testing.TB, bindingPath string, cfg ExploreConfig, scenario func(
 		}()
 	}
 	wg.Wait()
-	for _, r := range x.Runs {
+	for i, r := range x.Runs {
+		if r == nil { // the scenario failed t from its goroutine before the run ended
+			t.Errorf("quintgo: seed %d did not finish: the scenario failed the test (above)", seeds[i])
+			continue
+		}
 		if r.Err != nil {
 			t.Errorf("quintgo: seed %d did not run: %v", r.Seed, r.Err)
 		}

@@ -78,3 +78,41 @@ func TestConvertAppSpans(t *testing.T) {
 }
 
 func traceAttrs(kv ...attribute.KeyValue) trace.EventOption { return trace.WithAttributes(kv...) }
+
+// A domain clock and a thread per span: written "attr:x" or "attr:x|int",
+// the clock is read (a second |int once dropped it silently), and each
+// span its own thread.
+func TestOrderAndThread(t *testing.T) {
+	r, err := Parse([]byte(`
+thread: span_id
+rules:
+  - span: "A"
+    action: a
+    order: { seq: attr:seq|int }
+  - span: "B"
+    action: b
+    order: { seq: attr:seq }
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sr := tracetest.NewSpanRecorder()
+	tr := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(sr)).Tracer("app")
+	for _, n := range []string{"A", "B"} {
+		_, s := tr.Start(context.Background(), n)
+		s.SetAttributes(attribute.Int64("seq", 7))
+		s.End()
+	}
+	steps, err := r.Steps([]otelio.TracesData{otelio.SpansToTracesData(sr.Ended())})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range steps {
+		if s.Order["seq"] != 7 || s.Thread == "" {
+			t.Errorf("%s: order %v, thread %q", s.Action, s.Order, s.Thread)
+		}
+	}
+	if steps[0].Thread == steps[1].Thread {
+		t.Error("two spans share a thread")
+	}
+}

@@ -369,7 +369,10 @@ func (rs *Rules) step(ru *Rule, c *ctx, t time.Time) (qtrace.Step, string, error
 		}
 	}
 	for k, e := range ru.Order {
-		v, ok, err := c.eval(e + "|int")
+		if !strings.HasSuffix(e, "|int") {
+			e += "|int" // a clock is an int; "attr:x|int" says so already
+		}
+		v, ok, err := c.eval(e)
 		if err != nil {
 			return s, "", fmt.Errorf("order %s: %w", k, err)
 		}

@@ -44,3 +44,22 @@ func TestSystemRunError(t *testing.T) {
 		t.Errorf("errors %q", f.errs)
 	}
 }
+
+// A scenario that fails the test from its run's goroutine (t.Fatal in
+// Run) fails the exploration with its seed, instead of a nil run
+// crashing it.
+func TestScenarioFatal(t *testing.T) {
+	f := &failTB{TB: t}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		explore(f, "../validate/testdata/account.yaml", ExploreConfig{Seeds: 1, Parallel: 1}, func(qenv.Chooser) error {
+			f.Fatalf("the gosim binary is missing")
+			return nil
+		})
+	}()
+	<-done
+	if !f.failed || !strings.Contains(strings.Join(f.errs, "\n"), "seed 1 did not finish") {
+		t.Fatalf("errors: %v", f.errs)
+	}
+}

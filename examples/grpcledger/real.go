@@ -68,7 +68,10 @@ func Serve(cfg RealConfig) (*ledger.Client, func(), error) {
 		srv.Stop()
 		return nil, nil, err
 	}
-	stop := func() { _ = conn.Close(); srv.Stop() }
+	// GracefulStop waits for every handler, and so for its span to end:
+	// Stop cancels what is still being served, and a request that committed
+	// before otelgrpc ended its span would lose its step
+	stop := func() { srv.GracefulStop(); _ = conn.Close() }
 	return &ledger.Client{Ledger: ledgerpb.NewLedgerClient(conn), Backoff: 5 * time.Millisecond}, stop, nil
 }
 

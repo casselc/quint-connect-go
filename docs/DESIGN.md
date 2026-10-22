@@ -2612,6 +2612,14 @@ could not say; each is fixed where it belongs:
   scheduling point there; opt-in, since it changes the choices of runs
   recorded before it. grpcledger's `TestCrashAfterCommit` shows crashes
   alone exposing a missing dedupe with it.
+- **A domain clock written `attr:x|int` was dropped.** convert appended
+  `|int` to every `order:` expression, so `attr:ledger.seq|int` became
+  `attr:ledger.seq|int|int`, the lookup failed, and the order was
+  silently empty: grpcledger's real-tier steps were ordered by span time,
+  which concurrent requests contradict, and CI failed one run in a few.
+  convert now adds `|int` only when missing, and grpcledger gives each
+  request its own thread (`thread: span_id`), so a shared thread does
+  not assert span time order as program order.
 - **Long failing runs seemed slow to validate** (17 to 30 s for 160 to
   500 steps, measured while four agents shared the machine). Measured
   alone: a failing run costs one more quint run, the detail module (each

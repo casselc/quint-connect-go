@@ -29,6 +29,11 @@ func realSteps(t *testing.T, cfg grpcledger.RealConfig) []qtrace.Step {
 	}
 	grpcledger.Load(context.Background(), cl, 4, 8, cfg.Seed)
 	stop()
+	// a span still open is a step missing from the run: the model would
+	// see the next transfer's balances without this one's
+	if started, ended := len(sr.Started()), len(sr.Ended()); started != ended {
+		t.Fatalf("%d spans started, %d ended: a request was still being served when the server stopped", started, ended)
+	}
 	rules, err := convert.Load("ledger.convert.yaml")
 	if err != nil {
 		t.Fatal(err)
