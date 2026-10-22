@@ -333,6 +333,11 @@ names what it needs.
   => ../` in qanalysis and qgosim; tagged core and sub-modules; `go
   install …/qweave/cmd/qweave@vX` and `…/qanalysis/cmd/quintvet@vX` in
   the skills instead of `go run -C`.
+  *Waiting:* tags are outward, so they wait for the maintainer; and a
+  `go.work` changes how every module's dependencies resolve (workspace
+  MVS takes the highest version any example needs, so the core would
+  build against versions its go.mod does not name), so it goes with the
+  tags, CI moving to `GOWORK=off` per module.
 - **R2. The breaking release, with the rename** (needs V1–V15). The
   `fault.` prefix out of user APIs; V12's CrashWindow default; one name
   per concept (`ExploreConfig.Coverage` → `CodeCoverage`,
