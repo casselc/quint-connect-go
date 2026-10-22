@@ -32,9 +32,9 @@ import (
 
 	"github.com/casselc/quint-connect-go/binding"
 	"github.com/casselc/quint-connect-go/convert"
-	simlint "github.com/casselc/quint-connect-go/internal/lint"
 	"github.com/casselc/quint-connect-go/load"
 	"github.com/casselc/quint-connect-go/otelio"
+	"github.com/casselc/quint-connect-go/qlint"
 	"github.com/casselc/quint-connect-go/qtrace"
 	"github.com/casselc/quint-connect-go/skills"
 	"github.com/casselc/quint-connect-go/validate"
@@ -138,7 +138,7 @@ func lint(args []string) (int, error) {
 	fset.Parse(args)
 	simFindings := 0
 	if *weave != "" {
-		fs, err := simlint.Woven(*weave)
+		fs, err := qlint.Woven(*weave)
 		if err != nil {
 			return 2, err
 		}
@@ -155,7 +155,7 @@ func lint(args []string) (int, error) {
 		}
 	}
 	if *sim != "" {
-		fs, err := simlint.Sim(*sim)
+		fs, err := qlint.Sim(*sim)
 		if err != nil {
 			return 2, err
 		}

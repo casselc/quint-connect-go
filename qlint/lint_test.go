@@ -1,4 +1,4 @@
-package lint_test
+package qlint_test
 
 import (
 	"os"
@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/casselc/quint-connect-go/internal/lint"
+	"github.com/casselc/quint-connect-go/qlint"
 )
 
 // Lint finds what escapes a simulation, in files that import qenv, and
@@ -55,7 +55,7 @@ import (
 var _ = qenv.Nominal{}
 var t0 = time.Now()
 `)
-	fs, err := lint.Sim(dir)
+	fs, err := qlint.Sim(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +102,7 @@ func (s *st) acquire() func() {
 	if err := os.WriteFile(filepath.Join(dir, "app.go"), []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	fs, err := lint.Woven(dir)
+	fs, err := qlint.Woven(dir)
 	if err != nil {
 		t.Fatal(err)
 	}

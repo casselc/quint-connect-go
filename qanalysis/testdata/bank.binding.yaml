@@ -1,0 +1,14 @@
+# examples/bank's binding, for the Action analyzer's test.
+spec: ../../examples/bank/model/bank.qnt
+module: bank
+constants:
+  ACCOUNTS: 'Set("alice", "bob", "carol")'
+  MAX_AMOUNT: '5'
+actions:
+  deposit:
+    outcomes: { error: skip }
+    expect: 'balances.get({{.account}}) == {{.obs.balance}}'
+  withdraw:
+    outcomes: { error: skip }
+    expect: 'balances.get({{.account}}) == {{.obs.balance}}'
+invariants: [noOverdraft]
