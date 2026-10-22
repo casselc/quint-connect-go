@@ -36,7 +36,7 @@ func main() {
 	for seed := 1; seed <= *seeds; seed++ {
 		// durable: a crash is part of the run, and the log must keep its
 		// last steps
-		sink, err := qobs.DurableFileSink(filepath.Join(*out, fmt.Sprintf("seed%d.jsonl", seed)))
+		sink, err := qobs.FileSink(filepath.Join(*out, fmt.Sprintf("seed%d.jsonl", seed)))
 		if err != nil {
 			fail(err)
 		}

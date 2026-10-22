@@ -24,29 +24,35 @@ type JSONLSink struct {
 // NewJSONLSink writes the step log to w.
 func NewJSONLSink(w io.Writer) *JSONLSink { return &JSONLSink{w: w} }
 
-// FileSink creates (truncating) a buffered step log file. Close (or Flush)
-// it when done: steps still in the buffer are lost if the process dies.
+// FileSink creates (truncating) a step log file written one step at a
+// time, with no buffer in the process: a step is in the file (the OS's,
+// at least) when Record returns, so a process that is killed loses none.
+// Steps lost at the end of a log cannot be detected (no later sequence
+// number reveals the gap), which is why it is the default;
+// BufferedFileSink is faster where nothing crashes.
 func FileSink(path string) (*JSONLSink, error) {
+	f, err := os.Create(path)
+	if err != nil {
+		return nil, err
+	}
+	return &JSONLSink{w: f, c: f}, nil
+}
+
+// DurableFileSink is FileSink.
+//
+// Deprecated: FileSink is durable; use it.
+func DurableFileSink(path string) (*JSONLSink, error) { return FileSink(path) }
+
+// BufferedFileSink creates (truncating) a buffered step log file: fewer
+// writes, for long runs nothing kills. Close (or Flush) it when done:
+// steps still in the buffer are lost if the process dies, undetectably.
+func BufferedFileSink(path string) (*JSONLSink, error) {
 	f, err := os.Create(path)
 	if err != nil {
 		return nil, err
 	}
 	b := bufio.NewWriterSize(f, 64*1024)
 	return &JSONLSink{w: b, buf: b, c: f}, nil
-}
-
-// DurableFileSink creates (truncating) a step log file written one step
-// at a time, with no buffer in the process: a step is in the file (the
-// OS's, at least) when Record returns, so a process that is killed loses
-// none. Use it where crashes are part of what is tested; FileSink is
-// faster. Steps lost at the end of a log cannot be detected (no later
-// sequence number reveals the gap), which is why this matters.
-func DurableFileSink(path string) (*JSONLSink, error) {
-	f, err := os.Create(path)
-	if err != nil {
-		return nil, err
-	}
-	return &JSONLSink{w: f, c: f}, nil
 }
 
 // Flush writes buffered steps to the file.

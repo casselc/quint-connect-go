@@ -97,7 +97,7 @@ Under a production workload (`TestRolloutUnderProductionWorkload`):
   the demo waited for a `patch` line still in `FileSink`'s 64 KB buffer.
   `kill -9` would have dropped those steps for good, and steps lost at the
   end of a log cannot be detected, because no later sequence number reveals
-  the gap. `qobs.DurableFileSink` writes each step through, and the
+  the gap. `qobs.FileSink` writes each step through, and the
   controller uses it.
 - **Recording points differ by environment.** The simulation records
   patches at the API server, where they take effect. With real clusters

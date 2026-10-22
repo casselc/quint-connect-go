@@ -26,7 +26,7 @@ func main() {
 	lag := flag.Duration("visibility-lag", time.Second, "how long a new database is invisible to reads")
 	seed := flag.Uint64("seed", 1, "fault seed")
 	flag.Parse()
-	sink, err := qobs.DurableFileSink(*steps)
+	sink, err := qobs.FileSink(*steps)
 	if err != nil {
 		fail(err)
 	}

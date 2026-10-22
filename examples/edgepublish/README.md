@@ -111,7 +111,8 @@ The environment:
 - the exporter crashes into new epochs.
 
 ```sh
-go run github.com/DataDog/orchestrion go test ./sim/ -v     # ~10 min; -short ~4 min
+go run -C ../../qweave ./cmd/qweave -C "$PWD" go test ./sim/ -v   # the repository's weaver; ~10 min, -short ~4 min
+go run github.com/DataDog/orchestrion go test ./sim/ -v            # Orchestrion weaves it too
 ```
 
 | Test | Shows |

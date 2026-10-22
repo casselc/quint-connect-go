@@ -313,7 +313,11 @@ names what it needs.
 - **V15. Smaller fixes from the gotchas.** `FileSink` durable by default
   (the buffered one renamed); a thread used from two goroutines fails at
   record time; `qenv.Wait`/`Signal.Wait` fall back to real waits outside
-  a simulation; qweave the default weaver for qenv/weave.
+  a simulation; qweave the default weaver for qenv/weave. *Done:*
+  `FileSink` durable (`BufferedFileSink` the old one, `DurableFileSink`
+  deprecated); `Recorder.Issues` (a Thread from two goroutines), which
+  fails the run; real waits outside a simulation; qweave first in the
+  docs (CI already wove edgepublish's sim with it).
 - **V16. P7, finished.** quint-metastability, quint-trace-validation and
   quint-hegel split into references; quint-start rows for gosim, weaving,
   Kubernetes controllers and fuzzing, with a ten-line System snippet; the

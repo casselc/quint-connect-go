@@ -59,7 +59,7 @@ func main() {
 		clean(ctx, kube)
 		return
 	}
-	sink, err := qobs.DurableFileSink(*steps)
+	sink, err := qobs.FileSink(*steps)
 	if err != nil {
 		fail(err)
 	}

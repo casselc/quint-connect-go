@@ -9,6 +9,7 @@ import (
 	"runtime/debug"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/casselc/quint-connect-go/qenv/choice"
@@ -432,17 +433,20 @@ func (f *fenwick) kth(k int) int {
 }
 
 // Wait blocks the task until ready holds. ready is evaluated by the
-// scheduler, between tasks, and must only read simulation state.
+// scheduler, between tasks, and must only read simulation state. Outside a
+// simulation it polls ready in real time (every millisecond) until it
+// holds or ctx is done: ready must then be safe to call concurrently.
 func Wait(ctx context.Context, ready func() bool) {
 	WaitUntil(ctx, ready, time.Time{})
 }
 
 // WaitUntil blocks until ready holds or the virtual time reaches deadline
-// (zero: no deadline). It reports whether ready held.
+// (zero: no deadline). It reports whether ready held. Outside a
+// simulation the deadline is real time, as in Wait.
 func WaitUntil(ctx context.Context, ready func() bool, deadline time.Time) bool {
 	t := taskOf(ctx)
 	if t == nil {
-		panic("qenv: Wait outside a simulation")
+		return pollReal(ctx, ready, deadline)
 	}
 	if ready() {
 		return true
@@ -457,6 +461,27 @@ func WaitUntil(ctx context.Context, ready func() bool, deadline time.Time) bool 
 // waiting for responses, workers waiting for work).
 type Signal struct {
 	waiters []waiter
+
+	// outside a simulation: a channel Notify closes
+	mu sync.Mutex
+	ch chan struct{}
+}
+
+// pollReal is Wait outside a simulation.
+func pollReal(ctx context.Context, ready func() bool, deadline time.Time) bool {
+	tick := time.NewTicker(time.Millisecond) //qenv:ok the real wait, outside any simulation
+	defer tick.Stop()
+	for !ready() {
+		if !deadline.IsZero() && !time.Now().Before(deadline) { //qenv:ok the real wait's deadline
+			return false
+		}
+		select {
+		case <-ctx.Done():
+			return ready()
+		case <-tick.C:
+		}
+	}
+	return true
 }
 
 // waiter is a task's wait on a Signal: gen tells it from the task's later
@@ -467,19 +492,49 @@ type waiter struct {
 }
 
 // Wait blocks until Notify or the virtual time reaches deadline (zero:
-// none). It reports whether Notify woke it.
+// none). It reports whether Notify woke it. Outside a simulation it waits
+// in real time (the deadline too) or until ctx is done.
 func (g *Signal) Wait(ctx context.Context, deadline time.Time) bool {
 	t := taskOf(ctx)
 	if t == nil {
-		panic("qenv: Signal.Wait outside a simulation")
+		return g.waitReal(ctx, deadline)
 	}
 	g.waiters = append(g.waiters, waiter{t, t.gen})
 	t.wait(nil, deadline)
 	return t.notified
 }
 
-// Notify wakes every task waiting on the signal.
+func (g *Signal) waitReal(ctx context.Context, deadline time.Time) bool {
+	g.mu.Lock()
+	if g.ch == nil {
+		g.ch = make(chan struct{})
+	}
+	ch := g.ch
+	g.mu.Unlock()
+	var timeout <-chan time.Time
+	if !deadline.IsZero() {
+		tm := time.NewTimer(time.Until(deadline)) //qenv:ok the real wait's deadline
+		defer tm.Stop()
+		timeout = tm.C
+	}
+	select {
+	case <-ch:
+		return true
+	case <-timeout:
+	case <-ctx.Done():
+	}
+	return false
+}
+
+// Notify wakes every task waiting on the signal (and every goroutine
+// waiting outside a simulation).
 func (g *Signal) Notify() {
+	g.mu.Lock()
+	if g.ch != nil {
+		close(g.ch)
+		g.ch = nil
+	}
+	g.mu.Unlock()
 	for _, w := range g.waiters {
 		if t := w.t; t.waiting && t.gen == w.gen && !t.done && !t.killed {
 			t.notified = true

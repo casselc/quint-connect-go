@@ -169,6 +169,9 @@ func explore(t testing.TB, bindingPath string, cfg ExploreConfig, scenario func(
 			if err == nil {
 				err = chooserErr(ch)
 			}
+			if is := r.Issues(); err == nil && len(is) > 0 {
+				err = fmt.Errorf("quintgo: recording: %s", strings.Join(is, "; "))
+			}
 			x.Runs[i] = &Run{Seed: seed, Steps: mem.Steps(), Choices: rec.Choices, Interrupted: r.Interrupted(), Code: code, Err: err}
 			if sc, ok := qenv.As[*qenv.Script](ch); ok {
 				x.Runs[i].Unscripted = sc.Remaining()

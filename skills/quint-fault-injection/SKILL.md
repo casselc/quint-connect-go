@@ -51,9 +51,9 @@ shrinking removes faults.
   reported with a failing run but not checked. If the model must see an
   effect whether or not its caller survives (a write that landed, then a
   crash), record it at the effect's site instead.
-- **Crash tests in a real environment** need `qobs.DurableFileSink`.
-  `FileSink` buffers, and the steps it loses at the end of a log are
-  undetectable.
+- **Crash tests in a real environment** need a durable step log:
+  `qobs.FileSink` is (one write per step). `BufferedFileSink` loses the
+  last steps of a killed process, undetectably.
 
 ## 3. Deploy into a simulation
 

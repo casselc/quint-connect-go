@@ -44,7 +44,39 @@ type Recorder struct {
 	process string
 
 	mu          sync.Mutex
-	interrupted []qtrace.Step // SetDiscard
+	interrupted []qtrace.Step    // SetDiscard
+	threads     map[string]int64 // a Thread's goroutine
+	issues      []string
+}
+
+// Issues are what the recorder found wrong with how it was used, as it
+// recorded: a Thread used from two goroutines (a thread asserts program
+// order, which two goroutines do not have). An exploration fails a run
+// with issues.
+func (r *Recorder) Issues() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]string(nil), r.issues...)
+}
+
+// checkThread notes the goroutine of a Thread's first step, and an issue
+// when a later step comes from another.
+func (r *Recorder) checkThread(thread, action string) {
+	g := qrun.GoroutineID()
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.threads == nil {
+		r.threads = map[string]int64{}
+	}
+	first, ok := r.threads[thread]
+	switch {
+	case !ok:
+		r.threads[thread] = g
+	case first != g && len(r.issues) < 10:
+		r.issues = append(r.issues, fmt.Sprintf("thread %s (qobs.Thread) recorded %q from goroutine %d after goroutine %d: "+
+			"a thread asserts program order, which two goroutines do not have; give each its own (qobs.Thread in the goroutine)", thread, action, g, first))
+		r.threads[thread] = g // one issue per change of goroutine
+	}
 }
 
 // Interrupted returns the steps this recorder was asked to record by work
@@ -266,6 +298,7 @@ func (r *Recorder) step(ctx context.Context, action string, err error, kv []any)
 	}
 	if t, ok := ctx.Value(threadKey{}).(string); ok {
 		s.Thread = t
+		r.checkThread(t, action)
 	} else if sc := trace.SpanContextFromContext(ctx); sc.IsValid() {
 		s.Thread = sc.SpanID().String()
 	}

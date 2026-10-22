@@ -66,7 +66,7 @@ examples/crossdb      separate module: Crossplane provider (crossplane-runtime) 
 examples/retrystorm   library: retry policies (backoff, budget); budget checked by a model, policies by qmeta/qload/FindTrigger
 examples/bank         library example; every workflow on one small system
 examples/edgepublish  separate module (Orchestrion); the spike's real-world case, model vendored in model/;
-                      sim/: the publisher, unchanged, in qenv by weaving (orchestrion go test ./sim/)
+                      sim/: the publisher, unchanged, in qenv by weaving (qweave go test ./sim/, as CI does)
 examples/gosim        separate module; on gosim via qgosim: broadcast/ (Glomers node over TCP), checkout/ (the saga on
                       qenv's native runtime); simulated tests //go:build sim, host tests make the choices (DESIGN §14, §15.1)
 docs/         DESIGN.md, instrumentation.md
@@ -211,9 +211,10 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   republishes everything) livelocks a run under per-step crash rates:
   every restart adds work at the same virtual instant. Give it durable
   progress (an outbox it clears on acknowledgement), as a real one has.
-- `qenv.Wait` and `Signal.Wait` panic outside a simulation. A seam whose
-  completion callbacks run on a real client's goroutines (kgo's promises)
-  needs its wait in the seam (`Writer.Flush`), not in the application.
+- Outside a simulation `qenv.Wait` polls its predicate in real time and
+  `Signal.Wait` waits on a channel `Notify` closes (they panicked once): a
+  seam's code runs unchanged with a real client, whose goroutines notify.
+  The predicate must then be safe to call concurrently.
 - `Sim.Run` returns `ErrStuck` (naming the tasks) when nothing can run, no
   deadline is set and a task still waits: a stalled run once looked
   quiet. A task that may wait forever (a server's loop, a sender waiting
@@ -362,8 +363,9 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
 - One thread per goroutine when recording with a domain clock: a thread
   asserts program order, and goroutines sharing one contradict it
   (`issue: error cycle`).
-- `FileSink` buffers: a killed process loses its last steps, undetectably.
-  Use `DurableFileSink` where crashes are part of the test.
+- `FileSink` is durable (one write per step); `BufferedFileSink` buffers,
+  and a killed process loses its last steps, undetectably: use it only
+  where nothing crashes.
 - A `qenv.Signal` waiter is tagged with the task's wait generation; a
   timed-out wait must not be woken by a later `Notify` (it once shortened
   the next sleep). Keep the tag when touching the scheduler.

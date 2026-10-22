@@ -178,6 +178,9 @@ func Record(t testing.TB, bindingPath string, scenario func(rec *qobs.Recorder),
 	if err := file.Close(); err != nil {
 		t.Fatalf("quintgo: step log: %v", err)
 	}
+	for _, is := range rec.Issues() {
+		t.Errorf("quintgo: recording: %s", is)
+	}
 	run.Steps = mem.Steps()
 	if len(run.Steps) == 0 {
 		if c.SkipIfEmpty {
