@@ -269,7 +269,9 @@ names what it needs.
   error.
 - **V14. Lints that see more.** `quintgo lint -sim` includes `_test.go`
   (System `Run` closures live there); quintaction checks literal action
-  names in `qobs.Record` against the binding.
+  names in `qobs.Record` against the binding. *Done:* lint -sim scans
+  tests; literal Record actions are checked by `quintgo lint -binding
+  -src` and quintaction, with a did-you-mean.
 - **V15. Smaller fixes from the gotchas.** `FileSink` durable by default
   (the buffered one renamed); a thread used from two goroutines fails at
   record time; `qenv.Wait`/`Signal.Wait` fall back to real waits outside
@@ -295,7 +297,9 @@ names what it needs.
   module renamed (see the review's names).
 - **R3. Real environments in CI.** A kwok job running fleetrollout's demo
   (`go install` kwokctl and kwok; no Docker), then D3's KWOK Stages from
-  `sktrace.Quantiles` checked there.
+  `sktrace.Quantiles` checked there. *Done:* `fleetrollout.KwokStages`,
+  `cmd/kwok-stages`, kwok-demo.sh `TRACE=`; in CI the faithful run
+  conforms and ignore-observed-generation is caught.
 
 Order: V1–V2 before the next example; V3 → V4 → V5 → V6; V7–V9 alongside;
 V10 → V11 → V12; V13–V16 alongside; R1 any time; R2 last; R3 independent.

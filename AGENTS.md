@@ -58,7 +58,8 @@ examples/streams      separate module: outbox publisher + consumers on Kafka (fr
                       kinesisfake) and a simulated log (simlog: partitions, idempotent producer, group, fencing); one binding
 examples/twophase     app: two-phase commit on qenv against a Choreo model (vendored choreo.qnt); named transitions, connect and Explore
 examples/checkout     app: checkout saga on qenv (isolation levels, outbox, idempotency, crashes); cmd/checkout-sim; under load (load.go)
-examples/fleetrollout separate module: multicluster-runtime controller, simulated (kubesim) and on kwok (kwok-demo.sh)
+examples/fleetrollout separate module: multicluster-runtime controller, simulated (kubesim) and on kwok (kwok-demo.sh;
+                      TRACE= times pods by a SimKube trace through kwok Stages, cmd/kwok-stages)
 examples/crossdb      separate module: Crossplane provider (crossplane-runtime) for a dbaas, simulated and on kind with Crossplane (kind/)
 examples/retrystorm   library: retry policies (backoff, budget); budget checked by a model, policies by qmeta/qload/FindTrigger
 examples/bank         library example; every workflow on one small system
@@ -288,7 +289,20 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   `qenv/goroutine.go`). Explore and Experiment runs are strict
   (`qobs.Strict`), so a step from a goroutine started with `go` panics.
   `quintgo lint -sim .` (in CI) flags `go` statements and wall-clock
-  calls in files that import qenv; `//qenv:ok` exempts a line.
+  calls in files that import qenv, tests included; `//qenv:ok` exempts a
+  line (give the reason after it).
+- `quintgo lint -binding -src` and quintaction (`-binding`) check literal
+  actions passed to `qobs.Record` and `Recorder.Record`, in files that
+  import qobs. An action through a constant or variable is not seen, and
+  a call on another imported package's `Record` (qtest's) is skipped by
+  its name; the analyzer confirms each call by type, the CLI cannot.
+- kwok's pod stages given in a cluster's config replace all of its default
+  pod stages, not its node stages: `KwokStages` carries kwok's fast
+  pod-ready, pod-complete and pod-delete stages with only the delays
+  added, one stage per option with weight 1 (kwok picks among matching
+  stages by weight; one stage's jitter would be uniform, not the trace's
+  quantiles). Trace clusters are `fleet-trace-m*`, so `KEEP=1` never
+  reuses a cluster with kwok's immediate stages.
 - qenv finds the task of a goroutine when a context carries none: Sleep,
   Wait, Go and recording with `context.Background()` from a task stay in
   its simulation (`taskOf`, `qenv/goroutine.go`). Without that, a woven

@@ -112,8 +112,9 @@ quinthegel.Shrink(t, sys, hegel.WithTestCases(50)).Expect(t, qtest.Violates("cha
     created it), whatever context it was recorded with. From a `go`
     goroutine it has no run, and the exploration panics with the fix.
   - Run `quintgo lint -sim .` to find `go` statements and wall-clock calls
-    (`time.Now`, `time.Sleep`) in files that import qenv. Mark a
-    deliberate one `//qenv:ok`.
+    (`time.Now`, `time.Sleep`) in files that import qenv, tests included
+    (a System's `Run` closure lives there). Mark a deliberate one
+    `//qenv:ok <why>`.
 - **Other instances:** `qtest.Constants(map[string]string{"STOCK":
   "1000"})` checks against the model with other constants, so one
   binding serves runs of every size.
@@ -170,8 +171,12 @@ Read the reference before using what it covers:
 
 Run the real binary against real dependencies, and inject the faults you
 can. For Kubernetes: kwok clusters with the binary runtime (no Docker),
-`kill -9` the controller, `kubectl` to reset. Write step logs and check
-them:
+`kill -9` the controller, `kubectl` to reset. To give a kwok cluster the
+timing of production, generate pod Stages from a SimKube trace (`go run
+./cmd/kwok-stages -trace f.sktrace -speed 10 > stages.yaml`, then
+`kwokctl create cluster --config stages.yaml`; fleetrollout's `TRACE=`),
+from the same quantiles as the simulated `PodTimes`. Write step logs and
+check them:
 `quintgo validate -noitf -binding app.binding.yaml logs/*.jsonl`.
 - A new process is a restart (`restart:` in the binding).
 - A final fresh read of every component, then `settle`, makes eventual

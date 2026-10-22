@@ -82,8 +82,9 @@ Rules:
   Quint literals (no operator calls). `expect` may be any Quint boolean.
 
 Then lint: `quintgo lint -binding bank.binding.yaml -src ./pkg`. It checks
-the binding against `quint typecheck` and the annotations against the
-binding.
+the binding against `quint typecheck`, the annotations against the
+binding, and the literal action of every `qobs.Record` call against the
+model (a misspelled action gets a did-you-mean).
 
 In the editor and in CI, the same checks run as analyzers (qanalysis):
 - `quintvet ./...` (built from `qanalysis/cmd/quintvet`, or

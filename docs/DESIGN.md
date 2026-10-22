@@ -2327,6 +2327,16 @@ process: it runs quint). Run on edgepublish with its binding it reports
 the same as the CLI: `probe`'s `woven` action is not in the model (the
 weaving probe; left as is).
 
+It also checks explicit steps: the literal action of every `qobs.Record`
+and `(*qobs.Recorder).Record` call must be one of the model's
+(`binding.LintRecords`, with the nearest action and the list). The scan
+is the binding package's (`binding.RecordsOf`, syntax only, so the CLI
+shares it); the analyzer confirms each call is qobs's by type, which the
+CLI approximates by skipping calls on other imported packages. quintsim
+checks test files, like `quintgo lint -sim`: a System's `Run` closure is
+test code, and a `go` statement there escapes the run as surely as one
+in the library.
+
 gopls cannot load third-party analyzers; editors get them through
 golangci-lint (the module plugin `quintgo`) or `go vet -vettool`.
 
@@ -2473,9 +2483,17 @@ measured distribution; `Quantiles(ds, n)` makes n options of it, shortest
 first, so option 0 stays nominal and Hegel's shrinking still moves toward
 fast pods. fleetrollout's `Config.PodTimes` uses the CronJob trace's 30 s
 and 45 s pods, 60 times faster: the faithful controller conforms and the
-stale-status mutant is still caught. Deferred: KWOK Stage resources from
-the same quantiles for the kwok demo, since kwok is not available here to
-check a generated Stage against.
+stale-status mutant is still caught.
+
+The kwok tier is timed by the same numbers (R3). `fleetrollout.KwokStages`
+turns `sktrace.Quantiles(tr.Lifetimes(gvk), n)` into kwok pod Stages, one
+weighted pod-ready stage per option: the discrete, uniform choice kubesim
+makes with `sched.kube.pod`. A real cluster's pods then become ready as
+slowly as the trace's did. The generator lives in the example, not in
+sktrace: sktrace stays a dependency-free decoder, and the stages'
+templates are kwok's (v0.7.0's kustomize/stage/pod/fast), copied
+unchanged. A test loads them with kwok's own config loader and matches
+pods with its lifecycle package.
 
 **A1, the rest.** Two classifications of code no run ran, both in
 qanalysis/actionmap, which has the call graph:
