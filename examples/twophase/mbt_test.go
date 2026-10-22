@@ -19,6 +19,7 @@ type driver struct {
 	mutation    tpc.Mutation
 	coordinator *tpc.Coordinator
 	parts       map[string]*tpc.Participant
+	votes       []string // prepared, not yet counted by the coordinator
 }
 
 func (d *driver) Step(s *connect.Step) error {
@@ -35,23 +36,31 @@ func (d *driver) Step(s *connect.Step) error {
 			}
 			return nil
 		},
-		// a vote reaches the coordinator as the participant prepares: the
-		// model's broadcast is in its inbox at once
+		// the model's broadcast is in the coordinator's inbox at once, but
+		// its decision is a step of its own: the votes are counted there
+		// (Voted decides on the last one, which the model may separate from
+		// the decision by other nodes' steps)
 		"prepare": func(*connect.Step) error {
 			p := node()
 			if _, err := p.Prepare(ctx); err != nil {
 				return err
 			}
-			_, err := d.coordinator.Voted(ctx, p.Node)
-			return err
+			d.votes = append(d.votes, p.Node)
+			return nil
 		},
 		"abort":              func(*connect.Step) error { _, err := node().Abort(ctx); return err },
 		"commitAsInstructed": func(*connect.Step) error { return node().Decide(ctx, true) },
 		"abortAsInstructed":  func(*connect.Step) error { return node().Decide(ctx, false) },
-		// decideCommit happened in the last vote (Voted); the model takes it
-		// as a step of its own
-		"decideCommit": func(*connect.Step) error { return nil },
-		"decideAbort":  func(*connect.Step) error { _, err := d.coordinator.TimeOut(ctx); return err },
+		"decideCommit": func(*connect.Step) error {
+			for _, n := range d.votes {
+				if _, err := d.coordinator.Voted(ctx, n); err != nil {
+					return err
+				}
+			}
+			d.votes = nil
+			return nil
+		},
+		"decideAbort": func(*connect.Step) error { _, err := d.coordinator.TimeOut(ctx); return err },
 	}.Step(s)
 }
 
