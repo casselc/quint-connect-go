@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+package ledger.v1;
+
+option go_package = "github.com/casselc/quint-connect-go/examples/grpcledger/ledgerpb";
+
+// Ledger moves money between accounts. Transfer is idempotent by key: a
+// client retries a transfer whose response it did not get with the same
+// key, and the server applies it once.
+service Ledger {
+  rpc Transfer(TransferRequest) returns (TransferResponse);
+  rpc Balance(BalanceRequest) returns (BalanceResponse);
+}
+
+message TransferRequest {
+  string idempotency_key = 1;
+  string from = 2;
+  string to = 3;
+  int64 amount = 4;
+}
+
+message TransferResponse {
+  // The balances the transfer left, at its commit (a replay returns the
+  // original's).
+  int64 from_balance = 1;
+  int64 to_balance = 2;
+  // Replayed: the key was already applied, and nothing changed.
+  bool replayed = 3;
+}
+
+message BalanceRequest {
+  string account = 1;
+}
+
+message BalanceResponse {
+  int64 amount = 1;
+}

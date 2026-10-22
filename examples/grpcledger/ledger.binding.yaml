@@ -1,0 +1,18 @@
+# Recorded ledger steps as calls of model/ledger.qnt. Steps are recorded at
+# the server's commits (Txn.OnCommit); every parameter is the step field of
+# its name. The balances a step saw are compared with the model's: a lost
+# update shows there, as a transfer the model takes but whose balances
+# differ.
+spec: model/ledger.qnt
+module: ledger
+constants:
+  INITIAL: '5'
+actions:
+  transfer:
+    expect: 'balance.get({{.src}}) == {{.obs.src_balance}} and balance.get({{.dest}}) == {{.obs.dest_balance}}'
+  refuse:
+    expect: 'balance.get({{.src}}) == {{.obs.src_balance}}'
+  replay: {}
+  read:
+    expect: 'balance.get({{.account}}) == {{.obs.amount}}'
+invariants: [conservation, nonNegative]
