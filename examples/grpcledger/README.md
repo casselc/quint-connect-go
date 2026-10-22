@@ -46,8 +46,8 @@ client on return. A transfer whose response was lost still happened.
 |---|---|---|
 | `TestFaithfulConforms` | simulated | 60 seeds with crashes and every network fault conform; `Evidence` lists the 4 fault kinds faulted and every pair together |
 | `TestMutants` | simulated | the table above: `NoDedupe` conforms without faults and is caught with them; the others need none |
-| `TestNoDedupeSweep` | simulated | pairwise over {conn, request, response, crash}: the bug shows exactly in rows with duplicated requests or lost responses |
-| `TestCrashAfterCommit` | simulated, crashes only | with a crash window after the commit, crashes alone expose `NoDedupe`; the faithful ledger conforms |
+| `TestNoDedupeSweep` | simulated | pairwise over {conn, request, response, crash}: the bug shows in every row with duplicated requests, lost responses or crashes (one can fall after the commit), and in no row with only refused connections |
+| `TestCrashWindow` | simulated, crashes only | a crash can fall after the commit (qenv.Service's crash window), so crashes alone expose `NoDedupe`; the faithful ledger conforms |
 | `TestShrinkDoubleApply` | simulated, Hegel | shrinks `NoDedupe` to one duplicated request (`quinthegel.Shrink`), replayable from its choices |
 | `TestRealSpansConform` | real | a concurrent load with refused calls and lost responses: the otelgrpc spans conform |
 | `TestRealMutants` | real | `NoDedupe` (lost responses) and `NoFundsCheck` caught from spans |
@@ -68,11 +68,10 @@ ledger for real and validates its spans with `quintgo validate -convert`
   does, so the same bug would show as retries instead of a silent stall.
 - **A crash could not lose a committed response.** `qenv.Service`
   delivered a response in the handler's scheduling step, so only the
-  lost-response fault stood for "the server died after committing" (the
-  sweep's expectations, whose crash rows run without it, still say so).
-  `qenv.Service.CrashWindow` (here `Config.CrashAfterCommit`) opens that
-  window: `TestCrashAfterCommit` shows crashes alone exposing the missing
-  dedupe.
+  lost-response fault stood for "the server died after committing".
+  `qenv.Service` now lets a crash fall between the commit and the
+  response by default (`NoCrashWindow` closes it): `TestCrashWindow`
+  shows crashes alone exposing the missing dedupe.
 
 ## Regenerating the protobuf code
 

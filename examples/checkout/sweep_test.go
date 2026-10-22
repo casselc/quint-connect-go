@@ -63,7 +63,11 @@ func TestNoIdempotencyKeySweep(t *testing.T) {
 	if testing.Short() {
 		t.Skip("sweeps hundreds of runs")
 	}
-	sweepSystem(shop.NoIdempotencyKey).Sweep(t, qtest.SweepConfig{Factors: space, Explore: qtest.ExploreConfig{Seeds: 20, Rates: crashy},
+	// the provider's faults at a quarter: since a crash can fall after a
+	// commit (qenv.Service's window), the double charge needs a lost
+	// provider response at the right moment, in 2 runs of 100 at crashy's
+	// rates and 13 of 100 at this one
+	sweepSystem(shop.NoIdempotencyKey).Sweep(t, qtest.SweepConfig{Factors: space, Explore: qtest.ExploreConfig{Seeds: 30, Rates: crashy.Set("rpc.provider", 0.25)},
 		Expect: func(row qsweep.Row) []qtest.Claim {
 			if row.On("rpc.provider") {
 				return []qtest.Claim{qtest.Violates("chargedAtMostOnce")}

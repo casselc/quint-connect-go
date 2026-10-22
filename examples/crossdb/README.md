@@ -85,6 +85,14 @@ the ID. The faithful provider's answer:
   The grace period is what protects deletion from an eventually consistent
   cloud. The cost is that deleting a just-created resource takes the full
   30 s.
+- **The grace period counts from the wrong annotation.** crossplane-runtime
+  starts it at create-succeeded. A create that timed out is recorded as
+  failed, though the cloud may have made the database. Deleted within the
+  cloud's read lag, the resource's `Observe` saw nothing, the finalizer
+  came off, and the database leaked. Seed 50 found it once qenv's
+  services let a crash fall after the effect by default. `Observe`
+  now waits out the grace period from create-pending while the resource
+  is being deleted, whatever result was recorded.
 - **What only the simulation found.** On kind, the generated-external-name
   mutant passed both runs. Its leak needs a create whose response is lost
   *and* a delete before the retry. Its stuck state needs a `kill -9` in

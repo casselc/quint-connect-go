@@ -10,7 +10,13 @@
 //     the cloud, which makes Create idempotent, and Observe finds the
 //     database by it. So the reconciler may safely retry a create whose
 //     outcome it does not know (WithDeterministicExternalName), whether a
-//     response was lost or the provider crashed.
+//     response was lost or the provider crashed. A resource deleted while
+//     a recent create's database may still be invisible to the cloud's
+//     eventually consistent reads waits out the creation grace from the
+//     create's start, whatever its recorded result (a timed-out create is
+//     recorded as failed, yet may have made the database), not only from a
+//     create seen to succeed, which is all crossplane-runtime's grace
+//     period covers.
 //   - The admin password lives in a Secret (spec.forProvider.
 //     passwordSecretRef) written before the database is created. Every
 //     Observe reads it, publishes it with the endpoint, and compares its
@@ -111,7 +117,7 @@ func ReconcilerOptions(kube client.Client, api dbaas.API, o Options) []managed.R
 		// before believing it does not exist: the cloud's reads are
 		// eventually consistent, and a resource deleted right after its
 		// create would otherwise lose its finalizer and leak the database.
-		managed.WithCreationGracePeriod(30 * time.Second),
+		managed.WithCreationGracePeriod(creationGrace),
 	}
 	if o.PollInterval > 0 {
 		opts = append(opts, managed.WithPollInterval(o.PollInterval))
@@ -130,6 +136,10 @@ func ReconcilerOptions(kube client.Client, api dbaas.API, o Options) []managed.R
 		})),
 		managed.WithDeterministicExternalName(true))
 }
+
+// creationGrace is how long a database just created may stay invisible to
+// the cloud's reads (its VisibilityLag, with room to spare).
+const creationGrace = 30 * time.Second
 
 type external struct{ *connector }
 
@@ -191,8 +201,22 @@ func (e *external) ensurePassword(ctx context.Context, db *v1alpha1.Database) (s
 func (e *external) Observe(ctx context.Context, mg resource.Managed) (managed.ExternalObservation, error) {
 	db := mg.(*v1alpha1.Database)
 	d, ok, err := e.find(ctx, db)
-	if err != nil || !ok {
+	if err != nil {
 		return managed.ExternalObservation{}, err
+	}
+	if !ok {
+		// crossplane-runtime's creation grace period counts from a create
+		// it saw succeed. A create whose result is unknown may have made a
+		// database the cloud's reads do not show yet: the response lost or
+		// timed out (recorded as a failed create), or the provider gone
+		// before it came (an incomplete one). A deleted resource believed
+		// absent would lose its finalizer and leak it, so wait out the
+		// grace from the last create's start, whatever its recorded result.
+		if pending := meta.GetExternalCreatePending(db); meta.WasDeleted(db) && !pending.IsZero() &&
+			time.Since(pending) < creationGrace {
+			return managed.ExternalObservation{}, errors.New("the database's create has no known result and may not be visible yet: waiting before believing it absent")
+		}
+		return managed.ExternalObservation{}, nil
 	}
 	db.Status.AtProvider = v1alpha1.DatabaseObservation{ID: d.ID, Status: d.Status, Endpoint: d.Endpoint, PasswordFingerprint: d.PasswordFingerprint}
 	switch d.Status {

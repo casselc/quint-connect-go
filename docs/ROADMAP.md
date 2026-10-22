@@ -418,7 +418,13 @@ recorder opt-in.
   `Store.CommitFaults` stays a field for now (W7 decides its default with
   CrashWindow's).
 - **W7. Crashes per virtual time, CrashWindow on**, by default on every
-  runtime; examples retuned, claims not loosened.
+  runtime; examples retuned, claims not loosened. Done in part, as decided with
+  the maintainer: the crash window is on (`Service.NoCrashWindow` closes
+  it; grpcledger's `CrashAfterCommit` goes). Crashes stay per scheduling
+  step by default: measured, the examples' runs last from 14 ms
+  (streams) to 80 s (checkout) of virtual time, so a 100 ms default
+  period gave streams no crash chance and hello one, and no one period
+  fits. `NemesisEvery` stays opt-in for load runs (qload sets it).
 - **W8. First hour and docs.** A quickstart in README; quint-start in the
   skill list, with a glossary and a first-hour path; qweave's install;
   scaffold fixes; report wording; skills corrected; the examples' own

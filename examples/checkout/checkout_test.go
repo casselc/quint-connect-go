@@ -43,8 +43,12 @@ func TestFaithfulConformsAtEveryLevel(t *testing.T) {
 }
 
 // What each bug looks like, and at which isolation levels it is a bug at
-// all: missing row locks only matter under read committed, a lock without
-// a write only under snapshot isolation.
+// all: missing row locks oversell only under read committed, a lock
+// without a write only under snapshot isolation. Under snapshot isolation
+// missing row locks also refuse an order from a stale snapshot (a
+// cancellation's stock returned after it), which the model, judging the
+// refusal where it committed, rejects; a crash after a commit (qenv.Service's
+// window) makes that interleaving reachable.
 func TestMutants(t *testing.T) {
 	qtest.RequireQuint(t)
 	shipOrCancel := qtest.AnyOf(qtest.Rejects("ship"), qtest.Rejects("cancel"))
@@ -55,7 +59,7 @@ func TestMutants(t *testing.T) {
 		want  []qtest.Claim
 	}{
 		{shop.NoLocks, qenv.Serializable, crashy, []qtest.Claim{qtest.Conforms()}},
-		{shop.NoLocks, qenv.SnapshotIsolation, crashy, []qtest.Claim{qtest.Conforms()}},
+		{shop.NoLocks, qenv.SnapshotIsolation, crashy, []qtest.Claim{qtest.Rejects("refuse"), qtest.None(qtest.Rejects("place"))}},
 		// lost updates: the stock oversold, or a shipment and a cancellation
 		{shop.NoLocks, qenv.ReadCommitted, qenv.DefaultRates, []qtest.Claim{qtest.AnyOf(qtest.Rejects("place"), shipOrCancel)}},
 		{shop.LockWithoutWrite, qenv.Serializable, crashy, []qtest.Claim{qtest.Conforms()}},

@@ -42,7 +42,10 @@ type Sim struct {
 	// period of virtual time, at the first step after each period ends,
 	// rather than at every scheduling step. A per-step rate means more
 	// crashes per second the busier the system: under load, steps per
-	// second grow a hundredfold. Set it for load runs.
+	// second grow a hundredfold. Set it for load runs. Per step stays the
+	// default because no one period fits every system: the examples' runs
+	// last from 14 ms (streams) to 80 s (checkout) of virtual time, and a
+	// 100 ms period would give the fast ones no crash at all.
 	NemesisEvery time.Duration
 	// Check makes the scheduler verify its own invariants at every step
 	// and panic on a violation (also on with QENV_CHECK=1). For tests of

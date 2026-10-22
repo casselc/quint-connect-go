@@ -47,7 +47,7 @@ batch. Each test states the verdict it expects with `qtest.Expect`.
 | Code | Serializable | Snapshot isolation | Read committed |
 |---|---|---|---|
 | faithful | conforms | conforms | conforms |
-| `NoLocks` (plain SELECTs) | conforms | conforms (write conflicts abort) | **rejects** `place` (oversold) or `ship`/`cancel` (lost update) |
+| `NoLocks` (plain SELECTs) | conforms | **rejects** `refuse` (decided from a snapshot older than a cancellation; write conflicts still abort the updates) | **rejects** `place` (oversold) or `ship`/`cancel` (lost update) |
 | `LockWithoutWrite` (FOR UPDATE, results in their own tables) | conforms | **rejects** `ship` or `cancel` (write skew) | conforms (reads after the lock see the latest commit) |
 | `NoIdempotencyKey` | **violates** `chargedAtMostOnce` (a retry after a lost response) or `settledCorrectly` (the void can't find the charge) | | |
 | `DualWrite` (publish in the background after commit) | **violates** `settledCorrectly`: a crash before the publish loses the order (a one-step window, found at a higher crash rate) | | |

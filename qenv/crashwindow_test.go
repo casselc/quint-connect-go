@@ -9,9 +9,9 @@ import (
 	"github.com/casselc/quint-connect-go/qenv"
 )
 
-// With CrashWindow, a server can die after its handler ran and before it
+// By default a server can die after its handler ran and before it
 // answered: the call times out though the effect happened, with no
-// network fault at all. Without it, a crash never falls there.
+// network fault at all. With NoCrashWindow, a crash never falls there.
 func TestServiceCrashWindow(t *testing.T) {
 	afterEffect := func(window bool) int {
 		n := 0
@@ -22,7 +22,7 @@ func TestServiceCrashWindow(t *testing.T) {
 			applied := false
 			proc := s.Process("server", true, func(context.Context) {})
 			svc := qenv.NewService(s, "server", proc, func(ctx context.Context, _ int) (int, error) { applied = true; return 1, nil })
-			svc.CrashWindow = window
+			svc.NoCrashWindow = !window
 			var err error
 			s.Spawn("client", func(ctx context.Context) { _, err = svc.Call(ctx, 1, time.Second) })
 			if e := s.Run(time.Minute); e != nil {

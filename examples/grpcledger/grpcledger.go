@@ -27,10 +27,8 @@ type Config struct {
 	// Clients (default 3) each make Transfers (default 3) between random
 	// accounts, of 1 to Initial: enough to overdraw an account.
 	Clients, Transfers int
-	// NoCrashes keeps the server up. CrashAfterCommit lets a crash fall
-	// between a transfer's commit and its response (simgrpc).
-	NoCrashes        bool
-	CrashAfterCommit bool
+	// NoCrashes keeps the server up.
+	NoCrashes bool
 }
 
 // Deployment is a running ledger in a simulation.
@@ -47,7 +45,6 @@ func Deploy(s *qenv.Sim, cfg Config) *Deployment {
 	ledger.Open(db, Initial)
 	proc := s.Process("ledger", !cfg.NoCrashes, func(context.Context) {})
 	srv := simgrpc.NewServer(s, "ledger", proc)
-	srv.CrashAfterCommit(cfg.CrashAfterCommit)
 	ledgerpb.RegisterLedgerServer(srv, &ledger.Server{DB: db, Mutation: cfg.Mutation})
 	return &Deployment{Sim: s, Server: srv, DB: db, Client: &ledger.Client{Ledger: ledgerpb.NewLedgerClient(srv.Dial())}}
 }

@@ -87,11 +87,10 @@ func TestMutants(t *testing.T) {
 }
 
 // Which faults make the missing dedupe a bug, pairwise over the fault
-// kinds: a duplicated request or a lost response. A refused connection is
-// harmless (nothing was sent), and so, in the simulation, is a crash: the
-// handler's commit, return and response are one scheduling step, so no
-// crash falls between the commit and the response. A real server can die
-// there; the lost response is how the simulation has it.
+// kinds: a duplicated request, a lost response, or a crash, which can fall
+// between the handler's commit and its response (qenv.Service's window), as
+// a real server can die there. A refused connection is harmless: nothing
+// was sent.
 func TestNoDedupeSweep(t *testing.T) {
 	qtest.RequireQuint(t)
 	if testing.Short() {
@@ -107,7 +106,7 @@ func TestNoDedupeSweep(t *testing.T) {
 	sw := sys.Sweep(t, qtest.SweepConfig{Factors: space,
 		Explore: qtest.ExploreConfig{Seeds: 30, Rates: qenv.Rates{Default: 0.1, Kinds: map[string]float64{"nemesis": 0.02}}},
 		Expect: func(row qsweep.Row) []qtest.Claim {
-			if row.On("rpc.ledger.request") || row.On("rpc.ledger.response") {
+			if row.On("rpc.ledger.request") || row.On("rpc.ledger.response") || row.On("crash") {
 				return []qtest.Claim{reapplied}
 			}
 			return []qtest.Claim{qtest.Conforms()}
@@ -131,12 +130,12 @@ func TestShrinkDoubleApply(t *testing.T) {
 // with qenv.Service's crash window, crashes alone, with no network fault,
 // expose the missing dedupe (the client retries a transfer that was
 // applied), and the faithful ledger still conforms.
-func TestCrashAfterCommit(t *testing.T) {
+func TestCrashWindow(t *testing.T) {
 	qtest.RequireQuint(t)
 	net := []string{"grpc.ledger.conn", "rpc.ledger.request", "rpc.ledger.response"}
 	crashes := qtest.ExploreConfig{Seeds: 30, Rates: qenv.Rates{Kinds: map[string]float64{"nemesis": 0.05}}}
 	run := func(m ledger.Mutation) qtest.System {
-		cfg := grpcledger.Config{Mutation: m, CrashAfterCommit: true}
+		cfg := grpcledger.Config{Mutation: m}
 		return qtest.System{Binding: binding, Run: func(c qenv.Chooser) error {
 			_, err := grpcledger.Run(qenv.Without(c, net...), cfg)
 			return err

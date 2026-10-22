@@ -195,10 +195,10 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   (checkout's `PlaceOrder`). An error rolls back and drops the hook.
 - `qenv.Store` detects lock-wait cycles: the transaction whose
   `GetForUpdate` would close one aborts with `ErrDeadlock` (an
-  ErrConflict). `qenv.Service` delivers a response in the handler's
-  scheduling step unless `CrashWindow` is set, which lets a crash fall
-  after the effect; it adds a scheduling point, so recorded choices of
-  older runs do not replay with it on.
+  ErrConflict). `qenv.Service` lets a crash fall between the handler's
+  return and the response's delivery (the effect committed, the caller
+  never told) unless `NoCrashWindow` is set; the window is a scheduling
+  point, so choices recorded before it was the default do not replay.
 - An expectation naming an action the model lacks, or an invariant the
   runs did not check, fails the test (a misspelled `None(Violates(x))`
   would otherwise hold for nothing). Verdicts are cached per instance

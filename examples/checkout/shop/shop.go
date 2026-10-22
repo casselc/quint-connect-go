@@ -39,10 +39,13 @@ type Mutation int
 const (
 	Faithful Mutation = iota
 	// NoLocks reads rows with plain SELECTs instead of SELECT ... FOR
-	// UPDATE. Correct under Serializable and SnapshotIsolation (their
-	// write-conflict checks abort one of two racing updates); under
-	// ReadCommitted the last writer wins: stock is oversold, and a
-	// shipment and a cancellation both commit (lost updates).
+	// UPDATE. Under Serializable and SnapshotIsolation updates stay
+	// correct (their write-conflict checks abort one of two racing
+	// updates); under ReadCommitted the last writer wins: stock is
+	// oversold, and a shipment and a cancellation both commit (lost
+	// updates). Under SnapshotIsolation a refusal, which writes nothing,
+	// can still be decided from a snapshot older than a cancellation that
+	// returned the stock: refused with stock available.
 	NoLocks
 	// LockWithoutWrite locks the order row but records shipments and
 	// cancellations only in their own tables. Correct under Serializable

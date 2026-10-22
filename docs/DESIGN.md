@@ -2639,10 +2639,12 @@ could not say; each is fixed where it belongs:
   a cycle (`ErrDeadlock`, an `ErrConflict`), as PostgreSQL does; and a run
   with no steps says so in its report.
 - **No crash between commit and response.** `qenv.Service` delivered the
-  response in the handler's scheduling step. `CrashWindow` adds a
-  scheduling point there; opt-in, since it changes the choices of runs
-  recorded before it. grpcledger's `TestCrashAfterCommit` shows crashes
-  alone exposing a missing dedupe with it.
+  response in the handler's scheduling step. A scheduling point there
+  lets a crash fall after the commit; opt-in at first (`CrashWindow`),
+  since it changes the choices of runs recorded before it, and the
+  default since the third review (`NoCrashWindow` closes it).
+  grpcledger's `TestCrashWindow` shows crashes alone exposing a
+  missing dedupe.
 - **A domain clock written `attr:x|int` was dropped.** convert appended
   `|int` to every `order:` expression, so `attr:ledger.seq|int` became
   `attr:ledger.seq|int|int`, the lookup failed, and the order was

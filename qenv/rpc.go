@@ -55,14 +55,13 @@ type Service[Req, Resp any] struct {
 	Calls int
 	// Capacity, if set, queues requests for workers (set before the run).
 	Capacity *Capacity
-	// CrashWindow, if set, lets a crash of the service's process fall
-	// between the handler's return and the response's delivery: the effect
-	// committed, the caller never told, as when a server dies after its
-	// commit. Without it the response leaves in the handler's scheduling
-	// step, and only the "lost" response fault stands in for that crash.
-	// It adds a scheduling point per call, so set it for new tests: it
-	// changes the choices a recorded run replays.
-	CrashWindow bool
+	// NoCrashWindow, if set, closes the window between the handler's return
+	// and the response's delivery, where a crash of the service's process
+	// falls by default: the effect committed, the caller never told, as
+	// when a server dies after its commit. Closed, the response leaves in
+	// the handler's scheduling step, and only the "lost" response fault
+	// stands in for that crash.
+	NoCrashWindow bool
 	// Rejected and Shed count requests refused by a full queue, and dropped
 	// because their caller had given up.
 	Rejected, Shed int
@@ -157,7 +156,7 @@ func (svc *Service[Req, Resp]) Call(ctx context.Context, req Req, timeout time.D
 			}
 			svc.Calls++
 			resp, err := svc.handler(hctx, req)
-			if svc.CrashWindow {
+			if !svc.NoCrashWindow {
 				Yield(hctx) // a crash here kills the task: no response
 			}
 			if !first {

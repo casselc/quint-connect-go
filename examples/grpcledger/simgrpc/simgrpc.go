@@ -72,12 +72,6 @@ func NewServer(s *qenv.Sim, name string, p *qenv.Process) *Server {
 	return srv
 }
 
-// CrashAfterCommit lets a crash of the server's process fall between a
-// handler's return and its response (qenv.Service.CrashWindow): a server
-// that dies after committing, which otherwise only a lost response stands
-// in for.
-func (s *Server) CrashAfterCommit(on bool) { s.svc.CrashWindow = on }
-
 // RegisterService implements grpc.ServiceRegistrar: the generated
 // RegisterXServer(srv, impl) registers its unary methods here.
 func (s *Server) RegisterService(sd *grpc.ServiceDesc, impl any) {
