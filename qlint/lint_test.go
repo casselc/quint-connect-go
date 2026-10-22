@@ -9,8 +9,9 @@ import (
 	"github.com/casselc/quint-connect-go/qlint"
 )
 
-// Lint finds what escapes a simulation, in files that import qenv, and
-// leaves the rest (and lines marked //qenv:ok) alone.
+// Lint finds what escapes a simulation, in files that import qenv (tests
+// too: a System's Run closure lives in one), and leaves the rest (and
+// lines marked //qenv:ok) alone.
 func TestLint(t *testing.T) {
 	dir := t.TempDir()
 	write := func(name, src string) {
@@ -54,6 +55,7 @@ import (
 
 var _ = qenv.Nominal{}
 var t0 = time.Now()
+var t1 = time.Now() //qenv:ok measures the real cost
 `)
 	fs, err := qlint.Sim(dir)
 	if err != nil {
@@ -68,6 +70,7 @@ var t0 = time.Now()
 		"sim.go:13:6 time.Now reads the wall clock, which does not move in a simulation",
 		"sim.go:14:2 time.Sleep reads the wall clock, which does not move in a simulation",
 		"sim.go:15:2 step recorded with context.Background()",
+		"sim_test.go:10:10 time.Now reads the wall clock, which does not move in a simulation",
 	}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("got\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))

@@ -221,12 +221,12 @@ func TestHegelFindsLostUpdate(t *testing.T) {
 func TestClockTranslation(t *testing.T) {
 	s := qenv.New(qenv.Nominal{})
 	defer s.Close()
-	stored := s.ToVirtual(time.Now())
+	stored := s.ToVirtual(time.Now()) //qenv:ok a real timestamp, as a library would store one
 	s.Spawn("sleeper", func(ctx context.Context) { qenv.Sleep(ctx, 45*time.Second) })
 	if err := s.Run(time.Minute); err != nil {
 		t.Fatal(err)
 	}
-	if age := time.Since(s.ToReal(stored)); age < 44*time.Second || age > 46*time.Second {
+	if age := time.Since(s.ToReal(stored)); age < 44*time.Second || age > 46*time.Second { //qenv:ok read back as a library would
 		t.Fatalf("aged %v in real time, want the 45s of virtual time", age)
 	}
 }
@@ -281,7 +281,7 @@ func TestManyWaitersScale(t *testing.T) {
 			g.Notify()
 		}
 	})
-	t0 := time.Now()
+	t0 := time.Now() //qenv:ok measures the scheduler's real cost
 	s.MaxSteps = 1 << 30
 	s.Check = false // O(tasks) per step: this test is about scale
 	if err := s.Run(time.Hour); err != nil {
@@ -290,10 +290,10 @@ func TestManyWaitersScale(t *testing.T) {
 	if answered != len(sigs) {
 		t.Fatalf("%d answered", answered)
 	}
-	if d := time.Since(t0); d > 30*time.Second { // ~0.2 s; generous for -race
+	if d := time.Since(t0); d > 30*time.Second { //qenv:ok ~0.2 s; generous for -race
 		t.Fatalf("took %v", d)
 	}
-	t.Logf("20000 waiting requests: %v", time.Since(t0))
+	t.Logf("20000 waiting requests: %v", time.Since(t0)) //qenv:ok the real cost
 }
 
 // A Signal wait that timed out leaves no trace: a later Notify does not
@@ -487,7 +487,7 @@ func TestBackgroundStepsFindTheirRun(t *testing.T) {
 	for i := range sinks {
 		sinks[i] = &qobs.MemorySink{}
 		wg.Add(1)
-		go func() {
+		go func() { //qenv:ok simulations in parallel, each from its own goroutine
 			defer wg.Done()
 			ctx := qobs.WithRecorder(context.Background(), qobs.NewRecorder(sinks[i]))
 			s := qenv.New(qenv.WithContext(qenv.Nominal{}, ctx))
@@ -495,14 +495,16 @@ func TestBackgroundStepsFindTheirRun(t *testing.T) {
 			for range 3 {
 				s.Spawn("task", func(ctx context.Context) {
 					qenv.Sleep(ctx, time.Millisecond)
-					qobs.Record(context.Background(), "work", nil, "run", i)
-					qenv.Go(ctx, "child", func(context.Context) { qobs.Record(context.Background(), "child", nil, "run", i) })
+					qobs.Record(context.Background(), "work", nil, "run", i) //qenv:ok tests the goroutine fallback
+					qenv.Go(ctx, "child", func(context.Context) {
+						qobs.Record(context.Background(), "child", nil, "run", i) //qenv:ok and a child's
+					})
 				})
 			}
 			if err := s.Run(time.Second); err != nil {
 				t.Error(err)
 			}
-			qobs.Record(context.Background(), "settle", nil, "run", i) // the creator's goroutine
+			qobs.Record(context.Background(), "settle", nil, "run", i) //qenv:ok the creator's goroutine
 		}()
 	}
 	wg.Wait()
@@ -529,7 +531,7 @@ func TestStrictStepWithNowhereToGo(t *testing.T) {
 			t.Fatalf("got %v, want a panic naming qenv.Go", r)
 		}
 	}()
-	qobs.Record(context.Background(), "lost", nil)
+	qobs.Record(context.Background(), "lost", nil) //qenv:ok a step with nowhere to go
 }
 
 // A task killed by a crash stays frozen, and unwinds only when the
@@ -606,11 +608,11 @@ func TestBackgroundContextInTask(t *testing.T) {
 		qenv.Go(bg, "child", func(ctx context.Context) { qenv.Sleep(ctx, time.Minute) })
 		slept = s.Elapsed() - start
 	})
-	t0 := time.Now()
+	t0 := time.Now() //qenv:ok real time, to show the sleeps were virtual
 	if err := s.Run(2 * time.Hour); err != nil {
 		t.Fatal(err)
 	}
-	if slept != time.Hour || time.Since(t0) > 5*time.Second {
-		t.Fatalf("slept %v of virtual time in %v of real time", slept, time.Since(t0))
+	if slept != time.Hour || time.Since(t0) > 5*time.Second { //qenv:ok real time, to show the sleeps were virtual
+		t.Fatalf("slept %v of virtual time in %v of real time", slept, time.Since(t0)) //qenv:ok real time
 	}
 }

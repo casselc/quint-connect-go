@@ -35,7 +35,7 @@ func TestSystemRunError(t *testing.T) {
 		return errors.New("no database")
 	}}
 	done := make(chan struct{})
-	go func() {
+	go func() { //qenv:ok failTB's Fatalf ends the goroutine (runtime.Goexit)
 		defer close(done)
 		sys.Explore(f, ExploreConfig{Seeds: 2, Parallel: 1})
 	}()
@@ -51,7 +51,7 @@ func TestSystemRunError(t *testing.T) {
 func TestScenarioFatal(t *testing.T) {
 	f := &failTB{TB: t}
 	done := make(chan struct{})
-	go func() {
+	go func() { //qenv:ok failTB's Fatalf ends the goroutine (runtime.Goexit)
 		defer close(done)
 		explore(f, "../validate/testdata/account.yaml", ExploreConfig{Seeds: 1, Parallel: 1}, func(qenv.Chooser) error {
 			f.Fatalf("the gosim binary is missing")

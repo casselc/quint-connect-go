@@ -25,11 +25,11 @@ func TestNativeInSynctest(t *testing.T) {
 		c := qenv.NewSeeded(3)
 		c.Rates = crashy
 		ctx := qobs.WithRecorder(context.Background(), qobs.NewRecorder(mem))
-		start := time.Now()
+		start := time.Now() //qenv:ok the synctest bubble's clock, which the native runtime's sleeps advance
 		if _, err := checkout.RunOn(qenv.NewNative(qenv.WithContext(c, ctx), nil), checkout.Config{Isolation: qenv.Serializable}); err != nil {
 			t.Fatal(err)
 		}
-		took = time.Since(start) // the bubble's clock
+		took = time.Since(start) //qenv:ok the bubble's clock
 	})
 	if took < 20*time.Second {
 		t.Errorf("the bubble's clock moved %v; want the run's 20 s and more", took)
