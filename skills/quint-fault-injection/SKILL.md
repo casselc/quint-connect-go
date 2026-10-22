@@ -150,25 +150,40 @@ Hegel explore their interleavings. Outside one, the real methods run.
 ## 4c. A whole program, network and channels included: gosim
 
 When channels, `select`, the standard library's own goroutines, TCP or the
-disk matter, run the program in gosim (examples/gosimbroadcast, on a
-patched gosim: `./fetch-gosim.sh`):
-- put the simulated test in its own package under `//go:build sim`. Start
-  machines with `gosim.NewMachine`, and ask for faults with
-  `gosimruntime.Choose("fault.<name>", n)`, option 0 being no fault.
-  Record with qobs into `qobs.NewJSONLSink` on a writer that calls
-  `gosimruntime.Emit`;
-- keep Hegel and anything native out of that package's imports, because
-  gosim translates them all;
-- drive it from a normal test with `metatesting.ForOtherPackage(t,
-  pkg).RunWith(t, cfg, chooser, emit)`. The chooser can be
-  `qenv.NewSeeded`, `qenv.Hegel(tc)`, a `qenv.Recorder` or `qenv.Replay`.
-  Parse the emitted lines with `qtrace.ReadJSONL`, then check them with
-  `qtest.Check`/`Validate`, or `rec.Add(steps...)` inside
-  `quinthegel.FindViolation`;
-- look the runner up for every run: a Hegel abort stops the test binary.
+disk matter, run the code in gosim. Use package qgosim, its own module, on
+a patched gosim fetched by `qgosim/fetch-gosim.sh`; examples/gosim shows
+both kinds of code:
+- **a qenv deployment, unchanged**: in a simulated test, `checkout.RunOn(qgosim.New(), cfg)`.
+  `qgosim.New` is qenv's native runtime (`qenv.NewNative`):
+  - tasks are goroutines;
+  - processes are gosim machines, and a crash stops all of a machine's
+    goroutines;
+  - time is gosim's;
+  - choices are the host's.
 
-Each choice is a round trip to the test process (about 50 µs), so a run
-costs about 5 times gosim's own seeded run.
+  Give a `Run`-style function a `*qenv.Sim` parameter so that both
+  runtimes can call it.
+- **any program**: start machines with `gosim.NewMachine`, and ask for
+  faults with `gosimruntime.Choose("fault.<name>", n)`, where option 0
+  is no fault. Record with qobs into `qgosim.Sink()`.
+
+On either kind:
+- put the simulated test under `//go:build sim`, and its host test under
+  `//go:build !sim` when they share a package;
+- keep Hegel and anything native out of the simulated package's imports
+  (gosim translates them all). qenv's and qmeta's Hegel parts are
+  `!sim` already;
+- drive it from the host with `qgosim.Run(t, pkg, test, chooser,
+  env...)`, which returns the steps. The chooser can be
+  `qenv.NewSeeded`, `qenv.Hegel(tc)`, a `qenv.Recorder` or `qenv.Replay`.
+  Or use `qtest.Explore(t, binding, x, qgosim.Scenario(t, pkg, test))`,
+  which runs seeds in parallel, one test binary each;
+- check the steps with `qtest.Check` or `qtest.Validate`, or add them
+  with `rec.Add(steps...)` inside `quinthegel.FindViolation`.
+
+Each choice is a round trip to the test process, about 50 µs, so a gosim
+run is far slower than one on qenv's scheduler. Explore and shrink there,
+and use gosim to confirm with the real standard library and network.
 
 ## 5. Take the same model to the real environment
 

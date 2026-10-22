@@ -66,6 +66,7 @@ type Sim struct {
 	panicked  any
 	stack     []byte
 	closed    bool
+	nat       *native // the native runtime (native.go), if it runs on one
 }
 
 type task struct {
@@ -153,26 +154,41 @@ func (s *Sim) Choose(kind string, n int) int {
 // here. 0 is nominal.
 func (s *Sim) Fault(kind string, n int) int { return s.Choose("fault."+kind, n) }
 
-// Now is the virtual time.
-func (s *Sim) Now() time.Time { return s.now }
+// Now is the virtual time (on the native runtime, the time package's).
+func (s *Sim) Now() time.Time {
+	if s.nat != nil {
+		return time.Now()
+	}
+	return s.now
+}
 
 // ToVirtual translates a time read from the real clock into virtual time,
 // as if the real clock had advanced with the simulation since. Libraries
 // that read the real clock (time.Now in code qenv cannot reach) write their
 // timestamps through a seam that translates them with ToVirtual, and read
 // them back with ToReal: their time.Since then measures virtual time.
-func (s *Sim) ToVirtual(real time.Time) time.Time { return s.now.Add(real.Sub(time.Now())) }
+func (s *Sim) ToVirtual(real time.Time) time.Time {
+	if s.nat != nil {
+		return real // the library's clock is the simulation's
+	}
+	return s.now.Add(real.Sub(time.Now()))
+}
 
 // ToReal translates a virtual time into the real clock's frame (the inverse
 // of ToVirtual, as of now).
-func (s *Sim) ToReal(virtual time.Time) time.Time { return time.Now().Add(virtual.Sub(s.now)) }
+func (s *Sim) ToReal(virtual time.Time) time.Time {
+	if s.nat != nil {
+		return virtual
+	}
+	return time.Now().Add(virtual.Sub(s.now))
+}
 
 // Context is the context every task derives from (see WithContext): for
 // code that runs outside any task, such as a scenario's final step.
 func (s *Sim) Context() context.Context { return s.base }
 
 // Elapsed is the virtual time since the start.
-func (s *Sim) Elapsed() time.Duration { return s.now.Sub(s.start) }
+func (s *Sim) Elapsed() time.Duration { return s.Now().Sub(s.start) }
 
 // ---- tasks -------------------------------------------------------------------
 
@@ -230,9 +246,13 @@ func (s *Sim) spawn(parent context.Context, name string, p *Process, fn func(ctx
 		t.inc = p.Incarnation
 	}
 	s.tasks = append(s.tasks, t)
-	s.enqueue(t)
 	ctx := context.WithValue(parent, ctxKey{}, t)
 	t.ctx = ctx
+	if s.nat != nil {
+		s.spawnNative(t, fn)
+		return
+	}
+	s.enqueue(t)
 	go func() {
 		id := goid()
 		own(id, s, t)
@@ -273,6 +293,10 @@ func Yield(ctx context.Context) {
 // park hands control back to the scheduler until the task is picked again.
 // A task that is not waiting (Yield) is runnable at once.
 func (t *task) park() {
+	if t.sim.nat != nil {
+		t.yieldNative()
+		return
+	}
 	if !t.waiting {
 		t.sim.enqueue(t)
 	}
@@ -287,6 +311,10 @@ func (t *task) park() {
 // wakes it, or deadline passes (zero: none).
 func (t *task) wait(ready func() bool, deadline time.Time) {
 	s := t.sim
+	if s.nat != nil {
+		t.waitNative(ready, deadline)
+		return
+	}
 	t.waiting, t.ready, t.deadline, t.notified = true, ready, deadline, false
 	if ready != nil {
 		s.pred = append(s.pred, t)
@@ -303,6 +331,9 @@ func (s *Sim) enqueue(t *task) {
 	if t.waiting {
 		t.waiting = false
 		t.gen++
+	}
+	if s.nat != nil {
+		return // it wakes when the notifier gives up the lock
 	}
 	if !t.queued && !t.done && !t.killed {
 		t.queued = true
@@ -439,7 +470,7 @@ func (g *Signal) Notify() {
 // Now is the virtual time in a simulation, else the real time.
 func Now(ctx context.Context) time.Time {
 	if t := taskOf(ctx); t != nil {
-		return t.sim.now
+		return t.sim.Now()
 	}
 	return time.Now()
 }
@@ -453,6 +484,10 @@ func Sleep(ctx context.Context, d time.Duration) {
 		case <-time.After(d):
 		case <-ctx.Done():
 		}
+		return
+	}
+	if t.sim.nat != nil {
+		t.sleepNative(d)
 		return
 	}
 	t.wait(nil, t.sim.now.Add(d))
@@ -470,6 +505,8 @@ type Process struct {
 	sim         *Sim
 	start       func(ctx context.Context)
 	down        bool
+	machine     Machine     // native, with a Platform: the process's machine
+	queue       chan func() // native, with a Platform: tasks to start there
 }
 
 // ID is the process name and incarnation, e.g. "payments#2".
@@ -484,6 +521,10 @@ func (p *Process) Down() bool { return p.down }
 func (s *Sim) Process(name string, crashable bool, start func(ctx context.Context)) *Process {
 	p := &Process{Name: name, Incarnation: 1, sim: s, start: start}
 	s.procs = append(s.procs, p)
+	if s.nat != nil && s.nat.plat != nil {
+		p.queue = make(chan func(), spawnQueue)
+		p.machine = s.nat.plat.Machine(name, s.machineMain(p))
+	}
 	s.spawn(s.base, name+".main", p, start)
 	if crashable {
 		s.Nemesis("crash."+name, func() bool { return !p.down }, func() { p.Crash(); p.Restart() })
@@ -514,11 +555,27 @@ func (p *Process) Crash() {
 	for _, t := range p.sim.tasks {
 		if t.proc == p && !t.done {
 			t.killed = true
-			p.sim.unqueue(t)
+			if p.sim.nat == nil {
+				p.sim.unqueue(t)
+			}
 		}
 	}
 	if p.sim.Log != nil {
 		p.sim.Log(fmt.Sprintf("%v crash %s", p.sim.Elapsed(), p.ID()))
+	}
+	if p.sim.nat != nil {
+		t := taskOf(nil)
+		self := t != nil && t.proc == p && t.sim == p.sim
+		if p.machine != nil {
+			p.machine.Crash() // before the hooks, which may restart it
+		}
+		for _, h := range p.sim.onCrash {
+			h(p)
+		}
+		if self {
+			p.stopSelfNative(t)
+		}
+		return
 	}
 	for _, h := range p.sim.onCrash {
 		h(p)
@@ -540,6 +597,9 @@ func (p *Process) Restart() {
 	}
 	p.down = false
 	p.Incarnation++
+	if p.sim.nat != nil {
+		p.restartNative()
+	}
 	p.sim.spawn(p.sim.base, p.Name+".main", p, p.start)
 }
 
@@ -568,6 +628,9 @@ var ErrMaxSteps = errors.New("qenv: too many scheduling steps (livelock?)")
 // A panic in a task is re-raised here, with its own value (PanicStack has
 // the task's stack).
 func (s *Sim) Run(d time.Duration) error {
+	if s.nat != nil {
+		return s.runNative(d)
+	}
 	horizon := s.now.Add(d)
 	for {
 		if s.steps >= s.MaxSteps {
@@ -787,6 +850,10 @@ func (s *Sim) Close() {
 	s.closed = true
 	defer disown(s.creator, s)
 	defer live.Add(-1)
+	if s.nat != nil {
+		s.closeNative()
+		return
+	}
 	for _, t := range s.tasks {
 		if !t.done {
 			t.killed = true

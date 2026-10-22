@@ -1,9 +1,10 @@
-module github.com/casselc/quint-connect-go/examples/gosimbroadcast
+module github.com/casselc/quint-connect-go/examples/gosim
 
 go 1.26.1
 
 require (
 	github.com/casselc/quint-connect-go v0.0.0
+	github.com/casselc/quint-connect-go/qgosim v0.0.0
 	github.com/jellevandenhooff/gosim v0.0.0
 	hegel.dev/go/hegel v0.9.27
 )
@@ -70,6 +71,7 @@ require (
 
 replace (
 	github.com/casselc/quint-connect-go => ../..
-	// The fork: ./fetch-gosim.sh puts it there.
-	github.com/jellevandenhooff/gosim => ./.gosim-fork
+	github.com/casselc/quint-connect-go/qgosim => ../../qgosim
+	// The fork: ../../qgosim/fetch-gosim.sh puts it there.
+	github.com/jellevandenhooff/gosim => ../../qgosim/.gosim-fork
 )

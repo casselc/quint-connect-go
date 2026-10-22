@@ -79,7 +79,7 @@ func (svc *Service[Req, Resp]) serve(ctx context.Context, deadline time.Time) (o
 		}
 		svc.waiting--
 	}
-	if c.Shed && svc.sim.now.After(deadline) {
+	if c.Shed && svc.sim.Now().After(deadline) {
 		svc.Shed++
 		svc.free.Notify()
 		return false, false
@@ -128,7 +128,7 @@ func (svc *Service[Req, Resp]) Call(ctx context.Context, req Req, timeout time.D
 	if svc.Proc.Down() {
 		deliveries = 0
 	}
-	deadline := s.now.Add(timeout)
+	deadline := s.Now().Add(timeout)
 	for i := 0; i < deliveries; i++ {
 		first := i == 0
 		s.spawn(s.base, svc.Name+".handle", svc.Proc, func(hctx context.Context) {

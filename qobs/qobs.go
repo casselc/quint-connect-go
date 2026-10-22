@@ -89,6 +89,15 @@ func NewRecorder(sink Sink, opts ...Option) *Recorder {
 // ID is the recorder id (the scope of quint.seq).
 func (r *Recorder) ID() string { return r.id }
 
+// Add writes steps recorded elsewhere to the recorder's sink as they are,
+// with their own recorder ids and sequence numbers: steps a simulation in
+// another process sent back (gosim's, see examples/gosim).
+func (r *Recorder) Add(steps ...qtrace.Step) {
+	for i := range steps {
+		r.sink.Record(context.Background(), &steps[i])
+	}
+}
+
 var global atomic.Pointer[Recorder]
 
 // SetGlobal installs the recorder used by the package-level Record (and so by

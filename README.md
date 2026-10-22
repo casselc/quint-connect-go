@@ -260,10 +260,15 @@ task. `quintgo lint -weave DIR` finds what weaving cannot rewrite.
 
 A whole program, standard library and network included, can run in
 [gosim](https://github.com/jellevandenhooff/gosim) with its choices made by
-a qenv `Chooser` from the test process (Seeded, Hegel, Replay).
-[examples/gosimbroadcast](examples/gosimbroadcast) runs the Glomers
-broadcast node over TCP on three gosim machines this way, on a patched gosim
-(DESIGN.md §14).
+a qenv `Chooser` from the test process (Seeded, Hegel, Replay):
+[qgosim](qgosim), its own module on a patched gosim. A qenv deployment
+moves there unchanged. `qenv.NewNative` runs the same doubles and
+processes on plain goroutines and `time`, which gosim simulates, with
+processes as gosim machines. Give your run function a `*qenv.Sim`, and
+call it with `qenv.New(c)` or `qgosim.New()`.
+[examples/gosim](examples/gosim) runs the Glomers broadcast node over TCP
+on three gosim machines, and the checkout saga with its model checks
+(DESIGN.md §14, §15.1).
 
 Each seeded run is checked in one quint batch, and the failing seed's
 faults and step log are reported. `quinthegel.FindViolation` with
@@ -365,7 +370,7 @@ which bug.
 | [`examples/jobqueue`](examples/jobqueue) | an at-least-once job queue with leases, workers and restarts (`jobqueue`) | all three verdicts: an implementation bug, a design property the run violates (`exactlyOnce`, checked with `-invariants`), and conformance; restarts inferred from incarnations; when model-driven testing does not fit |
 | [`examples/bank`](examples/bank) | an in-memory bank (library) | every workflow on one small system: what model-driven testing cannot catch and Hegel + the model can |
 | [`examples/edgepublish`](examples/edgepublish) | the spike's real case: an OTel exporter's publish protocol with S3 faults and crashes (own module, Orchestrion) | `//quint:action` annotations; three trace paths with identical verdicts; MBT with gated effects; model → Go → telemetry → model; the publisher, unchanged, in a qenv simulation by weaving its locks and goroutines (`qenv/weave`), where exploration found a race the real exporter had already fixed |
-| [`examples/gosimbroadcast`](examples/gosimbroadcast) | the Glomers broadcast node, unchanged, on three gosim machines over real TCP (own module, patched gosim) | a whole-program simulation whose every choice (schedule, `select`, map order, partitions) comes from a qenv `Chooser` in the test process; runs checked against the broadcast model; exact replay; Hegel finding and shrinking fire-and-forget gossip's lost value |
+| [`examples/gosim`](examples/gosim) | the Glomers broadcast node over real TCP on three gosim machines, and the checkout saga's deployment on qenv's native runtime, both unchanged (own module, `qgosim`) | whole-program simulation whose every choice (schedule, `select`, map order, faults) comes from a qenv `Chooser` in the test process; runs checked against the same models and bindings; exact replay; `qtest.Explore` over parallel gosim binaries; Hegel shrinking fire-and-forget gossip's lost value; a mutant's second symptom that gosim's schedules reach |
 
 ```sh
 examples/glomers/maelstrom.sh                   # under real Maelstrom, then quintgo on the nodes' step logs

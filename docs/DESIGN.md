@@ -1141,7 +1141,7 @@ used to run on to its next scheduling point.
   a rewriter of our own.
 - The real exporter, which also needs its chDB sessions behind a seam.
 
-## 14. A whole program in a simulation (gosim, `examples/gosimbroadcast`)
+## 14. A whole program in a simulation (gosim, `qgosim`, `examples/gosim`)
 
 §13's third option, a patched runtime, exists:
 [gosim](https://github.com/jellevandenhooff/gosim) translates a program and
@@ -1454,8 +1454,56 @@ Chooser built from the trace, while the schedule stays nominal.
 | phase | work | depends on |
 |---|---|---|
 | 0 | the fork in a repository of its own, with CI; choices in chunks from the host (§14's cost) | a repository |
-| 1 | the runtime interface, the native runtime and the gosim adapter; checkout's tests on qenv and on gosim | — |
+| 1 | the runtime interface, the native runtime and the gosim adapter; checkout's tests on qenv and on gosim (done, §15.6) | — |
 | 2 | the pass framework in the translator; `//quint:action` as a pass, so the edgepublish publisher runs in gosim without Orchestrion | 0 |
 | 3 | the `-toolexec` front end; Orchestrion aspect files; method values, promoted calls and channels woven | 2 |
 | 4 | load roles and action metrics; calibration from production; alerting rules from the chain | 3 |
 | 5 | fault points and fault coverage; a Quint trace as a Chooser | 2 |
+
+### 15.6 Phase 1 as built
+
+The runtime interface became a second scheduler inside `*Sim`, not a new
+type. `qenv.NewNative(c, platform)` returns the same `Sim`, and every
+double, process and example runs on it unchanged:
+- **One task at a time.** The running task holds a lock and gives it up
+  at seams: Yield, Sleep and waits. A condition variable is broadcast
+  when it does, and that serves both predicate waits and Signals. The
+  predicate `Wait` therefore stays as it is; the move to `Signal` that
+  §15.1 expected was not needed.
+- **Processes.** With a Platform, each process runs on a gosim machine.
+  The tasks a process is handed (a service's handler, called from
+  another process) start there, from a spawn queue that the machine's
+  main goroutine serves. A crash stops all of them at once.
+- **Crash order.** The crash is requested before the crash hooks run,
+  because a hook may restart the process. A process that crashes itself
+  has its machine stopped by the platform's goroutine on another
+  machine, in order with the restart; gosim cannot stop the machine its
+  caller runs on.
+- **Settle.** It turns fault choices nominal. It cannot make gosim's
+  schedule canonical.
+- **Hegel inside gosim.** qenv's and qmeta's Hegel code is `!sim`, so
+  checkout, which imports qmeta for its load tests, translates without
+  Hegel's native library.
+
+`qgosim` is the adapter, in a module of its own:
+- on the simulated side, `New` (the native runtime with gosim's choices,
+  machines and a sink to the host);
+- on the host, `Run` and `Scenario`, which give `qtest.Explore` a pool of
+  test binaries so that seeds run in parallel.
+
+checkout's tests on gosim reuse the qenv tests' model, binding and
+expectations. The faithful shop conforms at every isolation level
+through machine crashes, and the write skew is caught. NoIdempotencyKey
+shows a second symptom that gosim's schedules reach first:
+- the cancellation's void looks the charge up by the order's key;
+- the mutant stored the charge under a per-attempt key, so the void
+  finds nothing;
+- the order stays paid and cancelled, and `settledCorrectly` fails.
+
+On qenv's scheduler the double charge shows first. Both are this bug's,
+and the test now names both.
+
+A checkout run makes about 27,000 choices, nine in ten of them the
+scheduler's. At 2.7 s a run on gosim against milliseconds on qenv's
+scheduler, phase 0's chunked choices are the next thing to do.
+

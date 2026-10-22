@@ -795,10 +795,10 @@ index 248c742..3fa7bfe 100644
  
 diff --git a/metatesting/chooser.go b/metatesting/chooser.go
 new file mode 100644
-index 0000000..347811e
+index 0000000..be777d0
 --- /dev/null
 +++ b/metatesting/chooser.go
-@@ -0,0 +1,103 @@
+@@ -0,0 +1,123 @@
 +package metatesting
 +
 +import (
@@ -806,6 +806,7 @@ index 0000000..347811e
 +	"fmt"
 +	"testing"
 +
++	"github.com/jellevandenhooff/gosim/internal/gosimtool"
 +	"github.com/jellevandenhooff/gosim/internal/prettylog"
 +)
 +
@@ -889,9 +890,28 @@ index 0000000..347811e
 +	}
 +}
 +
++// Start returns a MetaT of its own for pkg, a test binary not shared with
++// ForOtherPackage or other Starts: run several in parallel, one run at a
++// time each. Close it when done.
++func Start(t *testing.T, pkg string) (*MetaT, error) {
++	return newRunner(gosimtool.GetPathForPrecompiledTestBinary(t, pkg))
++}
++
++// Close stops the test binary.
++func (r *MetaT) Close() {
++	if !r.dead {
++		r.kill()
++	}
++}
++
++// Alive reports whether the test binary still runs: a run a chooser
++// aborted stops it (RunWith).
++func (r *MetaT) Alive() bool { return !r.dead }
++
 +// kill stops the test binary and forgets it, so that ForOtherPackage starts
 +// a new one.
 +func (r *MetaT) kill() {
++	r.dead = true
 +	r.cmd.Process.Kill()
 +	r.cmd.Wait()
 +	runnerMapMu.Lock()
@@ -902,3 +922,17 @@ index 0000000..347811e
 +		}
 +	}
 +}
+diff --git a/metatesting/metatest.go b/metatesting/metatest.go
+index ace1114..15714db 100644
+--- a/metatesting/metatest.go
++++ b/metatesting/metatest.go
+@@ -47,7 +47,8 @@ type RunResult struct {
+ //
+ // Behind the scenes a MetaT executes and controls a gosim test binary.
+ type MetaT struct {
+-	cmd *exec.Cmd
++	cmd  *exec.Cmd
++	dead bool // stopped (kill, Close): it runs nothing more
+ 
+ 	w *json.Encoder
+ 	r *json.Decoder

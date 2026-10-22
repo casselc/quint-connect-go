@@ -15,8 +15,6 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"strings"
-
-	"hegel.dev/go/hegel"
 )
 
 // A Chooser makes the environment's choices. Choose returns an index in
@@ -36,6 +34,16 @@ func WithContext(c Chooser, ctx context.Context) Chooser { return ctxChooser{c, 
 type ctxChooser struct {
 	Chooser
 	ctx context.Context
+}
+
+// ContextOf returns the context c carries (WithContext), or
+// context.Background(): what a run driven by c elsewhere (in gosim) records
+// into.
+func ContextOf(c Chooser) context.Context {
+	if cc, ok := c.(ctxChooser); ok {
+		return cc.ctx
+	}
+	return context.Background()
 }
 
 // IsFault reports whether a choice kind is a fault choice.
@@ -101,59 +109,6 @@ func (s *Seeded) Choose(kind string, n int) int {
 		return 0
 	}
 	return 1 + s.r.IntN(n-1)
-}
-
-// HegelChooser draws the choices from a Hegel test case, so Hegel
-// explores schedules and faults and shrinks them. It draws entropy in
-// chunks of bytes (hegel.Binary), one draw per chunk rather than per
-// choice: a simulated run makes hundreds of choices, and each draw is a
-// call into Hegel's engine. Chunks have a fixed length, and a zero byte is
-// the nominal (or canonical) option, so Hegel's shrinking of the bytes
-// toward zeros is shrinking toward fewer faults and the canonical
-// schedule. Faults are noted on the test case, so a shrunk
-// failure lists the faults it needs.
-type HegelChooser struct {
-	tc    hegel.TestCase
-	Rates Rates
-	// Chunk is the number of bytes drawn at a time (default 512).
-	Chunk int
-	buf   []byte
-}
-
-// Hegel returns a chooser drawing from tc, with DefaultRates.
-func Hegel(tc hegel.TestCase) *HegelChooser { return &HegelChooser{tc: tc, Rates: DefaultRates} }
-
-func (h *HegelChooser) byte() int {
-	if len(h.buf) == 0 {
-		n := h.Chunk
-		if n == 0 {
-			n = 512
-		}
-		h.buf = hegel.Draw(h.tc, hegel.Binary(n, n))
-	}
-	b := h.buf[0]
-	h.buf = h.buf[1:]
-	return int(b)
-}
-
-// Choose implements Chooser.
-func (h *HegelChooser) Choose(kind string, n int) int {
-	if !IsFault(kind) {
-		v := h.byte()
-		if n > 256 {
-			v = v<<8 | h.byte()
-		}
-		return v % n
-	}
-	if h.byte() < int(256*(1-h.Rates.Of(kind))) {
-		return 0
-	}
-	v := 1
-	if n > 2 {
-		v = 1 + h.byte()%(n-1)
-	}
-	h.tc.Note(fmt.Sprintf("qenv: %s=%d", kind, v))
-	return v
 }
 
 // Recorder records the choices of the Chooser it wraps, to replay a run.

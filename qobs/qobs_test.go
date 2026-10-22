@@ -36,3 +36,15 @@ func TestWithRecorder(t *testing.T) {
 		t.Fatalf("local %v, global %v", l, g)
 	}
 }
+
+// Steps recorded elsewhere go to the sink unchanged.
+func TestRecorderAdd(t *testing.T) {
+	mem := &MemorySink{}
+	elsewhere := &MemorySink{}
+	NewRecorder(elsewhere, WithID("n1")).Record(context.Background(), "deposit", nil, "amount", 1)
+	NewRecorder(mem, WithID("host")).Add(elsewhere.Steps()...)
+	got := mem.Steps()
+	if len(got) != 1 || got[0].Recorder != "n1" || got[0].Action != "deposit" || got[0].Seq != 1 {
+		t.Fatalf("got %+v", got)
+	}
+}

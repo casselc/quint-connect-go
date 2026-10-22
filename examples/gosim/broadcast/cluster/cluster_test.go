@@ -11,7 +11,7 @@
 // Chooser (see ../host_test.go): which node a value goes to, how long the
 // client waits, which node is cut off ("fault.partition") and for how long.
 // Steps are recorded with qobs, as in the other Glomers tests, into a sink
-// that hands each line to the runner (gosimruntime.Emit).
+// that sends them to the runner (qgosim.Sink).
 package cluster_test
 
 import (
@@ -30,7 +30,8 @@ import (
 
 	"github.com/casselc/quint-connect-go/examples/glomers/broadcast"
 	"github.com/casselc/quint-connect-go/examples/glomers/maelstrom"
-	"github.com/casselc/quint-connect-go/examples/gosimbroadcast/tcp"
+	"github.com/casselc/quint-connect-go/examples/gosim/broadcast/tcp"
+	"github.com/casselc/quint-connect-go/qgosim"
 	"github.com/casselc/quint-connect-go/qobs"
 )
 
@@ -49,11 +50,6 @@ func addr(id string) string {
 }
 
 func host(id string) string { h, _, _ := net.SplitHostPort(addr(id)); return h }
-
-// emitter passes each step line to the runner.
-type emitter struct{}
-
-func (emitter) Write(p []byte) (int, error) { gosimruntime.Emit(string(p)); return len(p), nil }
 
 func mutation() broadcast.Mutation {
 	switch os.Getenv("BROADCAST_MUTATION") {
@@ -109,7 +105,7 @@ func isolate(i int, cut bool) {
 }
 
 func TestBroadcast(t *testing.T) {
-	sink := qobs.NewJSONLSink(emitter{})
+	sink := qgosim.Sink()
 	c := &cluster{nodes: map[string]*maelstrom.Node{}}
 	for _, id := range ids {
 		gosim.NewMachine(gosim.MachineConfig{Label: id, Addr: netip.MustParseAddr(host(id)), MainFunc: c.node(id, sink)})

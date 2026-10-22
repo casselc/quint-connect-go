@@ -34,6 +34,7 @@ qobs/ qtrace/ otelio/ convert/ load/   recording, schema/reconstruction, OTLP, s
 binding/ validate/ qtest/              binding YAML, quint-test-based validator, test helpers (Expect, Explore)
 qenv/         deterministic simulation: scheduler, virtual time, processes, choosers; Store, Queue, Service doubles
 qenv/weave/   Orchestrion aspects: sync locks, wait groups and //qenv:go goroutines simulated inside qenv, real outside
+qgosim/       separate module: qenv and whole programs in gosim (patched: gosim.patch, ./fetch-gosim.sh)
 qload/ qmeta/ load simulation (open/closed-loop clients, servers, triggers); CTMC, recovery property, Hegel trigger search
 cmd/quintgo/  CLI
 skills/       agent skills, the source of truth (embedded by package skills;
@@ -49,8 +50,8 @@ examples/retrystorm   library: retry policies (backoff, budget); budget checked 
 examples/bank         library example; every workflow on one small system
 examples/edgepublish  separate module (Orchestrion); the spike's real-world case, model vendored in model/;
                       sim/: the publisher, unchanged, in qenv by weaving (orchestrion go test ./sim/)
-examples/gosimbroadcast separate module; Glomers broadcast on gosim (patched: gosim.patch, ./fetch-gosim.sh),
-                      cluster/ simulated (//go:build sim), host_test.go makes its choices (DESIGN §14)
+examples/gosim        separate module; on gosim via qgosim: broadcast/ (Glomers node over TCP), checkout/ (the saga on
+                      qenv's native runtime); simulated tests //go:build sim, host tests make the choices (DESIGN §14, §15.1)
 docs/         DESIGN.md, instrumentation.md
 ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API rate limits)
 ```
@@ -70,9 +71,10 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   go test ./...
   go run github.com/DataDog/orchestrion go test ./mbt/ ./scenarios/   # woven
   ```
-- gosimbroadcast (its own module): `cd examples/gosimbroadcast &&
-  ./fetch-gosim.sh && go test -short ./...` (the first run translates the
-  standard library, about a minute).
+- gosim (qgosim and examples/gosim, their own modules): `qgosim/fetch-gosim.sh
+  && cd examples/gosim && go test -short ./...` (the first run translates
+  the standard library, about a minute). Check the simulated side with
+  `go vet -tags sim`.
 - fleetrollout (its own module): `cd examples/fleetrollout && go test ./...`;
   `./kwok-demo.sh` needs kwokctl and kwok on PATH (`go install
   sigs.k8s.io/kwok/cmd/{kwokctl,kwok}@v0.7.0`), no Docker (binary runtime).
@@ -223,8 +225,17 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
 - `quinthegel.CaseChecker` prefix reuse is only sound for one actor with
   no `order.*` keys, where the recording order is the reconstructed order,
   and with equal instance constants. Keep those guards.
-- gosim (`examples/gosimbroadcast`) translates everything the simulated
-  package imports: keep Hegel and other native code out of it (the
-  Maelstrom runtime's Hegel driver is `//go:build !sim`). It writes the
+- gosim (`qgosim`, `examples/gosim`) translates everything the simulated
+  package imports: keep Hegel and other native code out of it. qenv's
+  `HegelChooser`, qmeta's `FindTrigger`/`Search` and the Maelstrom
+  runtime's Hegel driver are `//go:build !sim` for that. It writes the
   translation into the module's `.gosim/`, which `gofmt -l .` at the root
   reports: it is gitignored, ignore it.
+- qenv's native runtime (`qenv.NewNative`) keeps one-task-at-a-time
+  semantics with a lock the running task gives up at seams, and a
+  condition variable broadcast when it does. A waiter that wakes and is
+  not ready must not broadcast again: two waiters would wake each other
+  forever, and gosim's virtual time would never pass. Its processes'
+  tasks start on the process's machine (a spawn queue its main goroutine
+  serves), and a machine crash is requested before the crash hooks run,
+  which may restart it.

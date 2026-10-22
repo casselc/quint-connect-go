@@ -160,7 +160,12 @@ func (d *Deployment) Workload(orders int) {
 // 20 s of virtual time with faults, then settles for up to 60 s without,
 // and records settle.
 func Run(c qenv.Chooser, cfg Config) (*Deployment, error) {
-	s := qenv.New(c)
+	return RunOn(qenv.New(c), cfg)
+}
+
+// RunOn is Run on a simulation of any runtime: qenv's (qenv.New), or the
+// native one in gosim (qgosim.New, examples/gosim/checkout). It closes s.
+func RunOn(s *qenv.Sim, cfg Config) (*Deployment, error) {
 	defer s.Close()
 	d := Deploy(s, cfg)
 	d.Workload(cfg.Orders)

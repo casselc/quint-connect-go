@@ -2,50 +2,37 @@
 // from outside gosim: a qenv Chooser makes every choice of the run (the
 // schedule, select cases, map order, the client's picks and the faults)
 // over gosim's metatest protocol, and the steps the nodes record come back
-// to be checked against ../glomers/model/broadcast.qnt with the Glomers
+// to be checked against ../../glomers/model/broadcast.qnt with the Glomers
 // binding, as for the qenv-free Maelstrom simulator.
 //
-// Run ./fetch-gosim.sh first. The gosim test binary is built on demand
-// (gosim build-tests ./cluster) the first time a test needs it.
-package gosimbroadcast_test
+// Run ../../../qgosim/fetch-gosim.sh first. The gosim test binary is built
+// on demand (gosim build-tests ./cluster) the first time a test needs it.
+package broadcast_test
 
 import (
 	"bytes"
 	"strings"
 	"testing"
 
-	"github.com/jellevandenhooff/gosim/metatesting"
 	"hegel.dev/go/hegel"
 
 	"github.com/casselc/quint-connect-go/qenv"
+	"github.com/casselc/quint-connect-go/qgosim"
 	"github.com/casselc/quint-connect-go/qtest"
 	"github.com/casselc/quint-connect-go/qtrace"
 	"github.com/casselc/quint-connect-go/quinthegel"
 )
 
 const (
-	clusterPkg = "github.com/casselc/quint-connect-go/examples/gosimbroadcast/cluster"
-	binding    = "../glomers/broadcast/broadcast.binding.yaml"
+	clusterPkg = "github.com/casselc/quint-connect-go/examples/gosim/broadcast/cluster"
+	binding    = "../../glomers/broadcast/broadcast.binding.yaml"
 )
 
 // run runs the simulated cluster once, with mutation ("" for the faithful
-// node), every choice made by c. It returns the recorded steps. The test
-// binary is looked up each time: a run that Hegel aborts stops it, and the
-// next run starts another.
+// node), every choice made by c, and returns the recorded steps.
 func run(t *testing.T, c qenv.Chooser, mutation string) []qtrace.Step {
 	t.Helper()
-	var log bytes.Buffer
-	res, err := metatesting.ForOtherPackage(t, clusterPkg).RunWith(t, &metatesting.RunConfig{
-		Test:     "TestBroadcast",
-		ExtraEnv: []string{"BROADCAST_MUTATION=" + mutation},
-	}, c, func(line string) { log.WriteString(line) })
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res.Failed {
-		t.Fatalf("the simulated test failed: %s", res.Err)
-	}
-	steps, err := qtrace.ReadJSONL(&log)
+	steps, err := qgosim.Run(t, clusterPkg, "TestBroadcast", c, "BROADCAST_MUTATION="+mutation)
 	if err != nil {
 		t.Fatal(err)
 	}
