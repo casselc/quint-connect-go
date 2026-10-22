@@ -65,7 +65,10 @@ r := qmeta.Recovers(cfg, 9, qmeta.Trigger{ExtraRate: 5, Duration: time.Minute}, 
   (`Trigger.Start`; a closed loop needs one poll interval).
 - Results are probabilities. Count recoveries over several seeds; in
   the metastable region, a run's escape is a coin toss.
-  `RecoversMostly` takes the majority.
+  `qmeta.Mostly(sys, tr, n)` takes the majority, `Count` and `Runs`
+  give the runs. A `Recovery` prints its verdict and a `Warning` when
+  the goodput before the trigger was far below the offered load: an
+  unhealthy baseline (set `Experiment.Healthy`).
 
 ### Measured service times
 
@@ -138,14 +141,14 @@ loop alone does nothing, as checkout's consumers showed.
 ## 3. Search: Hegel (`quinthegel.FindTrigger`)
 
 ```go
-r := quinthegel.FindTrigger(t, cfg, base, qmeta.TriggerSpace{MaxExtraRate: 10, MaxSlowdown: 4,
-	MaxDuration: 5 * time.Minute, Start: 10 * time.Minute}, 5*time.Minute, hegel.WithTestCases(30))
-// nil: no trigger in the space breaks it; else r.Trigger is shrunk toward none
+sys := qmeta.OfSimulation(cfg, base, 5*time.Minute) // or qmeta.Of(experiment, goodput, within)
+r := quinthegel.FindTrigger(t, sys, qmeta.TriggerSpace{MaxExtraRate: 10, MaxSlowdown: 4,
+	MaxDuration: 5 * time.Minute, Start: 10 * time.Minute}, hegel.WithTestCases(30)).Expect(t, true)
+// r.Trigger is shrunk toward none
 ```
 
-Assert `r != nil` for a design that should be shown fragile, and
-`r == nil` for the mitigation. `quinthegel.SearchTrigger(t, sys, space)` does the same
-for any `qmeta.System` (`qmeta.Of(experiment, goodput, within)`). If it returns the empty trigger, the system
+`Expect(t, true)` for a design that should be shown fragile,
+`Expect(t, false)` for the mitigation (no trigger in the space breaks it). If it returns the empty trigger, the system
 collapses on noise alone: look for a design bound, such as more
 concurrency than capacity × timeout. Each case runs `Seeds` (default 3)
 simulations, so keep it out of `-short`.

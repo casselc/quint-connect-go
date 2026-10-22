@@ -84,6 +84,22 @@ func CalibrateTimeout(p Params, data []Trajectory) (Params, float64) {
 	return fit(p, data, []int{1})
 }
 
+// Warning says when p cannot describe a system that recovers at all: an
+// arrival rate at or above the service capacity makes every state look
+// unrecoverable. Set by hand that is an overload; from Calibrate it means
+// the data were mostly taken in a storm, which cannot tell more arrivals
+// from a shorter timeout.
+func (p Params) Warning() string {
+	w := p.Workers
+	if w == 0 {
+		w = 1
+	}
+	if p.Mu <= 0 || p.Lambda < p.Mu*float64(w) {
+		return ""
+	}
+	return fmt.Sprintf("λ=%.3g ≥ capacity %.3g (μ=%.3g × %d workers): every state looks unrecoverable; if calibrated, the data are mostly from a storm: hold λ (CalibrateTimeout)", p.Lambda, p.Mu*float64(w), p.Mu, w)
+}
+
 func fit(p Params, data []Trajectory, dims []int) (Params, float64) {
 	nominal := p
 	loss := func(q Params) float64 {

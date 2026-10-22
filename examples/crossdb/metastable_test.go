@@ -57,13 +57,8 @@ func TestControlPlaneTrigger(t *testing.T) {
 		found bool
 	}{{FixedRequeue, true}, {CrossplaneDefaults, false}} {
 		t.Run(c.r.Name, func(t *testing.T) {
-			r := quinthegel.FindTrigger(t, DefaultControlPlane(c.r).Config(), 0, space, 5*time.Minute, hegel.WithTestCases(25))
-			switch {
-			case c.found && r == nil:
-				t.Error("no dip found; want one")
-			case !c.found && r != nil:
-				t.Errorf("found %v; want none", r.Trigger)
-			}
+			sys := qmeta.OfSimulation(DefaultControlPlane(c.r).Config(), 0, 5*time.Minute)
+			quinthegel.FindTrigger(t, sys, space, hegel.WithTestCases(25)).Expect(t, c.found)
 		})
 	}
 }

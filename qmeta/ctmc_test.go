@@ -73,16 +73,12 @@ func TestFindTrigger(t *testing.T) {
 	}
 	space := qmeta.TriggerSpace{MaxExtraRate: 15, MaxDuration: 300 * time.Second, Seeds: 3}
 	for _, base := range []float64{8, 9, 9.5} {
-		ok, _ := qmeta.RecoversMostly(sim(base), base, qmeta.Trigger{}, 300*time.Second, 5)
+		ok, _ := qmeta.Mostly(qmeta.OfSimulation(sim(base), base, 300*time.Second), qmeta.Trigger{}, 5)
 		t.Logf("%.1f req/s, no trigger: recovers in most runs: %v", base, ok)
 	}
 	t0 := time.Now()
-	r := quinthegel.FindTrigger(t, sim(9.5), 9.5, space, 300*time.Second, hegel.WithTestCases(40), hegel.WithSeed(1))
-	if r == nil {
-		t.Fatal("no trigger found at 9.5 req/s")
-	}
+	quinthegel.FindTrigger(t, qmeta.OfSimulation(sim(9.5), 9.5, 300*time.Second), space, hegel.WithTestCases(40), hegel.WithSeed(1)).Expect(t, true)
 	t.Logf("searched in %v", time.Since(t0))
-	if r := quinthegel.FindTrigger(t, sim(8), 8, space, 15*time.Minute, hegel.WithTestCases(30), hegel.WithSeed(1)); r != nil {
-		t.Fatalf("at 8 req/s the system should always recover; %v did not", r.Trigger)
-	}
+	// at 8 req/s the system always recovers
+	quinthegel.FindTrigger(t, qmeta.OfSimulation(sim(8), 8, 15*time.Minute), space, hegel.WithTestCases(30), hegel.WithSeed(1)).Expect(t, false)
 }

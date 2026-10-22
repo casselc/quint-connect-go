@@ -897,7 +897,7 @@ trigger is extra load, a slowdown (a capacity dip in a dependency) and a
 duration. All three shrink toward none, so Hegel's result is the smallest
 stressor that tips the system. A run's escape from the metastable region
 is chance, so each candidate trigger runs several seeds and a majority
-decides (`RecoversMostly`). Per-request randomness comes from a seeded
+decides (`Mostly`). Per-request randomness comes from a seeded
 generator, not the Chooser: a run has tens of thousands of requests, and
 what the search should vary is the trigger.
 
@@ -2188,3 +2188,36 @@ other survivors:
 
 The report is a list to read, not a score to assert: equivalent mutants
 survive by right. `examples/checkout/mutate_test.go` logs it.
+
+## 27. Messages, constants and one recovery API (U6: P6, P5, P4)
+
+**Messages for the traps (P6).** The review's traps each cost a debugging
+session; each now has its message where the trap shows:
+- an exploration whose every run fails at step 1 names the binding's
+  constants: the instance more likely disagrees with the scenario's than
+  every run has one bug (`Exploration.Expect`);
+- runs whose Script never made all its faults list them, in the run's
+  report and in "all N runs conform; want ..." (`Explored.Unscripted`);
+- every failing run's report ends with how to reproduce it:
+  `QUINTGO_SEED=17 go test -run '^TestX$'`, and Explore runs that seed
+  alone when the variable is set;
+- a recovery judged against goodput far below the offered load says the
+  baseline was unhealthy (`Recovery.Warning`, in its `String`);
+- a chain whose arrival rate is at or above capacity says so, and that a
+  calibration that got there was fed storm data (`Params.Warning`).
+
+**Run-declared constants (P5).** A sweep's size went to the system and to
+the model separately, and rows failed until both agreed. A factor now
+names its model constant (`qsweep.Ints("stock", 1, 2, 3).Constant("STOCK")`)
+and each row is checked with it (`Row.Constants`). The run-attribute form
+(a run declaring its instance in its recording) would let one batch mix
+instances; the checker validates a batch against one instance, so it
+waits until a sweep's rows are checked in one batch.
+
+**One recovery API (P4).** `qmeta.System` is the one interface: a qload
+simulation (`OfSimulation`) or an application (`Of`), run with `Runs`,
+`Count` and `Mostly`. `RecoversMostly` and `SearchTrigger` are gone, and
+`quinthegel.FindTrigger(t, sys, space)` takes any System and returns a
+`TriggerSearch` judged by `Expect(t, found)`, as FindViolation's result
+is. `MaxExtraRate` no longer defaults to the base rate (the System does
+not know it): set it.

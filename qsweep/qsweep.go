@@ -22,10 +22,30 @@ import (
 type Factor struct {
 	Name   string
 	Values []string
+	// Model, if set, is the model constant the factor's value is (a Quint
+	// expression: an integer, a quoted string): a row's runs are checked
+	// against the model with it (qtest.Sweep), so a size given to the
+	// system and to the model is written once and cannot disagree.
+	Model string
+}
+
+// Constant returns f naming the model constant its value is (Model).
+func (f Factor) Constant(name string) Factor { f.Model = name; return f }
+
+// Constants are the model constants of r's factors that name one (Model),
+// with the row's values.
+func (r Row) Constants() map[string]string {
+	m := map[string]string{}
+	for i, f := range r.factors {
+		if f.Model != "" {
+			m[f.Model] = f.Values[r.idx[i]]
+		}
+	}
+	return m
 }
 
 // Bool is a factor with values "off" and "on" (Row.On).
-func Bool(name string) Factor { return Factor{name, []string{"off", "on"}} }
+func Bool(name string) Factor { return Factor{Name: name, Values: []string{"off", "on"}} }
 
 // Ints is a factor with integer values (Row.Int).
 func Ints(name string, values ...int) Factor {

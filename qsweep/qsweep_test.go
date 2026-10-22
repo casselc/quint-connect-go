@@ -108,3 +108,17 @@ func TestSequences(t *testing.T) {
 		t.Logf("t=%d: %d orders of %d events", k, len(seqs), len(ev))
 	}
 }
+
+// A factor naming its model constant gives each row's constants.
+func TestRowConstants(t *testing.T) {
+	rows, err := qsweep.Cover([]qsweep.Factor{qsweep.Ints("stock", 1, 2).Constant("STOCK"), qsweep.Bool("crash")}, 2, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range rows {
+		cs := r.Constants()
+		if len(cs) != 1 || cs["STOCK"] != r.Get("stock") {
+			t.Errorf("%v: constants %v", r, cs)
+		}
+	}
+}

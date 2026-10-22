@@ -322,8 +322,8 @@ tier:
   from in time become a Prometheus alerting rule over the same gauges,
   with the policy it assumes in its annotations. `qrole.MetricsSink`
   counts every model step by outcome.
-- `quinthegel.FindTrigger` (qload systems) and `quinthegel.SearchTrigger` (any
-  `qmeta.System`, such as `qmeta.Of(experiment)`): Hegel searches
+- `quinthegel.FindTrigger` (any `qmeta.System`: a qload simulation,
+  `qmeta.OfSimulation`, or an application, `qmeta.Of(experiment)`): Hegel searches
   transient triggers (extra load, a slowdown, a duration) for one after
   which goodput does not recover, and shrinks it. Seeds of a trigger run
   in parallel.
@@ -331,7 +331,7 @@ tier:
 ```go
 c := qmeta.New(qmeta.Params{Lambda: 9, Mu: 10, Timeout: 9, Retries: 3, Queue: 100})
 h := c.HittingTimes(func(s qmeta.State) bool { return s.U <= 10 })   // seconds to drain, per state
-r := quinthegel.FindTrigger(t, cfg, 9, qmeta.TriggerSpace{MaxExtraRate: 10}, 5*time.Minute)
+r := quinthegel.FindTrigger(t, qmeta.OfSimulation(cfg, 9, 5*time.Minute), qmeta.TriggerSpace{MaxExtraRate: 10}).Expect(t, true)
 // r.Trigger: "+1.0 req/s for 3m36s" tips immediate retries into a storm
 ```
 
@@ -359,7 +359,7 @@ r := qmeta.Assess(x, "markPaid", qmeta.Trigger{Slowdown: 3, Duration: time.Minut
 | Package | |
 |---|---|
 | `connect` | MBT driver runtime: `Run`, `Test`, `Replay`, `Switch`, `Pick[T]`, `StateDriver`, `GenerateRun`/`GenerateTest` ; `FaultScript` (a trace's faults imposed on a whole program in qenv) |
-| `quinthegel` | Hegel integration: `Test` (modes `Batched`/`Each`/`After`/`Off`), `FindViolation` (expected failures, shrunk), `Recorder`, `CaseChecker`/`CheckCase`, `Replay`, `Traces`; the Hegel adapters of other packages: `Chooser` (qenv's choices from a test case), `FindTrigger`/`SearchTrigger` (qmeta's trigger search) ; `Shrink(t, sys)` (a `qtest.System` under Hegel, its failure replayable from `Violation.Choices`) |
+| `quinthegel` | Hegel integration: `Test` (modes `Batched`/`Each`/`After`/`Off`), `FindViolation` (expected failures, shrunk), `Recorder`, `CaseChecker`/`CheckCase`, `Replay`, `Traces`; the Hegel adapters of other packages: `Chooser` (qenv's choices from a test case), `FindTrigger` (qmeta's trigger search, `.Expect(t, found)`) ; `Shrink(t, sys)` (a `qtest.System` under Hegel, its failure replayable from `Violation.Choices`) |
 | `itf` | ITF traces: `Parse`, `Value`, `Decode`/`Encode` (Go ⇄ Quint values), `ParseQuint` (Quint literals) |
 | `qobs` | runtime recorder: `Record`, `Thread`, `WithRecorder` (a context's own recorder, so runs in parallel record apart), `SetFallback` (a goroutine's run, which qenv provides), `Strict` (a step with nowhere to go panics); sinks `MemorySink`, `FileSink`/`DurableFileSink`/`JSONLSink`, `OTelSink`, `Tee`; `orchestrion.yml` |
 | `qtrace` | the step schema, `Reconstruct` (ordering, gaps, restarts), step log I/O |
@@ -373,12 +373,12 @@ r := qmeta.Assess(x, "markPaid", qmeta.Trigger{Slowdown: 3, Duration: time.Minut
 | `qenv/fault` | the aspect of `//quint:fault`: a function's entry becomes a fault choice (its package's own errors, or a crash) in a simulation, declared for coverage; woven by qweave |
 | `qload` | load on qenv: `Experiment` (an application under open- or closed-loop load, goodput from its model steps, probes, seeded streams, `Trigger`s); `Simulate` (an abstract server and clients with timeouts, retries, backoff, budgets or a `Retrier` under test) ; `Piecewise` (a measured shape, e.g. a production trace's) |
 | `qrole` | load roles: `//quint:serve`, `//quint:operation`, `//quint:call` (woven by its aspects, or `Serve`/`Operation`/`Call`) measure a server's requests (u) and the orbit (v); OTel gauges (`Instrument`) ; pprof labels per role (`Labels(true)`: profiles split by server and service) |
-| `qmeta` | metastability: a CTMC (`Field`/`SVG`, `HittingTimes`, `RecoveryWithin`, `Expect`/`ExpectAll`, `Calibrate`/`CalibrateTimeout` from observed series via `Trajectories`), alerts (`Region`: states unlikely to recover in time; `Rules`: a Prometheus rule group over qrole's metrics), the recovery property (`Recovers`, `Assess`, `Mostly`; judged against the healthy goodput within the counts' noise), and `System`/`TriggerSpace` for Hegel's trigger search (`quinthegel.FindTrigger`, `SearchTrigger`) ; measured service times (`Measure`: μ, the coefficient of variation, `Exponential`, `Draw` for simulations) |
+| `qmeta` | metastability: a CTMC (`Field`/`SVG`, `HittingTimes`, `RecoveryWithin`, `Expect`/`ExpectAll`, `Calibrate`/`CalibrateTimeout` from observed series via `Trajectories`), alerts (`Region`: states unlikely to recover in time; `Rules`: a Prometheus rule group over qrole's metrics), the recovery property (`Recovers`, `Assess`, `Mostly`; judged against the healthy goodput within the counts' noise), and `System`/`TriggerSpace` for Hegel's trigger search (`quinthegel.FindTrigger`) ; measured service times (`Measure`: μ, the coefficient of variation, `Exponential`, `Draw` for simulations) |
 | `qcover` | code coverage by model step: blocks woven by `qweave -cover`, attributed to each task's next step; `Summarize` (never run, run by no step, outcomes that ran the same code); `ExploreConfig.Coverage`, `Exploration.CodeCoverage` |
 | `qmut` | mutant schemata: `qweave -mutate` weaves negated conditions, moved comparison boundaries and dropped calls into one build, each behind a switch; a run turns one on (`WithMutant`) and notes which it reached (`Reach`) |
 | `qrun` | a run's state (`Key[T]`, `Get`): from the context, else the goroutine's run; what qobs, qrole and qcover look up |
 | `sktrace` | SimKube traces (format v3, no dependencies): a real cluster's objects over time (`Events`, `Lifecycles`), as rates, gauges (`Gauge`, `Replicas`) and pod starts, for `qload.Piecewise` load shapes and replayed workloads |
-| `qsweep` | covering arrays: `Cover` (every t-way combination of factor values, with constraints), `Missing`, `Sequences` (every order of t events) |
+| `qsweep` | covering arrays: `Cover` (every t-way combination of factor values, with constraints), `Missing`, `Sequences` (every order of t events); `Factor.Constant` (a factor that is a model constant: each row checked with its value) |
 | `load` | read OTLP/JSON, a step log or ITF, detected by content |
 | `skills` | the agent skills below, embedded; install targets |
 | `cmd/quintgo` | CLI: `scaffold`, `lint` (`-sim DIR`: simulation code; `-weave DIR`: woven code), `steps`, `validate`, `itf`, `convert`, `skills` |

@@ -112,6 +112,10 @@ quinthegel.Shrink(t, sys, hegel.WithTestCases(50)).Expect(t, qtest.Violates("cha
 - **Other instances:** `qtest.Constants(map[string]string{"STOCK":
   "1000"})` checks against the model with other constants, so one
   binding serves runs of every size.
+- **Reproducing a seed:** a failing run's report ends with
+  `reproduce: QUINTGO_SEED=17 go test -run '^TestX$'`; with QUINTGO_SEED
+  set, an exploration runs that seed alone. A run whose Script never made
+  all its faults lists them ("scripted faults that never happened").
 - **Rates:**
   - A nemesis (crash) is considered at every scheduling step, so its rate
     is per step (default 1 in 200). Under load, steps per second grow a
@@ -242,10 +246,9 @@ When the product of configurations grows (isolation level × sizes ×
 which fault kinds happen), sweep pairwise rows instead of the product:
 
 ```go
-space := []qsweep.Factor{{Name: "iso", Values: []string{"ser", "si", "rc"}}, qsweep.Ints("stock", 1, 2, 3),
+space := []qsweep.Factor{{Name: "iso", Values: []string{"ser", "si", "rc"}}, qsweep.Ints("stock", 1, 2, 3).Constant("STOCK"),
 	qsweep.Bool("crash"), qsweep.Bool("rpc.provider")}
 qtest.SweepExplore(t, binding, qtest.Sweep{Factors: space, Explore: qtest.ExploreConfig{Seeds: 20},
-	Opts:   func(r qsweep.Row) []qtest.Option { return []qtest.Option{qtest.Constants(map[string]string{"STOCK": r.Get("stock")})} },
 	Expect: func(r qsweep.Row) []qtest.Expectation { ... }}, // nil: Conforms
 	func(r qsweep.Row, c qenv.Chooser) { app.Run(qenv.Without(c, offKinds(r)...), cfgOf(r)) })
 ```
@@ -257,8 +260,10 @@ qtest.SweepExplore(t, binding, qtest.Sweep{Factors: space, Explore: qtest.Explor
 - Fault kinds as `Bool` factors, turned off with `qenv.Without`, give
   swarm testing with a guarantee: every pair of kinds runs together, and
   each without the others masking it.
-- A row's sizes need the model's matching constants (`Opts`): a row with
-  another stock than the binding's fails every run otherwise.
+- A row's sizes need the model's matching constants: name the constant
+  on the factor (`.Constant("STOCK")`) and each row is checked with its
+  value. When every run fails at step 1, the report names the binding's
+  constants: the usual cause.
 - Expect per row: say where a mutant's bug is real. Checkout's
   `NoIdempotencyKey` sweep splits it into its two bugs: one in every row,
   and one only where the provider's responses are lost: rows without

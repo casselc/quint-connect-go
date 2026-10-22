@@ -142,3 +142,7 @@ the rest, each after the U items it depends on.
   checkout it found that no step carried the stock after a cancel (fixed
   in the binding), and that refused orders record no step (a model change,
   open).
+- U6: done (DESIGN §27): trap messages (constants at step 1, unscripted
+  faults, `QUINTGO_SEED`, unhealthy baselines, λ ≥ capacity); factors
+  naming their model constants; one `FindTrigger` over `qmeta.System`
+  with `Expect`.

@@ -21,8 +21,9 @@ type Sweep struct {
 	Allow func(qsweep.Row) bool
 	// Explore is each row's exploration (Seeds per row).
 	Explore ExploreConfig
-	// Opts adds a row's options to Explore's, e.g. the model's constants
-	// for the row's sizes (Constants).
+	// Opts adds a row's options to Explore's. A factor that names its
+	// model constant (qsweep.Factor.Constant) needs none: each row is
+	// checked with the constants of its factors (Row.Constants).
 	Opts func(qsweep.Row) []Option
 	// Expect is what each row's runs should show (nil: Conforms): a
 	// mutant's bug is real under some rows only.
@@ -68,6 +69,9 @@ func sweep(t *testing.T, bindingPath string, sw Sweep, scenario func(row qsweep.
 	for i, row := range rows {
 		t.Run(row.String(), func(t *testing.T) {
 			xc := sw.Explore
+			if cs := row.Constants(); len(cs) > 0 {
+				xc.Opts = append(append([]Option(nil), xc.Opts...), Constants(cs))
+			}
 			if sw.Opts != nil {
 				xc.Opts = append(append([]Option(nil), xc.Opts...), sw.Opts(row)...)
 			}

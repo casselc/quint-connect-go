@@ -91,7 +91,8 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   `go run sigs.k8s.io/controller-tools/cmd/controller-gen@v0.19.0 object crd paths=./apis/... output:crd:dir=./package/crds`.
 - Backend: `QUINT_BACKEND=rust|typescript` (`QUINTGO_BACKEND` also works).
   `QUINTGO_KEEP=/dir` keeps generated modules and traces from qtest and
-  quinthegel.
+  quinthegel. `QUINTGO_SEED=n` runs an exploration's seed n alone (each
+  failing run's report prints the command).
 
 ## Conventions
 
@@ -280,8 +281,7 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   and with equal instance constants. Keep those guards.
 - gosim (`qgosim`, `examples/gosim`) translates everything the simulated
   package imports: keep Hegel and other native code out of it. Hegel
-  adapters live in quinthegel (`Chooser`, `FindTrigger`,
-  `SearchTrigger`), and the Glomers one in `maelstrom/hegelnet`, never
+  adapters live in quinthegel (`Chooser`, `FindTrigger`), and the Glomers one in `maelstrom/hegelnet`, never
   next to code a simulation runs. `internal/simdeps` fails if qenv, qobs,
   qtrace, qload, qmeta or a simulated example depends on Hegel, purego or
   cgo, and names the import chain. It writes the

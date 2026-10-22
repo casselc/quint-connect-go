@@ -17,7 +17,7 @@ import (
 var space = []qsweep.Factor{
 	{Name: "iso", Values: []string{"ser", "si", "rc"}},
 	qsweep.Ints("orders", 2, 3, 4),
-	qsweep.Ints("stock", 1, 2, 3),
+	qsweep.Ints("stock", 1, 2, 3).Constant("STOCK"), // the model's instance follows the row's
 	qsweep.Bool("crash"),
 	qsweep.Bool("queue.ack"),
 	qsweep.Bool("rpc.api"),
@@ -25,11 +25,6 @@ var space = []qsweep.Factor{
 }
 
 var isoOf = map[string]qenv.Isolation{"ser": qenv.Serializable, "si": qenv.SnapshotIsolation, "rc": qenv.ReadCommitted}
-
-// stockOf checks a row against the model with its stock.
-func stockOf(row qsweep.Row) []qtest.Option {
-	return []qtest.Option{qtest.Constants(map[string]string{"STOCK": row.Get("stock")})}
-}
 
 // deploy runs the shop as a row says, with the fault kinds it turns off.
 func deploy(m shop.Mutation) func(qsweep.Row, qenv.Chooser) error {
@@ -59,7 +54,7 @@ func TestFaithfulSweep(t *testing.T) {
 	if testing.Short() {
 		t.Skip("sweeps hundreds of runs")
 	}
-	sw := shopSystem.Sweep(t, qtest.Sweep{Factors: space, Opts: stockOf, Explore: qtest.ExploreConfig{Seeds: 20, Rates: crashy}}, deploy(shop.Faithful))
+	sw := shopSystem.Sweep(t, qtest.Sweep{Factors: space, Explore: qtest.ExploreConfig{Seeds: 20, Rates: crashy}}, deploy(shop.Faithful))
 	cov := sw.Coverage()
 	t.Log(cov)
 	if u := cov.Untried(); len(u) > 0 {
@@ -77,7 +72,7 @@ func TestNoIdempotencyKeySweep(t *testing.T) {
 	if testing.Short() {
 		t.Skip("sweeps hundreds of runs")
 	}
-	shopSystem.Sweep(t, qtest.Sweep{Factors: space, Opts: stockOf, Explore: qtest.ExploreConfig{Seeds: 20, Rates: crashy},
+	shopSystem.Sweep(t, qtest.Sweep{Factors: space, Explore: qtest.ExploreConfig{Seeds: 20, Rates: crashy},
 		Expect: func(row qsweep.Row) []qtest.Claim {
 			if row.On("rpc.provider") {
 				return []qtest.Claim{qtest.Violates("chargedAtMostOnce")}

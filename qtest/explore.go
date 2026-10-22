@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -33,6 +34,9 @@ type Explored struct {
 	// Err is the scenario's error: the run did not run to its end
 	// (System.Run's error).
 	Err error
+	// Unscripted are the faults of a Script chooser the run never came to
+	// (qenv.Script.Remaining): it did not follow its script.
+	Unscripted []qenv.Scripted
 }
 
 // Faults are the run's fault choices that were not nominal.
@@ -50,6 +54,9 @@ func (e *Explored) Faults() []qenv.Choice {
 // against the model in bulk.
 type Exploration struct {
 	Runs []*Explored
+
+	constants map[string]string // the instance checked against, for messages
+	test      string            // the test's name, for reproducing a seed
 }
 
 // Coverage is the runs' fault coverage (qenv.CoverageOf): for each fault
@@ -88,7 +95,10 @@ func (x *Exploration) Failing() []*Explored {
 
 // ExploreConfig configures Explore.
 type ExploreConfig struct {
-	Seeds int        // runs, with seeds 1..Seeds (default 50)
+	// Seeds is the number of runs, with seeds 1..Seeds (default 50).
+	// QUINTGO_SEED=n in the environment runs seed n alone, as a failure's
+	// report says to reproduce it.
+	Seeds int
 	Rates qenv.Rates // fault rates (default qenv.DefaultRates)
 	Opts  []Option   // artifacts, quint options
 	// Parallel runs this many seeds at once (default GOMAXPROCS; 1: one
@@ -137,12 +147,22 @@ func explore(t testing.TB, bindingPath string, cfg ExploreConfig, scenario func(
 	}
 	c := config(t, cfg.Opts)
 	defer qobs.Strict()() // a step with nowhere to go panics, rather than vanish from its run
-	x := &Exploration{Runs: make([]*Explored, cfg.Seeds)}
-	runs := make([][]qtrace.Step, cfg.Seeds)
+	seeds := make([]uint64, cfg.Seeds)
+	for i := range seeds {
+		seeds[i] = uint64(i + 1)
+	}
+	if v := os.Getenv("QUINTGO_SEED"); v != "" {
+		n, err := strconv.ParseUint(v, 10, 64)
+		if err != nil {
+			t.Fatalf("quintgo: QUINTGO_SEED=%q: want a seed number", v)
+		}
+		seeds = []uint64{n}
+	}
+	x := &Exploration{Runs: make([]*Explored, len(seeds)), test: t.Name()}
+	runs := make([][]qtrace.Step, len(seeds))
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, cfg.Parallel)
-	for i := range cfg.Seeds {
-		seed := uint64(i + 1)
+	for i, seed := range seeds {
 		wg.Add(1)
 		sem <- struct{}{}
 		go func() { //qenv:ok runs seeds side by side, each its own simulation
@@ -167,6 +187,9 @@ func explore(t testing.TB, bindingPath string, cfg ExploreConfig, scenario func(
 			r := qobs.NewRecorder(sink, c.Recorder...)
 			err := scenario(qenv.WithContext(rec, qobs.WithRecorder(ctx, r)))
 			x.Runs[i] = &Explored{Seed: seed, Steps: mem.Steps(), Choices: rec.Choices, Interrupted: r.Interrupted(), Code: code, Err: err}
+			if sc, ok := qenv.As[*qenv.Script](ch); ok {
+				x.Runs[i].Unscripted = sc.Remaining()
+			}
 			runs[i] = mem.Steps()
 		}()
 	}
@@ -184,6 +207,13 @@ func explore(t testing.TB, bindingPath string, cfg ExploreConfig, scenario func(
 	o := c.Options
 	o.Dir, o.NoITF = filepath.Join(c.Dir, "quint"), true
 	ch := checkerFor(t, bindingPath, o, c)
+	x.constants = map[string]string{}
+	for k, v := range ch.Binding.Constants {
+		x.constants[k] = v
+	}
+	for k, v := range c.Constants {
+		x.constants[k] = v
+	}
 	cc := *ch
 	cc.Options = o
 	// runs already judged (same steps) take their verdict from the cache,
@@ -323,14 +353,14 @@ func (x *Exploration) Expect(t testing.TB, claims ...Claim) {
 			if every {
 				what = "do not show"
 			}
-			t.Errorf("quintgo: %d of %d runs %s %s; the first:\n%s", j.n, len(x.Runs), what, describeClaim(c), x.describe(t, x.Runs[j.show]))
+			t.Errorf("quintgo: %d of %d runs %s %s%s; the first:\n%s", j.n, len(x.Runs), what, describeClaim(c), x.atStart(), x.describe(t, x.Runs[j.show]))
 		case bad == 0:
 			failedAny = true
-			t.Errorf("quintgo: all %d runs conform; want %s%s", len(x.Runs), c, x.unfaulted())
+			t.Errorf("quintgo: all %d runs conform; want %s%s%s", len(x.Runs), c, x.unfaulted(), x.unscripted())
 		default:
 			failedAny = true
 			first := x.Failing()[0]
-			t.Errorf("quintgo: %d of %d runs violate the model, none as %s; the first:\n%s", bad, len(x.Runs), c, x.describe(t, first))
+			t.Errorf("quintgo: %d of %d runs violate the model, none as %s%s; the first:\n%s", bad, len(x.Runs), c, x.atStart(), x.describe(t, first))
 		}
 	}
 	if failedAny {
@@ -363,6 +393,53 @@ func (x *Exploration) unfaulted() string {
 	return fmt.Sprintf(" (never faulted: %s; raise their rates or the seeds)", strings.Join(kinds, ", "))
 }
 
+// atStart says when every run fails at its first step: the model's
+// instance (its constants) more likely disagrees with the scenario's than
+// every run has the same bug.
+func (x *Exploration) atStart() string {
+	if len(x.Runs) < 2 {
+		return ""
+	}
+	for _, r := range x.Runs {
+		if r.Report.OK() || !failsAtStart(r.Report) {
+			return ""
+		}
+	}
+	var cs []string
+	for _, k := range sortedKV(x.constants) {
+		cs = append(cs, k+"="+x.constants[k])
+	}
+	return fmt.Sprintf(" (all %d runs fail at step 1: the binding's constants (%s) may not match the scenario's; pass qtest.Constants)", len(x.Runs), strings.Join(cs, ", "))
+}
+
+func failsAtStart(rep *validate.Report) bool {
+	for _, a := range rep.Actors {
+		if a.Failure != nil && a.Failure.Index == 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// unscripted names the scripted faults runs never came to: a reason a
+// scripted bug did not show.
+func (x *Exploration) unscripted() string {
+	n := 0
+	var first []qenv.Scripted
+	for _, r := range x.Runs {
+		if len(r.Unscripted) > 0 {
+			if n == 0 {
+				first = r.Unscripted
+			}
+			n++
+		}
+	}
+	if n == 0 {
+		return ""
+	}
+	return fmt.Sprintf(" (in %d of %d runs scripted faults never happened, the first's: %v; a fault of a phase that has passed blocks every later one)", n, len(x.Runs), first)
+}
+
 func describeAll(es []Expectation) string {
 	var s []string
 	for _, e := range es {
@@ -374,6 +451,9 @@ func describeAll(es []Expectation) string {
 func (x *Exploration) describe(t testing.TB, r *Explored) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "seed %d, faults %v\n%s", r.Seed, r.Faults(), r.Report.Summary())
+	if len(r.Unscripted) > 0 {
+		fmt.Fprintf(&b, "  scripted faults that never happened: %v\n", r.Unscripted)
+	}
 	if len(r.Interrupted) > 0 {
 		fmt.Fprintf(&b, "  interrupted, not checked (cut off by a crash or the end of the run):\n")
 		for _, s := range r.Interrupted {
@@ -387,6 +467,9 @@ func (x *Exploration) describe(t testing.TB, r *Explored) string {
 			fmt.Fprintf(&b, "  step log: %s\n", p)
 		}
 		f.Close()
+	}
+	if x.test != "" {
+		fmt.Fprintf(&b, "  reproduce: QUINTGO_SEED=%d go test -run '^%s$'\n", r.Seed, strings.ReplaceAll(x.test, "/", "$/^"))
 	}
 	return b.String()
 }

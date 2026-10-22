@@ -68,13 +68,8 @@ func TestFindTrigger(t *testing.T) {
 		found bool
 	}{{Policies[0], 9, true}, {Policies[1], 8, true}, {Policies[2], 9, false}, {Policies[3], 9, false}} {
 		t.Run(c.p.Name, func(t *testing.T) {
-			r := quinthegel.FindTrigger(t, c.p.Config(c.lam), c.lam, space, 5*time.Minute, hegel.WithTestCases(30))
-			switch {
-			case c.found && r == nil:
-				t.Errorf("no trigger found at λ=%v; want one", c.lam)
-			case !c.found && r != nil:
-				t.Errorf("found %v at λ=%v; want none", r.Trigger, c.lam)
-			}
+			sys := qmeta.OfSimulation(c.p.Config(c.lam), c.lam, 5*time.Minute)
+			quinthegel.FindTrigger(t, sys, space, hegel.WithTestCases(30)).Expect(t, c.found)
 		})
 	}
 }
