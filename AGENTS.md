@@ -186,6 +186,10 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   scheduling step unless `CrashWindow` is set, which lets a crash fall
   after the effect; it adds a scheduling point, so recorded choices of
   older runs do not replay with it on.
+- An expectation naming an action the model lacks, or an invariant the
+  runs did not check, fails the test (a misspelled `None(Violates(x))`
+  would otherwise hold for nothing). Verdicts are cached per instance
+  (binding, constants, invariants), not per steps alone.
 - A binding template's `.seq` and `.action` are the step's own unless the
   step has an argument of that name, which wins; the step's are always
   `.step.seq`, `.step.action`.

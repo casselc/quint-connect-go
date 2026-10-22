@@ -1,4 +1,4 @@
-# Sweep the configuration space: covering arrays (`qsweep`, `qtest.SweepExplore`)
+# Sweep the configuration space: covering arrays (`qsweep`, `System.Sweep`)
 
 When the product of configurations grows (isolation level × sizes ×
 which fault kinds happen), sweep pairwise rows instead of the product:
@@ -6,9 +6,9 @@ which fault kinds happen), sweep pairwise rows instead of the product:
 ```go
 space := []qsweep.Factor{{Name: "iso", Values: []string{"ser", "si", "rc"}}, qsweep.Ints("stock", 1, 2, 3).Constant("STOCK"),
 	qsweep.Bool("crash"), qsweep.Bool("rpc.provider")}
-qtest.SweepExplore(t, binding, qtest.Sweep{Factors: space, Explore: qtest.ExploreConfig{Seeds: 20},
-	Expect: func(r qsweep.Row) []qtest.Expectation { ... }}, // nil: Conforms
-	func(r qsweep.Row, c qenv.Chooser) { app.Run(qenv.Without(c, offKinds(r)...), cfgOf(r)) })
+sys.Sweep(t, qtest.Sweep{Factors: space, Explore: qtest.ExploreConfig{Seeds: 20},
+	Expect: func(r qsweep.Row) []qtest.Claim { ... }}, // nil: Conforms
+	func(r qsweep.Row, c qenv.Chooser) error { return app.Run(qenv.Without(c, offKinds(r)...), cfgOf(r)) })
 ```
 
 - Every pair of factor values is in some row (`Strength: 3` for

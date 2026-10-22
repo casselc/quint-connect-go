@@ -3,6 +3,7 @@ package qtest
 import (
 	"fmt"
 	"os/exec"
+	"sort"
 	"strings"
 	"testing"
 
@@ -23,6 +24,9 @@ type Expectation struct {
 	desc  string
 	check func(*validate.Report) bool
 	every bool // as a Claim alone: every run (Conforms), not some run
+	// the actions and invariants it names, checked against the model: a
+	// misspelled name would make None(...) hold vacuously
+	actions, invariants []string
 }
 
 func (e Expectation) String() string { return e.desc }
@@ -30,7 +34,7 @@ func (e Expectation) String() string { return e.desc }
 // Conforms: every actor's run is a behaviour of the model and satisfies
 // its invariants.
 func Conforms() Expectation {
-	return Expectation{"the run conforms and satisfies every invariant", func(r *validate.Report) bool { return r.OK() }, true}
+	return Expectation{"the run conforms and satisfies every invariant", func(r *validate.Report) bool { return r.OK() }, true, nil, nil}
 }
 
 func failed(r *validate.Report, kind, action string) bool {
@@ -46,13 +50,13 @@ func failed(r *validate.Report, kind, action string) bool {
 // Rejects: the model cannot take an observed step of this action (an
 // implementation bug, or a wrong binding). "" matches any action.
 func Rejects(action string) Expectation {
-	return Expectation{desc: fmt.Sprintf("a %s step the model cannot take", orAny(action)), check: func(r *validate.Report) bool { return failed(r, "disabled", action) }}
+	return Expectation{desc: fmt.Sprintf("a %s step the model cannot take", orAny(action)), check: func(r *validate.Report) bool { return failed(r, "disabled", action) }, actions: named(action)}
 }
 
 // Mismatch: after a step of this action, the observed state differs from
 // the model's (the binding's expect fails). "" matches any action.
 func Mismatch(action string) Expectation {
-	return Expectation{desc: fmt.Sprintf("a state mismatch after a %s step", orAny(action)), check: func(r *validate.Report) bool { return failed(r, "state", action) }}
+	return Expectation{desc: fmt.Sprintf("a state mismatch after a %s step", orAny(action)), check: func(r *validate.Report) bool { return failed(r, "state", action) }, actions: named(action)}
 }
 
 // Violates: the run is a behaviour of the model, and the model's invariant
@@ -71,12 +75,12 @@ func Violates(invariant string) Expectation {
 			}
 		}
 		return false
-	}}
+	}, invariants: []string{invariant}}
 }
 
 // AnyOf: the report meets at least one of es.
 func AnyOf(es ...Expectation) Expectation {
-	return Expectation{desc: describeOr(es), check: func(r *validate.Report) bool {
+	e := Expectation{desc: describeOr(es), check: func(r *validate.Report) bool {
 		for _, e := range es {
 			if e.check(r) {
 				return true
@@ -84,6 +88,51 @@ func AnyOf(es ...Expectation) Expectation {
 		}
 		return false
 	}}
+	for _, x := range es {
+		e.actions = append(e.actions, x.actions...)
+		e.invariants = append(e.invariants, x.invariants...)
+	}
+	return e
+}
+
+func named(action string) []string {
+	if action == "" {
+		return nil
+	}
+	return []string{action}
+}
+
+// unknownNames says which actions and invariants es name that the model
+// (actions) or the checked invariants do not have; nil sets skip a check.
+func unknownNames(es []Expectation, actions, invariants map[string]bool) []string {
+	var out []string
+	for _, e := range es {
+		for _, a := range e.actions {
+			if actions != nil && !actions[a] {
+				out = append(out, fmt.Sprintf("action %q (the model's: %s)", a, strings.Join(keysOf(actions), ", ")))
+			}
+		}
+		for _, i := range e.invariants {
+			if invariants != nil && !invariants[i] {
+				out = append(out, fmt.Sprintf("invariant %q (checked: %s)", i, strings.Join(keysOf(invariants), ", ")))
+			}
+		}
+	}
+	return out
+}
+
+// reportInvariants are the invariants a report checked (nil: none known).
+func reportInvariants(r *validate.Report) map[string]bool {
+	var m map[string]bool
+	for _, a := range r.Actors {
+		for _, inv := range a.Invariants {
+			if m == nil {
+				m = map[string]bool{}
+			}
+			m[inv.Name] = true
+		}
+	}
+	return m
 }
 
 func describeOr(es []Expectation) string {
@@ -207,6 +256,9 @@ func Expect(t testing.TB, r *validate.Report, es ...Expectation) {
 	if r == nil {
 		t.Fatalf("quintgo: no report")
 	}
+	if u := unknownNames(es, nil, reportInvariants(r)); len(u) > 0 {
+		t.Fatalf("quintgo: the expectation names %s: a misspelled name never matches", strings.Join(u, "; "))
+	}
 	for _, e := range es {
 		if !e.check(r) {
 			t.Fatalf("quintgo: want %s, got:\n%s", e, r.Summary())
@@ -218,4 +270,13 @@ func Expect(t testing.TB, r *validate.Report, es ...Expectation) {
 func (r *Run) Expect(t testing.TB, es ...Expectation) {
 	t.Helper()
 	Expect(t, r.Report, es...)
+}
+
+func keysOf[V any](m map[string]V) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }

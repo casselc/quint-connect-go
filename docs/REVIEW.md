@@ -185,3 +185,52 @@ Evidence: checkout, 260 runs, 13 rows
 - C2 (synctest): try `NewNative(c, nil)` inside `synctest.Test` before
   adding a runtime interface.
 - D3 (lag chooser): S3.
+
+## After the roadmap (second review)
+
+An architecture review and a design review with a first hour checked the
+finished roadmap against this document. Their corrections:
+- "qmeta independent of qenv" no longer holds: qmeta's recovery property
+  and `Simulate` import qload, and so qenv (ROADMAP V10).
+- S2: `Unwrap`/`As` done; the Recorder still special-cased in `EntropyOf`
+  and `nemesisOf`, no `Layer`, `WithContext` not deprecated (V3).
+- S4: `Choice.Step` done; one run record not (V4).
+- S6: the lint move and `Explored.Faults` done; the two directive parsers
+  and `qobs.Attributes` remain (V9).
+- P1: `System.Sweep` takes a second run function; `qgosim.Scenario` does
+  not fit `System.Run`; receivers differ (V4, V5).
+- P3: not done; `Check` and `RecordAndCheck` still fail before `.Expect`,
+  and the docs teach them (V5).
+- P2/P4: `Expect` on `qmeta.Recovery` dropped; `Recovers` and `Assess`
+  remain beside `System`; claims were not checked against the model's
+  names (fixed: ROADMAP V0').
+- P6: the constants message fires only when every run fails at step 1;
+  `qmeta.Healthy` not done (V7, V13).
+- P7: only quint-fault-injection split; skills still teach retired APIs
+  (V5, V16).
+- P8: Evidence done but terse; JSON and coverage claims not (V13).
+- S3's single spelling not done: reports print `rpc.x.request`, rates
+  need `fault.rpc.x.request` (V11, R2).
+- New: the verdict cache keyed by steps only (fixed: V0); binding
+  templates let `process`, `outcome`, `obs`, `step` overwrite arguments
+  (V1); `Sim.Run` returns nil on a stall (V2); `qobs.Strict` and
+  `qtest.Record`'s `SetGlobal` are process-wide (V3); the sub-modules
+  cannot be installed (R1).
+
+### Names
+
+The toolkit outgrew "connect" (model-based testing only). Proposals, with
+their proposers' picks:
+
+| Name | For | Against | Picked by |
+|---|---|---|---|
+| quintet | five ways, one model; keeps Quint visible without claiming it | could read as part of the Quint project | design, streams |
+| plumbline | a reference runs are checked against; CLI `plumb`; no brand borrowed | says nothing of Quint or Go | architect |
+| quint-oracle | the model as every workflow's judge | long; hyphen vs package name | analyzers |
+| quintgo | already the CLI, env vars and messages; no migration | reads as an official Quint binding | gRPC |
+| conform | the one verdict | collides with Go projects (leebenson/conform, siderolabs/conform) | — |
+| groundtruth | AGENTS' first convention | AWS SageMaker Ground Truth; long | — |
+| quintessence, qgo, qkit, touchstone, assay, jig, verdict, faithful | — | generic or colliding | — |
+
+The rename belongs in the breaking release (ROADMAP R2): the module path
+changes anyway.

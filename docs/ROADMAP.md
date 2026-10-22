@@ -171,3 +171,121 @@ the rest, each after the U items it depends on.
 - Examples beyond the roadmap: examples/grpcledger (gRPC, simgrpc,
   otelgrpc spans; DESIGN §38) and examples/streams (Kafka, Kinesis, a
   simulated log; DESIGN §39). HTTP is examples/kvstore.
+
+## Next: the second unification (V) and a first release (R)
+
+From the second architecture and design review (docs/REVIEW.md, "After
+the roadmap"). The first roadmap is done (Status above) with five planned
+things left open: P3 (Check vs Validate), S4's one run record, S2's
+context out of the chooser, S6's directive parser and step attributes,
+P4/P6's `Recovery.Expect` and `qmeta.Healthy`. The examples of DESIGN
+§38–40 and a first hour by a reviewer found the rest. In order; each
+names what it needs.
+
+- **V0. Verdicts keyed by instance. Done.** `VerdictCache` keyed verdicts
+  by steps only, so a sweep's rows with different constants could share
+  one; the key now holds the binding, its constants and the invariants.
+- **V0'. Claims checked against the model. Done.** An expectation naming
+  an action the model lacks or an invariant the runs did not check fails
+  at once: `None(Violates("typo"))` held for nothing.
+- **V1. Binding template namespaces.** Arguments also under `.args.X`;
+  `process`, `outcome`, `obs`, `step` as argument names a lint error with
+  the fix (they overwrite a same-named argument). Before any new example.
+- **V2. Stalls are errors.** `Sim.Run` returns `ErrStuck` with
+  `Sim.Tasks()` when tasks other than daemons wait with no deadline;
+  waits that may block forever declare it (`qenv.Daemon(ctx)`, the
+  doubles' receives). Explore reports it as a run error, not a verdict.
+- **V3. Runs without a simulation: `qrun.Start`.** It registers the
+  goroutine; `qtest.Record` and `quinthegel.Recorder` use it instead of
+  `qobs.SetGlobal`; `qobs.Strict` becomes a run key; `qenv.New` inherits
+  `qrun.Current()`, and `qenv.WithContext` is deprecated (S2's rest).
+- **V4. One run record** (S4's rest; needs V3). `qtest.Run{Seed, Steps,
+  Choices, Faults(), Interrupted, Unscripted, Code, Err, Report}` for
+  `Exploration.Runs`, `quinthegel.Violation` (embeds it) and qgosim;
+  `qgosim.Scenario` returns `func(qenv.Chooser) error`, so a gosim run is
+  a `qtest.System`; `System.Sweep` takes the System's own `Run`, the row in
+  the chooser's context.
+- **V5. One entry point** (P3's rest; needs V4). `qtest.Check`,
+  `RecordAndCheck`, `qtest.Explore(binding, …)`, `SweepExplore`
+  deprecated for `Validate`/`Record` + `.Expect` and `qtest.System`;
+  README §3, quint-metastability, quint-trace-validation and
+  instrumentation.md updated. `Explore`, `Sweep`, `FollowTraces`, `Mutate`
+  take `testing.TB`; `Fuzz` takes an `ExploreConfig`.
+- **V6. First hour.** `quintgo scaffold -system` prints a runnable System
+  test with a mutant claim; `examples/hello` (one service, one retry, one
+  dedupe mutant, under 150 lines) is the README's first simulated
+  example; examples/bank gains a System test.
+- **V7. Messages, second pass.** A missing step field names the fields
+  the step has and the `args:` fix (no Go template text); an unknown
+  action says "did you mean" and lists them; QNT508 out of reports; one
+  step numbering; failing reports print the instance's constants; the
+  strict-recording panic is a failed run, not a dead test binary; "a
+  apply" and "do not show the run conforms" reworded.
+- **V8. Quiet Hegel, and claiming nothing found.** `FindViolation` and
+  `Shrink` default to Hegel's quiet verbosity and no reproduction blob
+  for an expected failure (`QUINTGO_VERBOSE=1` restores them);
+  `Shrink(...).Expect(t, qtest.Conforms())` states that Hegel finds
+  nothing, as `FindTrigger(...).Expect(t, false)` does.
+- **V9. Small duplicates, second pass.** One directive parser (a golden
+  table binding and qweave both run); `qobs.Attributes` from
+  `qtrace.Step.Attributes`; one checker cache and steps key for qtest and
+  quinthegel; simdeps lists qmut, qenv/weave and examples/twophase, or
+  derives its list from qenv's importers.
+- **V10. Package boundaries.** `qobs.OTelSink` to `otelio` (qobs and qenv
+  OTel-free: smaller gosim translations); qmeta keeps the chain and
+  `Recovery`, `Recovers`, `Assess`, `Of`, `OfSimulation`, `System`,
+  `TriggerSpace`, `Runs`, `Count`, `Mostly`, `Simulate` move to qload
+  (qmeta independent of qenv again; one `System` name); qenv's choosers
+  and byte rule to `qenv/choice`, `Profile` to `qenv/profile`.
+- **V11. Faults, completed** (needs V10). `FaultPoint` declares a
+  `FaultKind` (errors named, `crash` always an option); one registry
+  (`DeclareFault` into `Faults`); the doubles' options named
+  (`request=duplicate` in reports and scripts); nemeses recorded by name;
+  `qenv.NoFaults` and rates set by kind as reports print it
+  (`Rates.Set("rpc.x.request", p)`), a zero `Rates` documented as
+  `DefaultRates`; crashes per virtual second by default; Script with a
+  partial order (per kind, `After` for dependencies).
+- **V12. Replay stability** (needs V11). Choice streams carry a format
+  version (a corpus header); `qenv.Replay` reports a divergence (step,
+  expected kind, got) as an error; then `Service.CrashWindow` on by
+  default.
+- **V13. Evidence, completed** (P8's rest, P2/P4/P6's leftovers). Names
+  the kinds and untried pairs and explains "one way"; `System.Mutate`
+  returns Evidence; `Evidence` and `qcover.Summary` as JSON under
+  `QUINTGO_KEEP` (what `quintgo cover -sim` and actionmap read); claims
+  over chance (`qtest.Reaches(kind).InAtLeast(0.8)`, `NoSurvivors()`
+  with marked equivalents); `Recovery.Expect`; `qmeta.Healthy{MaxU}`
+  giving the predicate and the PromQL; `Experiment.Healthy` unset an
+  error.
+- **V14. Lints that see more.** `quintgo lint -sim` includes `_test.go`
+  (System `Run` closures live there); quintaction checks literal action
+  names in `qobs.Record` against the binding.
+- **V15. Smaller fixes from the gotchas.** `FileSink` durable by default
+  (the buffered one renamed); a thread used from two goroutines fails at
+  record time; `qenv.Wait`/`Signal.Wait` fall back to real waits outside
+  a simulation; qweave the default weaver for qenv/weave.
+- **V16. P7, finished.** quint-metastability, quint-trace-validation and
+  quint-hegel split into references; quint-start rows for gosim, weaving,
+  Kubernetes controllers and fuzzing, with a ten-line System snippet; the
+  `v.Summary` advice removed; a skills test that fails on deprecated
+  identifiers.
+- **V17. Models.** Refusals as steps in checkout (DESIGN §26's open item),
+  with the model action and the mutants it kills.
+
+- **R1. Releasable modules.** A `go.work` for development; no `replace
+  => ../` in qanalysis and qgosim; tagged core and sub-modules; `go
+  install …/qweave/cmd/qweave@vX` and `…/qanalysis/cmd/quintvet@vX` in
+  the skills instead of `go run -C`.
+- **R2. The breaking release, with the rename** (needs V1–V15). The
+  `fault.` prefix out of user APIs; V12's CrashWindow default; one name
+  per concept (`ExploreConfig.Coverage` → `CodeCoverage`,
+  `Exploration.Coverage` → `FaultCoverage`, `Sim.Faults(bool)` →
+  `SetFaults`, `Chain.Expect` → `Mean`, `qenv.Recorder` → `ChoiceLog`;
+  qtest's `Config` and `Option` one); V5's deprecations removed; the
+  module renamed (see the review's names).
+- **R3. Real environments in CI.** A kwok job running fleetrollout's demo
+  (`go install` kwokctl and kwok; no Docker), then D3's KWOK Stages from
+  `sktrace.Quantiles` checked there.
+
+Order: V1–V2 before the next example; V3 → V4 → V5 → V6; V7–V9 alongside;
+V10 → V11 → V12; V13–V16 alongside; R1 any time; R2 last; R3 independent.

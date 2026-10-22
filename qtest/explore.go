@@ -49,6 +49,7 @@ type Exploration struct {
 
 	constants map[string]string // the instance checked against, for messages
 	test      string            // the test's name, for reproducing a seed
+	actions   map[string]bool   // the model's, for checking claims' names
 }
 
 // Coverage is the runs' fault coverage (qenv.CoverageOf): for each fault
@@ -206,6 +207,16 @@ func explore(t testing.TB, bindingPath string, cfg ExploreConfig, scenario func(
 	for k, v := range c.Constants {
 		x.constants[k] = v
 	}
+	if ch.Model != nil {
+		x.actions = map[string]bool{}
+		for a := range ch.Model.Actions {
+			x.actions[a] = true
+		}
+	}
+	// a verdict is of steps against one instance: the binding, its
+	// constants (a sweep's rows set their own) and the invariants checked
+	var inst strings.Builder
+	fmt.Fprintf(&inst, "%s|%v|%v\n", bindingPath, sortedKV(x.constants), c.Invariants)
 	cc := *ch
 	cc.Options = o
 	// runs already judged (same steps) take their verdict from the cache,
@@ -216,7 +227,7 @@ func explore(t testing.TB, bindingPath string, cfg ExploreConfig, scenario func(
 	at := map[int]int{}       // run -> index in todo
 	for i, steps := range runs {
 		if cfg.Verdicts != nil {
-			keys[i] = stepsKey(steps)
+			keys[i] = inst.String() + stepsKey(steps)
 			if rep, ok := cfg.Verdicts.get(keys[i]); ok {
 				x.Runs[i].Report = rep
 				continue
@@ -323,8 +334,27 @@ func (x *Exploration) Expect(t testing.TB, claims ...Claim) {
 		claims = []Claim{Conforms()}
 	}
 	reps := make([]*validate.Report, len(x.Runs))
+	invariants := map[string]bool{}
 	for i, r := range x.Runs {
 		reps[i] = r.Report
+		for k := range reportInvariants(r.Report) {
+			invariants[k] = true
+		}
+	}
+	if len(invariants) == 0 {
+		invariants = nil
+	}
+	for _, c := range claims {
+		var es []Expectation
+		switch c := c.(type) {
+		case Expectation:
+			es = []Expectation{c}
+		case quantified:
+			es = c.es
+		}
+		if u := unknownNames(es, x.actions, invariants); len(u) > 0 {
+			t.Fatalf("quintgo: %s names %s: a misspelled name never matches, so the claim would hold or fail for nothing", describeClaim(c), strings.Join(u, "; "))
+		}
 	}
 	bad := len(x.Failing())
 	failedAny := false
@@ -398,7 +428,7 @@ func (x *Exploration) atStart() string {
 		}
 	}
 	var cs []string
-	for _, k := range sortedKV(x.constants) {
+	for _, k := range keysOf(x.constants) {
 		cs = append(cs, k+"="+x.constants[k])
 	}
 	return fmt.Sprintf(" (all %d runs fail at step 1: the binding's constants (%s) may not match the scenario's; pass qtest.Constants)", len(x.Runs), strings.Join(cs, ", "))
