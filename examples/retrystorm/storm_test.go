@@ -1,11 +1,12 @@
 package retrystorm
 
 import (
-	"github.com/casselc/quint-connect-go/quinthegel"
 	"testing"
 	"time"
 
-	"github.com/casselc/quint-connect-go/qmeta"
+	"github.com/casselc/quint-connect-go/qload"
+	"github.com/casselc/quint-connect-go/quinthegel"
+
 	"hegel.dev/go/hegel"
 )
 
@@ -61,14 +62,14 @@ func TestFindTrigger(t *testing.T) {
 	if testing.Short() {
 		t.Skip("each trigger runs 3 simulations of ~10 minutes")
 	}
-	space := qmeta.TriggerSpace{MaxExtraRate: 10, MaxDuration: 5 * time.Minute}
+	space := qload.TriggerSpace{MaxExtraRate: 10, MaxDuration: 5 * time.Minute}
 	for _, c := range []struct {
 		p     Policy
 		lam   float64
 		found bool
 	}{{Policies[0], 9, true}, {Policies[1], 8, true}, {Policies[2], 9, false}, {Policies[3], 9, false}} {
 		t.Run(c.p.Name, func(t *testing.T) {
-			sys := qmeta.OfSimulation(c.p.Config(c.lam), c.lam, 5*time.Minute)
+			sys := qload.OfSimulation(c.p.Config(c.lam), c.lam, 5*time.Minute)
 			quinthegel.FindTrigger(t, sys, space, hegel.WithTestCases(30)).Expect(t, c.found)
 		})
 	}

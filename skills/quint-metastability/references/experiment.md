@@ -18,8 +18,8 @@ x := qload.Experiment{
 	},
 	Sink: mem, // optional: the same steps, to check against the model
 }
-r := qmeta.Assess(x, "markPaid", qmeta.Trigger{Slowdown: 3, Duration: time.Minute}, 5*time.Minute, seed)
-ok, first := qmeta.Mostly(qmeta.Of(x, "markPaid", 5*time.Minute), trigger, 3)   // seeds in parallel
+r := qload.Assess(x, "markPaid", qload.Trigger{Slowdown: 3, Duration: time.Minute}, 5*time.Minute, seed)
+ok, first := qload.Mostly(qload.Of(x, "markPaid", 5*time.Minute), trigger, 3)   // seeds in parallel
 ```
 
 - **Goodput is a model step's rate.** The app's own recorded steps are

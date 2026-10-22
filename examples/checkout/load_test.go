@@ -9,16 +9,16 @@ import (
 	"github.com/casselc/quint-connect-go/examples/checkout/shop"
 	"github.com/casselc/quint-connect-go/examples/retrystorm/retry"
 	"github.com/casselc/quint-connect-go/qenv"
-	"github.com/casselc/quint-connect-go/qmeta"
+	"github.com/casselc/quint-connect-go/qload"
 	"github.com/casselc/quint-connect-go/qobs"
 	"github.com/casselc/quint-connect-go/qtest"
 )
 
 // dip is the trigger: the provider serves three times slower for a minute.
-var dip = qmeta.Trigger{Slowdown: 3, Duration: time.Minute}
+var dip = qload.Trigger{Slowdown: 3, Duration: time.Minute}
 
-func recoveries(cfg checkout.LoadConfig, tr qmeta.Trigger, n int) int {
-	return qmeta.Count(cfg.System(5*time.Minute), tr, n)
+func recoveries(cfg checkout.LoadConfig, tr qload.Trigger, n int) int {
+	return qload.Count(cfg.System(5*time.Minute), tr, n)
 }
 
 func consumers(n int) checkout.LoadConfig {
@@ -36,7 +36,7 @@ func consumers(n int) checkout.LoadConfig {
 // provider's capacity times the timeout: 5 consumers.
 func TestConsumersBeyondCapacityCollapse(t *testing.T) {
 	for _, c := range []struct{ consumers, maxBacklog, minBacklog int }{{4, 100, 0}, {6, 1 << 30, 200}} {
-		for i, r := range qmeta.Runs(consumers(c.consumers).System(5*time.Minute), qmeta.Trigger{}, 2) {
+		for i, r := range qload.Runs(consumers(c.consumers).System(5*time.Minute), qload.Trigger{}, 2) {
 			backlog := r.Series.Last("backlog")
 			t.Logf("%d consumers, seed %d: %d payment events in the backlog after %v", c.consumers, i+1, backlog, r.Series.Points[len(r.Series.Points)-1].T)
 			if backlog > c.maxBacklog || backlog < c.minBacklog {
@@ -91,7 +91,7 @@ var loadStock = qtest.Constants(map[string]string{"STOCK": "2147483647"})
 func stormRun(t *testing.T, cfg checkout.LoadConfig) (checkout.LoadRun, *qobs.MemorySink) {
 	mem := &qobs.MemorySink{}
 	cfg.Sink, cfg.Seed = mem, 1
-	r := checkout.Load(cfg, qmeta.Trigger{Start: 30 * time.Second, Slowdown: 3, Duration: 30 * time.Second}, time.Minute)
+	r := checkout.Load(cfg, qload.Trigger{Start: 30 * time.Second, Slowdown: 3, Duration: 30 * time.Second}, time.Minute)
 	t.Logf("%d steps; goodput %.1f/s before, %.1f/s after; %d orders charged twice",
 		len(mem.Steps()), r.Recovery.Before, r.Recovery.After, r.Overpaid)
 	return r, mem

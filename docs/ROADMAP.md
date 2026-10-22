@@ -267,7 +267,13 @@ names what it needs.
   `Recovery`, `Recovers`, `Assess`, `Of`, `OfSimulation`, `System`,
   `TriggerSpace`, `Runs`, `Count`, `Mostly`, `Simulate` move to qload
   (qmeta independent of qenv again; one `System` name); qenv's choosers
-  and byte rule to `qenv/choice`, `Profile` to `qenv/profile`.
+  and byte rule to `qenv/choice`, `Profile` to `qenv/profile`. *Done,*
+  but OTelSink stays in qobs: qobs reads a step's thread from the span
+  in its context, which needs otel/trace, and that imports
+  otel/attribute, so moving the sink would break an API and save
+  nothing. The recovery API and `SimulateTrajectory` (was
+  `qmeta.Simulate`) are qload's; qmeta imports nothing of the module.
+  qenv re-exports choice and profile (aliases), so callers are unchanged.
 - **V11. Faults, completed** (needs V10). `FaultPoint` declares a
   `FaultKind` (errors named, `crash` always an option); one registry
   (`DeclareFault` into `Faults`); the doubles' options named

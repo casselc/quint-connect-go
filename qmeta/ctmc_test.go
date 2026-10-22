@@ -1,10 +1,11 @@
 package qmeta_test
 
 import (
-	"github.com/casselc/quint-connect-go/quinthegel"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/casselc/quint-connect-go/quinthegel"
 
 	"github.com/casselc/quint-connect-go/qload"
 	"github.com/casselc/quint-connect-go/qmeta"
@@ -45,7 +46,7 @@ func TestCalibrate(t *testing.T) {
 	times := []float64{10, 20, 40, 60}
 	var data []qmeta.Trajectory
 	for _, from := range []qmeta.State{{U: 100, V: 20}, {U: 60, V: 10}, {U: 20, V: 0}} {
-		data = append(data, qmeta.Simulate(sim(9.5), from, times, 20))
+		data = append(data, qload.SimulateTrajectory(sim(9.5), from, times, 20))
 	}
 	p := qmeta.Params{Lambda: 9.5, Mu: 10, Timeout: 9, Retries: 3, Queue: 100, Orbit: 60}
 	t0 := time.Now()
@@ -71,14 +72,14 @@ func TestFindTrigger(t *testing.T) {
 	if testing.Short() {
 		t.Skip("searches hundreds of simulated runs")
 	}
-	space := qmeta.TriggerSpace{MaxExtraRate: 15, MaxDuration: 300 * time.Second, Seeds: 3}
+	space := qload.TriggerSpace{MaxExtraRate: 15, MaxDuration: 300 * time.Second, Seeds: 3}
 	for _, base := range []float64{8, 9, 9.5} {
-		ok, _ := qmeta.Mostly(qmeta.OfSimulation(sim(base), base, 300*time.Second), qmeta.Trigger{}, 5)
+		ok, _ := qload.Mostly(qload.OfSimulation(sim(base), base, 300*time.Second), qload.Trigger{}, 5)
 		t.Logf("%.1f req/s, no trigger: recovers in most runs: %v", base, ok)
 	}
 	t0 := time.Now()
-	quinthegel.FindTrigger(t, qmeta.OfSimulation(sim(9.5), 9.5, 300*time.Second), space, hegel.WithTestCases(40), hegel.WithSeed(1)).Expect(t, true)
+	quinthegel.FindTrigger(t, qload.OfSimulation(sim(9.5), 9.5, 300*time.Second), space, hegel.WithTestCases(40), hegel.WithSeed(1)).Expect(t, true)
 	t.Logf("searched in %v", time.Since(t0))
 	// at 8 req/s the system always recovers
-	quinthegel.FindTrigger(t, qmeta.OfSimulation(sim(8), 8, 15*time.Minute), space, hegel.WithTestCases(30), hegel.WithSeed(1)).Expect(t, false)
+	quinthegel.FindTrigger(t, qload.OfSimulation(sim(8), 8, 15*time.Minute), space, hegel.WithTestCases(30), hegel.WithSeed(1)).Expect(t, false)
 }

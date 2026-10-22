@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/casselc/quint-connect-go/qload"
 	"github.com/casselc/quint-connect-go/qmeta"
 )
 
@@ -47,7 +48,7 @@ func TestAlertsFromTheChain(t *testing.T) {
 				t.Errorf("the system recovered, but %d samples of the last minute are in the region", in)
 			}
 
-			for _, o := range Observations(x.Run(2, qmeta.Trigger{}, 5*time.Minute)) {
+			for _, o := range Observations(x.Run(2, qload.Trigger{}, 5*time.Minute)) {
 				if region.Contains(qmeta.State{U: o.U, V: o.V}) {
 					t.Fatalf("without a spike, the alert fires at %.0fs (u=%d v=%d)", o.T, o.U, o.V)
 				}

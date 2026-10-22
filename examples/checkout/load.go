@@ -11,7 +11,6 @@ import (
 	"github.com/casselc/quint-connect-go/examples/checkout/shop"
 	"github.com/casselc/quint-connect-go/qenv"
 	"github.com/casselc/quint-connect-go/qload"
-	"github.com/casselc/quint-connect-go/qmeta"
 	"github.com/casselc/quint-connect-go/qobs"
 	"github.com/casselc/quint-connect-go/qtrace"
 )
@@ -54,7 +53,7 @@ const Goodput = "markPaid"
 // "provider", the calls at the provider, and "backlog", the payment events
 // waiting or being processed) and its recovery from the trigger.
 type LoadRun struct {
-	Recovery qmeta.Recovery
+	Recovery qload.Recovery
 	// Overpaid counts orders charged more than once (none with idempotency
 	// keys, whatever the load).
 	Overpaid int
@@ -104,10 +103,10 @@ func (cfg LoadConfig) Experiment(sink qobs.Sink) qload.Experiment {
 }
 
 // Load runs the shop through tr (a load spike and/or a provider slowdown)
-// and judges recovery by paid orders per second (qmeta.Assess).
-func Load(cfg LoadConfig, tr qmeta.Trigger, within time.Duration) LoadRun {
+// and judges recovery by paid orders per second (qload.Assess).
+func Load(cfg LoadConfig, tr qload.Trigger, within time.Duration) LoadRun {
 	ch := &charges{n: map[string]int{}, next: cfg.Sink}
-	run := LoadRun{Recovery: qmeta.Assess(cfg.Experiment(ch), Goodput, tr, within, cfg.Seed)}
+	run := LoadRun{Recovery: qload.Assess(cfg.Experiment(ch), Goodput, tr, within, cfg.Seed)}
 	for _, n := range ch.n {
 		if n > 1 {
 			run.Overpaid++
@@ -116,8 +115,8 @@ func Load(cfg LoadConfig, tr qmeta.Trigger, within time.Duration) LoadRun {
 	return run
 }
 
-// System is the experiment as a qmeta.System, for qmeta.Mostly and
+// System is the experiment as a qload.System, for qload.Mostly and
 // qmeta.Search.
-func (cfg LoadConfig) System(within time.Duration) qmeta.System {
-	return qmeta.Of(cfg.Experiment(nil), Goodput, within)
+func (cfg LoadConfig) System(within time.Duration) qload.System {
+	return qload.Of(cfg.Experiment(nil), Goodput, within)
 }

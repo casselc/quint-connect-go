@@ -1,9 +1,11 @@
 package crossdb
 
 import (
-	"github.com/casselc/quint-connect-go/quinthegel"
 	"testing"
 	"time"
+
+	"github.com/casselc/quint-connect-go/qload"
+	"github.com/casselc/quint-connect-go/quinthegel"
 
 	"github.com/casselc/quint-connect-go/qmeta"
 	"hegel.dev/go/hegel"
@@ -11,10 +13,10 @@ import (
 
 // Dip is the trigger: the cloud API serves three times slower for a
 // minute, ten minutes into the run (the closed loop's steady state).
-var Dip = qmeta.Trigger{Start: 10 * time.Minute, Slowdown: 3, Duration: time.Minute}
+var Dip = qload.Trigger{Start: 10 * time.Minute, Slowdown: 3, Duration: time.Minute}
 
-func recoveries(r Requeue, tr qmeta.Trigger, n int) int {
-	return qmeta.Count(qmeta.OfSimulation(DefaultControlPlane(r).Config(), 0, 5*time.Minute), tr, n)
+func recoveries(r Requeue, tr qload.Trigger, n int) int {
+	return qload.Count(qload.OfSimulation(DefaultControlPlane(r).Config(), 0, 5*time.Minute), tr, n)
 }
 
 // The performance tier of the provider: 600 Databases polled every
@@ -51,13 +53,13 @@ func TestControlPlaneTrigger(t *testing.T) {
 	if testing.Short() {
 		t.Skip("each trigger runs 3 simulations of ~20 minutes")
 	}
-	space := qmeta.TriggerSpace{Start: 10 * time.Minute, MaxSlowdown: 4, MaxDuration: 5 * time.Minute}
+	space := qload.TriggerSpace{Start: 10 * time.Minute, MaxSlowdown: 4, MaxDuration: 5 * time.Minute}
 	for _, c := range []struct {
 		r     Requeue
 		found bool
 	}{{FixedRequeue, true}, {CrossplaneDefaults, false}} {
 		t.Run(c.r.Name, func(t *testing.T) {
-			sys := qmeta.OfSimulation(DefaultControlPlane(c.r).Config(), 0, 5*time.Minute)
+			sys := qload.OfSimulation(DefaultControlPlane(c.r).Config(), 0, 5*time.Minute)
 			quinthegel.FindTrigger(t, sys, space, hegel.WithTestCases(25)).Expect(t, c.found)
 		})
 	}

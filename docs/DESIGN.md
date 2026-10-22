@@ -2648,3 +2648,19 @@ could not say; each is fixed where it belongs:
   streams' no-dedupe mutant, 20 seeds, 8 failing, validates in 13 s. All
   of a batch's failing runs share one detail run, so the cost is per
   batch, not per run. Nothing to fix; a machine under load multiplies it.
+
+## 41. After the second review (ROADMAP V1–V17)
+
+What changed in the core, and why, item by item (ROADMAP "Next" has the
+plan; the commits have the detail).
+
+**Boundaries (V10).** qmeta is the chain and its alerts, and imports
+nothing of the module: the recovery property and the trigger search's
+System (`Recovers`, `Assess`, `Of`, `OfSimulation`, `System`,
+`TriggerSpace`, `Runs`, `Count`, `Mostly`, `Window`) run simulations, so
+they are qload's, and `qmeta.Simulate` is `qload.SimulateTrajectory`.
+qenv's choosers and their byte rule are `qenv/choice`, which needs no
+simulation (a fuzz corpus, gosim's host side); the virtual-time profile
+is `qenv/profile`. qenv re-exports both, so no caller changed. OTelSink
+stayed in qobs: qobs reads a step's thread from the span in its context,
+so it needs otel/trace whatever the sink's package.

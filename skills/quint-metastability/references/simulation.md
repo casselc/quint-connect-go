@@ -7,7 +7,7 @@ cfg := qload.Config{
 	Client: qload.ClientConfig{Name: "c", Rate: qload.Constant(9), Timeout: 9 * time.Second, Retries: 3,
 		Retrier: func(rnd *rand.Rand) qload.Retrier { return myPolicy(rnd) }}, // the library under test
 }
-r := qmeta.Recovers(cfg, 9, qmeta.Trigger{ExtraRate: 5, Duration: time.Minute}, 5*time.Minute)
+r := qload.Recovers(cfg, 9, qload.Trigger{ExtraRate: 5, Duration: time.Minute}, 5*time.Minute)
 ```
 
 - Put the real retry library behind `qload.Retrier`:
@@ -22,7 +22,7 @@ r := qmeta.Recovers(cfg, 9, qmeta.Trigger{ExtraRate: 5, Duration: time.Minute}, 
   (`Trigger.Start`; a closed loop needs one poll interval).
 - Results are probabilities. Count recoveries over several seeds; in
   the metastable region, a run's escape is a coin toss.
-  `qmeta.Mostly(sys, tr, n)` takes the majority, `Count` and `Runs`
+  `qload.Mostly(sys, tr, n)` takes the majority, `Count` and `Runs`
   give the runs. A `Recovery` prints its verdict and a `Warning` when
   the goodput before the trigger was far below the offered load: an
   unhealthy baseline (set `Experiment.Healthy`).

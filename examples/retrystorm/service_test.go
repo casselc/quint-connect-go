@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/casselc/quint-connect-go/qload"
 	"github.com/casselc/quint-connect-go/qmeta"
 )
 
@@ -33,7 +34,7 @@ func TestServiceTimeShape(t *testing.T) {
 		}
 		cfg := Policies[0].Config(8)
 		cfg.Server.Service = c.svc.Draw
-		if n := qmeta.Count(qmeta.OfSimulation(cfg, 8, 5*time.Minute), Spike, 6); n != c.recover {
+		if n := qload.Count(qload.OfSimulation(cfg, 8, 5*time.Minute), Spike, 6); n != c.recover {
 			t.Errorf("%s service: %d of 6 seeds recover, want %d", c.name, n, c.recover)
 		}
 	}

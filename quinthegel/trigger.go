@@ -5,22 +5,21 @@ import (
 	"testing"
 	"time"
 
+	"github.com/casselc/quint-connect-go/qload"
 	"hegel.dev/go/hegel"
-
-	"github.com/casselc/quint-connect-go/qmeta"
 )
 
 // A TriggerSearch is what FindTrigger found: the shrunk trigger's run, or
 // nil if no trigger in the space breaks the system.
 type TriggerSearch struct {
-	Found *qmeta.Recovery
+	Found *qload.Recovery
 	Runs  int // test cases run
 }
 
 // Expect states whether the search should find a trigger: one that
 // breaks the system, or none in the space. It fails t with the shrunk
 // trigger's run when one was not expected, and returns the run.
-func (s *TriggerSearch) Expect(t testing.TB, found bool) *qmeta.Recovery {
+func (s *TriggerSearch) Expect(t testing.TB, found bool) *qload.Recovery {
 	t.Helper()
 	switch {
 	case found && s.Found == nil:
@@ -35,12 +34,12 @@ func (s *TriggerSearch) Expect(t testing.TB, found bool) *qmeta.Recovery {
 // does not recover, and shrinks it: the extra load, the slowdown and the
 // duration all shrink toward none, so the result is a smallest stressor
 // that tips the system into a state it stays in. The system is a qload
-// simulation (qmeta.OfSimulation), an application's experiment (qmeta.Of)
+// simulation (qload.OfSimulation), an application's experiment (qload.Of)
 // or anything else; each trigger runs with space.Seeds seeds, and breaks
-// the system when most do not recover (qmeta.Mostly). Unset bounds
+// the system when most do not recover (qload.Mostly). Unset bounds
 // default: no extra load, no slowdown, 300 s; Hegel's options bound the
 // search. State what it should find with Expect.
-func FindTrigger(t testing.TB, sys qmeta.System, space qmeta.TriggerSpace, opts ...hegel.Option) *TriggerSearch {
+func FindTrigger(t testing.TB, sys qload.System, space qload.TriggerSpace, opts ...hegel.Option) *TriggerSearch {
 	t.Helper()
 	if space.MaxSlowdown == 0 {
 		space.MaxSlowdown = 1
@@ -52,16 +51,16 @@ func FindTrigger(t testing.TB, sys qmeta.System, space qmeta.TriggerSpace, opts 
 		space.Seeds = 3
 	}
 	var mu sync.Mutex
-	var found *qmeta.Recovery
+	var found *qload.Recovery
 	runs := 0
 	err := hegel.Run(func(tc hegel.TestCase) {
-		tr := qmeta.Trigger{
+		tr := qload.Trigger{
 			Start:     space.Start,
 			ExtraRate: float64(hegel.Draw(tc, hegel.Integers(0, int(space.MaxExtraRate*10)))) / 10,
 			Slowdown:  1 + float64(hegel.Draw(tc, hegel.Integers(0, int((space.MaxSlowdown-1)*10))))/10,
 			Duration:  time.Duration(hegel.Draw(tc, hegel.Integers(0, int(space.MaxDuration/time.Second)))) * time.Second,
 		}
-		ok, r := qmeta.Mostly(sys, tr, space.Seeds)
+		ok, r := qload.Mostly(sys, tr, space.Seeds)
 		mu.Lock()
 		runs++
 		if !ok {

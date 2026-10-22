@@ -1,21 +1,22 @@
-// Package qenv simulates the environment a system runs in (scheduling,
-// time, crashes, stores, queues, remote calls) deterministically, with every
-// nondeterministic choice made by one Chooser. A fault is a choice the
-// environment's contract allows: a lost response, a redelivered message, a
-// read from an older snapshot. Option 0 of every choice is the nominal one
-// (no fault, first in line), so a Hegel-driven Chooser shrinks a failing
-// run toward fewer faults and a canonical schedule.
+// Package choice is how a qenv simulation's choices are made: the
+// Chooser interface, its implementations (Nominal, Seeded, Replay, the
+// byte-driven Bytes every fuzzer and Hegel share, Swarm and Without), the
+// Recorder that logs a run's choices aligned to its steps, and the fault
+// rates. It does not depend on the simulation, so a chooser can drive one
+// elsewhere (gosim, a fuzzer's corpus). qenv re-exports all of it.
 //
-// The same run can be driven by Hegel (Hegel), a seed (NewSeeded), a
-// recorded list of choices (Replay), or no faults at all (Nominal).
-package qenv
+// Option 0 of every choice is the nominal one (no fault, first in line),
+// so a Hegel-driven Chooser shrinks a failing run toward fewer faults and
+// a canonical schedule.
+package choice
 
 import (
 	"context"
 	"fmt"
-	"github.com/casselc/quint-connect-go/qobs"
 	"math/rand/v2"
 	"strings"
+
+	"github.com/casselc/quint-connect-go/qobs"
 )
 
 // A Chooser makes the environment's choices. Choose returns an index in
@@ -41,10 +42,18 @@ type ctxChooser struct {
 // context.Background(): what a run driven by c elsewhere (in gosim) records
 // into.
 func ContextOf(c Chooser) context.Context {
-	if cc, ok := As[ctxChooser](c); ok {
-		return cc.ctx
+	if ctx, ok := Context(c); ok {
+		return ctx
 	}
 	return context.Background()
+}
+
+// Context returns the context c carries (WithContext), if it carries one.
+func Context(c Chooser) (context.Context, bool) {
+	if cc, ok := As[ctxChooser](c); ok {
+		return cc.ctx, true
+	}
+	return nil, false
 }
 
 // A Wrapper is a chooser over another (a Recorder, a swarm, a Script over

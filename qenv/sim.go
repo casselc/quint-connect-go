@@ -5,12 +5,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/casselc/quint-connect-go/qrun"
 	"os"
 	"runtime/debug"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/casselc/quint-connect-go/qenv/choice"
+	"github.com/casselc/quint-connect-go/qrun"
 )
 
 // Sim runs tasks one at a time. A task runs until it reaches a seam (Yield,
@@ -130,8 +132,8 @@ var Epoch = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 // New returns a simulation whose choices c makes.
 func New(c Chooser) *Sim {
 	base := context.Background()
-	if cc, ok := As[ctxChooser](c); ok { // through any wrapper
-		base = cc.ctx
+	if ctx, ok := choice.Context(c); ok { // through any wrapper
+		base = ctx
 	} else if rc, ok := qrun.Current(); ok {
 		base = rc // the run it is created in (qrun.Start, an enclosing simulation)
 	}
@@ -326,7 +328,7 @@ func (t *task) wait(ready func() bool, deadline time.Time) {
 	}
 	var waited func()
 	if s.Profile != nil {
-		waited = s.Profile.waited(t.name, s.now, func() time.Time { return s.now })
+		waited = s.Profile.Waited(t.name, s.now, func() time.Time { return s.now })
 	}
 	t.waiting, t.ready, t.deadline, t.notified = true, ready, deadline, false
 	if ready != nil {

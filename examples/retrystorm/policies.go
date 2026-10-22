@@ -99,12 +99,12 @@ func RecoveryTime(p Policy, lambda float64) float64 {
 
 // Spike is the trigger of the simulation tier: 5 requests/s more for a
 // minute.
-var Spike = qmeta.Trigger{ExtraRate: 5, Duration: time.Minute}
+var Spike = qload.Trigger{ExtraRate: 5, Duration: time.Minute}
 
 // Recoveries counts the seeds (1..n) whose run recovers from the trigger
 // within 5 minutes.
-func Recoveries(p Policy, lambda float64, tr qmeta.Trigger, n int) int {
-	return qmeta.Count(qmeta.OfSimulation(p.Config(lambda), lambda, 5*time.Minute), tr, n)
+func Recoveries(p Policy, lambda float64, tr qload.Trigger, n int) int {
+	return qload.Count(qload.OfSimulation(p.Config(lambda), lambda, 5*time.Minute), tr, n)
 }
 
 // Burst is a scenario a client might see: a few requests and a burst of

@@ -32,12 +32,13 @@ quinthegel/   Hegel integration; testdata/bank.yaml
 itf/          ITF decode/encode, Go <-> Quint values (Decode/Encode), Quint literal parser
 qobs/ qtrace/ otelio/ convert/ load/   recording, schema/reconstruction, OTLP, span conversion, input sniffing
 binding/ validate/ qtest/              binding YAML, quint-test-based validator, test helpers (Expect, Explore)
-qenv/         deterministic simulation: scheduler, virtual time, processes, choosers; Store, Queue, Service doubles
+qenv/         deterministic simulation: scheduler, virtual time, processes; Store, Queue, Service doubles;
+              choice/ (choosers, byte rule, rates) and profile/ (virtual-time pprof), re-exported by qenv
 qenv/weave/   Orchestrion aspects: sync locks, wait groups and //qenv:go goroutines simulated inside qenv, real outside
 qenv/fault/   the //quint:fault aspect: fault points (qenv.FaultPoint) with the function's own errors, declared for coverage
 qgosim/       separate module: qenv and whole programs in gosim (the fork: branch gosim-fork, ./fetch-gosim.sh)
 qweave/       separate module: weaves Orchestrion aspects with types into a go -overlay (cmd/qweave); also gosim's
-qload/ qmeta/ load simulation (open/closed-loop clients, servers, triggers); CTMC, recovery property, alert rules
+qload/ qmeta/ load simulation (open/closed-loop clients, servers, triggers, the recovery property); CTMC, alert rules (qmeta imports nothing of the module)
 qcover/ qrun/ code coverage by model step (woven by qweave -cover); a run's state found from its context or goroutine
 qlint/        simulation and weaving lints (quintgo lint -sim, -weave); per file for qanalysis
 qanalysis/    separate module (x/tools): analyzers (cmd/quintvet, golangci plugin), static action map (cmd/actionmap)

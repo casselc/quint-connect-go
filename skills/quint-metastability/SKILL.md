@@ -50,14 +50,14 @@ cfg := qload.Config{
 	Client: qload.ClientConfig{Name: "c", Rate: qload.Constant(9), Timeout: 9 * time.Second, Retries: 3,
 		Retrier: func(rnd *rand.Rand) qload.Retrier { return myPolicy(rnd) }}, // the library under test
 }
-r := qmeta.Recovers(cfg, 9, qmeta.Trigger{ExtraRate: 5, Duration: time.Minute}, 5*time.Minute)
+r := qload.Recovers(cfg, 9, qload.Trigger{ExtraRate: 5, Duration: time.Minute}, 5*time.Minute)
 ```
 
 - Put the real retry library behind `qload.Retrier`, on virtual time.
 - Controllers are closed loops: set `Population` and `Think`, or the
   simulation finds storms that cannot happen.
 - Results are probabilities: count recoveries over seeds
-  (`qmeta.Mostly`), and set a healthy baseline.
+  (`qload.Mostly`), and set a healthy baseline.
 - The chain assumes exponential service: measure the handler
   (`qmeta.Measure`) and simulate with measured times when it is not.
 
@@ -69,7 +69,7 @@ service times, production workloads from a SimKube trace.
 
 To put the real system under load, give its dependency a capacity, keep
 everything else real, and count a model step's rate as goodput
-(`qmeta.Assess`, `qmeta.Of`). Set `Healthy`; look for loops around the
+(`qload.Assess`, `qload.Of`). Set `Healthy`; look for loops around the
 retry loop (a broker's redelivery, a controller's requeue). Read
 [references/experiment.md](references/experiment.md) when deploying an
 application into an Experiment.
@@ -77,8 +77,8 @@ application into an Experiment.
 ## 3. Search: Hegel (`quinthegel.FindTrigger`)
 
 ```go
-sys := qmeta.OfSimulation(cfg, base, 5*time.Minute) // or qmeta.Of(experiment, goodput, within)
-r := quinthegel.FindTrigger(t, sys, qmeta.TriggerSpace{MaxExtraRate: 10, MaxSlowdown: 4,
+sys := qload.OfSimulation(cfg, base, 5*time.Minute) // or qload.Of(experiment, goodput, within)
+r := quinthegel.FindTrigger(t, sys, qload.TriggerSpace{MaxExtraRate: 10, MaxSlowdown: 4,
 	MaxDuration: 5 * time.Minute, Start: 10 * time.Minute}, hegel.WithTestCases(30)).Expect(t, true)
 // r.Trigger is shrunk toward none
 ```

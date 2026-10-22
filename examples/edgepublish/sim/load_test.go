@@ -5,12 +5,12 @@ import (
 	"time"
 
 	"github.com/casselc/quint-connect-go/examples/edgepublish/sim"
-	"github.com/casselc/quint-connect-go/qmeta"
+	"github.com/casselc/quint-connect-go/qload"
 	"github.com/casselc/quint-connect-go/qobs"
 	"github.com/casselc/quint-connect-go/qtest"
 )
 
-var dip = qmeta.Trigger{Slowdown: 3, Duration: time.Minute}
+var dip = qload.Trigger{Slowdown: 3, Duration: time.Minute}
 
 // 3 requests/s (9 S3 writes/s against a capacity of 10) and an S3 three
 // times slower for a minute: the exporter recovers, with 4 exporters or
@@ -20,7 +20,7 @@ func TestLoadRecovers(t *testing.T) {
 	woven(t)
 	for _, workers := range []int{4, 16} {
 		cfg := sim.LoadConfig{Rate: 3, Workers: workers}
-		if n := qmeta.Count(qmeta.Of(cfg.Experiment(nil), sim.Goodput, 5*time.Minute), dip, 3); n != 3 {
+		if n := qload.Count(qload.Of(cfg.Experiment(nil), sim.Goodput, 5*time.Minute), dip, 3); n != 3 {
 			t.Errorf("%d exporters: %d of 3 runs recover", workers, n)
 		}
 	}
@@ -35,7 +35,7 @@ func TestTimeoutsMakeDuplicates(t *testing.T) {
 	woven(t)
 	dups := func(timeout time.Duration) int {
 		c := sim.NewCommits(nil)
-		qmeta.Assess(sim.LoadConfig{Rate: 3, Workers: 16, Timeout: timeout}.Experiment(c), sim.Goodput, qmeta.Trigger{}, 5*time.Minute, 1)
+		qload.Assess(sim.LoadConfig{Rate: 3, Workers: 16, Timeout: timeout}.Experiment(c), sim.Goodput, qload.Trigger{}, 5*time.Minute, 1)
 		return c.Duplicates()
 	}
 	short, long := dups(2*time.Second), dups(10*time.Second)
@@ -57,7 +57,7 @@ func TestLoadRunAgainstModel(t *testing.T) {
 	}
 	mem := &qobs.MemorySink{}
 	c := sim.NewCommits(mem)
-	sim.LoadConfig{Rate: 3, Workers: 16, Timeout: time.Second}.Experiment(c).Run(1, qmeta.Trigger{}, 30*time.Second)
+	sim.LoadConfig{Rate: 3, Workers: 16, Timeout: time.Second}.Experiment(c).Run(1, qload.Trigger{}, 30*time.Second)
 	t.Logf("%d steps, %d requests committed twice", len(mem.Steps()), c.Duplicates())
 	if c.Duplicates() == 0 {
 		t.Fatal("no duplicates in this minute: the check below would be vacuous")

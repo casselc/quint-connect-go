@@ -1,3 +1,5 @@
+//go:build !sim
+
 // The tests that drive the simulated cluster (cluster/cluster_test.go)
 // from outside gosim: a qenv Chooser makes every choice of the run (the
 // schedule, select cases, map order, the client's picks and the faults)

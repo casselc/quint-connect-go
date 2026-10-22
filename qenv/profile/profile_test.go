@@ -1,4 +1,4 @@
-package qenv_test
+package profile_test
 
 import (
 	"context"

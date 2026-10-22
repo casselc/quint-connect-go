@@ -1,4 +1,6 @@
-package qenv
+// Package profile is a qenv simulation's profile of virtual time: where
+// tasks wait, by stack, in pprof's format (qenv.Sim.Profile).
+package profile
 
 import (
 	"bytes"
@@ -29,12 +31,13 @@ type sample struct {
 	count int64
 }
 
-// NewProfile returns an empty profile.
-func NewProfile() *Profile { return &Profile{samples: map[string]*sample{}} }
+// New returns an empty profile.
+func New() *Profile { return &Profile{samples: map[string]*sample{}} }
 
-// waited records a wait that starts now; the returned function, called
-// when it ends, adds the virtual time it took.
-func (p *Profile) waited(task string, start time.Time, now func() time.Time) func() {
+// Waited records a wait of task that starts now, at its caller's caller
+// (the seam that waits); the returned function, called when it ends, adds
+// the virtual time it took. The simulation calls it.
+func (p *Profile) Waited(task string, start time.Time, now func() time.Time) func() {
 	pcs := make([]uintptr, 64)
 	n := runtime.Callers(3, pcs) // from the seam that waits
 	pcs = pcs[:n]

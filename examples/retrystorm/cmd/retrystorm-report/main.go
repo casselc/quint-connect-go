@@ -42,7 +42,7 @@ func main() {
 		if err := write(filepath.Join(*out, "field-"+name+".svg"), func(f *os.File) error { return c.SVG(f, 10, 12) }); err != nil {
 			log.Fatal(err)
 		}
-		r := qmeta.Recovers(p.Config(*lambda), *lambda, retrystorm.Spike, 300e9)
+		r := qload.Recovers(p.Config(*lambda), *lambda, retrystorm.Spike, 300e9)
 		if err := write(filepath.Join(*out, "run-"+name+".svg"), func(f *os.File) error { return series(f, r) }); err != nil {
 			log.Fatal(err)
 		}
@@ -80,7 +80,7 @@ func write(path string, f func(*os.File) error) error {
 
 // series draws a run's queue, orbit and goodput over time, with the
 // trigger shaded.
-func series(f *os.File, r qmeta.Recovery) error {
+func series(f *os.File, r qload.Recovery) error {
 	const W, H, pad = 640, 300, 40
 	s := r.Metrics.Samples
 	if len(s) == 0 {
