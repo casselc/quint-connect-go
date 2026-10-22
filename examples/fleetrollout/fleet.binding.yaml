@@ -11,5 +11,6 @@ restart: restart
 actions:
   observe: {}
   patch: {}
+  scale: {}
   settle: {}
 invariants: [withinBudget, rolledOutWhenSettled]

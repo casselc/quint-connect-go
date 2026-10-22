@@ -299,6 +299,16 @@ Each choice is a round trip to the test process, about 50 µs, so a gosim
 run is far slower than one on qenv's scheduler. Explore and shrink there,
 and use gosim to confirm with the real standard library and network.
 
+## 4d. A production workload against the simulation
+
+Replay a captured cluster's activity while the system under test runs:
+`kubesim.Fleet.Replay(s, trace, speed)` (examples/fleetrollout) applies a
+SimKube trace's Deployment scalings to the simulated members, as another
+writer (`kubesim.AsWriter`), through the same faults. The first replay
+usually shows the model has no step for the environment's other writers.
+Add one, deliberately (fleet.qnt `scale`), and explore with the workload
+on.
+
 ## 5. Take the same model to the real environment
 
 Run the real binary against real dependencies, and inject the faults you

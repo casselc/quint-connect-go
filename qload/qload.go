@@ -33,6 +33,20 @@ type Shape func(t time.Duration) float64
 // Constant is a constant shape.
 func Constant(v float64) Shape { return func(time.Duration) float64 { return v } }
 
+// Piecewise is a measured shape: values[i] for the i-th tick from 0 (a
+// trace's rates or gauge: sktrace.Trace.Rates, Gauge), times scale (a
+// request rate per replica, say), and the last value after the end. A
+// production workload, sped up or scaled, as the load of a simulation.
+func Piecewise(tick time.Duration, scale float64, values ...float64) Shape {
+	return func(t time.Duration) float64 {
+		if len(values) == 0 || tick <= 0 {
+			return 0
+		}
+		i := min(int(t/tick), len(values)-1)
+		return scale * values[max(i, 0)]
+	}
+}
+
 // Spike is base, except during [from, to), where it is peak: the transient
 // stressor of a metastability experiment.
 func Spike(base, peak float64, from, to time.Duration) Shape {

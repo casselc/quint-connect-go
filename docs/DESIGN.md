@@ -1985,3 +1985,43 @@ chooser is `qenv.Replay(v.Choices)`.
 
 Left for later: one `Run` type for exploration runs, Violations and
 qgosim's, and `quintgo scaffold` printing a System skeleton.
+
+## 21. Production workloads from SimKube traces (`sktrace`, D1–D2)
+
+SimKube captures what happens to a real cluster's objects (sk-tracer)
+and replays it on KWOK. It has no determinism, no faults and no oracle:
+for us it is a source of workloads.
+
+**`sktrace`** reads its trace format (v3: msgpack of `{version, config,
+events, index}`) with a decoder of the subset it uses. The core module
+stays free of a msgpack dependency.
+- Events are the objects applied and deleted each second.
+- The index gives pods' lifetimes, keyed by the owner's version.
+- Derived views:
+  - `Rates` (events per second of a tick);
+  - `Gauge` (a value over the objects alive at each tick: desired
+    replicas with `Replicas`);
+  - `Starts` (pod starts per second).
+
+SimKube's three example traces are its test data. The CronJob trace
+shows why the index is keyed by version: the CronJob's second version
+runs 45 s jobs where the first ran 30 s.
+
+**D2, measured load shapes.** `qload.Piecewise(tick, scale, values...)`
+makes a series a load shape. The scaling trace's desired replicas (27, up
+to 52, back to 42) at 0.2 requests/s each pass the server's capacity for
+two minutes and settle at 8.4 requests/s. Backoff alone stays in the
+storm in 2 of 3 seeds; immediate retries and the budgets recover in all
+3. It is the same ranking as the synthetic spike's, on a cluster's own
+scale-up.
+
+**D1, a replayed workload.** `kubesim.Fleet.Replay` plays the trace's
+Deployment scalings onto the fleet's members, 60 times faster, as
+another writer, while the rollout runs, through the same faults.
+- The first replay showed the model had no other writers: a
+  non-rollout update had no step.
+- `scale` is the environment's spec change, recorded at the API server
+  for writes marked with `kubesim.AsWriter`. The generation moves on, and
+  the cluster is complete again only when its status catches up.
+- With it, the faithful controller conforms over 30 seeds (540 scale
+  steps), and `IgnoreObservedGeneration` is still caught.

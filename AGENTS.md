@@ -39,6 +39,7 @@ qgosim/       separate module: qenv and whole programs in gosim (the fork: branc
 qweave/       separate module: weaves Orchestrion aspects with types into a go -overlay (cmd/qweave); also gosim's
 qload/ qmeta/ load simulation (open/closed-loop clients, servers, triggers); CTMC, recovery property, alert rules
 qcover/ qrun/ code coverage by model step (woven by qweave -cover); a run's state found from its context or goroutine
+sktrace/      SimKube traces (msgpack v3, own decoder): production workloads as load shapes and replayed writes
 qsweep/       covering arrays (pairwise and t-way rows with constraints, sequence covering); qtest.SweepExplore runs them
 qrole/        load roles (//quint:serve, //quint:operation, //quint:call; aspects in orchestrion.yml): u and v as gauges
 cmd/quintgo/  CLI

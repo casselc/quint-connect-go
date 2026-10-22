@@ -67,6 +67,15 @@ r := qmeta.Recovers(cfg, 9, qmeta.Trigger{ExtraRate: 5, Duration: time.Minute}, 
   the metastable region, a run's escape is a coin toss.
   `RecoversMostly` takes the majority.
 
+### A production workload as the load
+
+A SimKube trace (`sktrace.ReadFile`) is a real cluster's objects over
+time. Its rates (`Rates`, `Starts`) or a gauge (`Gauge(tick,
+sktrace.Replicas)`) become a load shape: `qload.Piecewise(time.Minute,
+0.2, replicas...)` is 0.2 requests/s per desired replica, minute by
+minute. Compare policies against a cluster's own scale-up, not only
+synthetic spikes (examples/retrystorm `TestProductionScaleUp`).
+
 ## 2b. Or run the application itself (`qload.Experiment`)
 
 qload's servers and clients are an abstraction. To put the real system

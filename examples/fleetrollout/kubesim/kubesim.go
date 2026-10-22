@@ -12,13 +12,15 @@
 //   - a request can fail ("fault.kube.request" 1), or, for an update, be
 //     applied with its response lost (2): the caller cannot tell.
 //
-// Patches are recorded as model steps here, where they take effect.
+// Patches are recorded as model steps here, where they take effect; so are
+// other writers' updates (AsWriter, Replay), as scale steps.
 package kubesim
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -34,6 +36,8 @@ import (
 
 	"github.com/casselc/quint-connect-go/examples/fleetrollout/rollout"
 	"github.com/casselc/quint-connect-go/qenv"
+	"github.com/casselc/quint-connect-go/qobs"
+	"github.com/casselc/quint-connect-go/sktrace"
 )
 
 // ErrUnavailable is a request that failed in the network or the API
@@ -129,8 +133,76 @@ func (c *Cluster) update(ctx context.Context, obj client.Object, opts ...client.
 	if err := c.raw.Update(ctx, d, opts...); err != nil {
 		return err
 	}
+	if w, ok := ctx.Value(writerKey{}).(string); ok {
+		qobs.Record(ctx, "scale", nil, "cluster", c.Name, "rv", rvOf(d), "generation", d.Generation, "writer", w)
+		return nil
+	}
 	rollout.RecordPatch(ctx, c.Name, d)
 	return nil
+}
+
+type writerKey struct{}
+
+// AsWriter marks ctx's writes as another writer's (an autoscaler, a
+// person with kubectl), not the rollout's: they are recorded as scale
+// steps, the environment's.
+func AsWriter(ctx context.Context, name string) context.Context {
+	return context.WithValue(ctx, writerKey{}, name)
+}
+
+func rvOf(d *appsv1.Deployment) int64 {
+	n, _ := strconv.ParseInt(d.ResourceVersion, 10, 64)
+	return n
+}
+
+// Replay plays a SimKube trace's Deployment scalings onto the fleet's web
+// Deployments, as another writer, while the rollout runs: each traced
+// Deployment is mapped to a member (in the order they first appear), and
+// each applied version sets its member's replicas (at most 6), at the
+// trace's time divided by speed. Writes go through the members' clients,
+// with their faults, and retry a conflict or a failure as a controller
+// would (read, modify, update).
+func (f *Fleet) Replay(s *qenv.Sim, tr *sktrace.Trace, speed float64) {
+	members := map[string]*Cluster{}
+	s.Process("workload", false, func(ctx context.Context) {
+		ctx = AsWriter(ctx, "workload")
+		start := qenv.Now(ctx)
+		for _, e := range tr.Events {
+			at := start.Add(time.Duration(float64(tr.Offset(e)) / speed))
+			if d := at.Sub(qenv.Now(ctx)); d > 0 {
+				qenv.Sleep(ctx, d)
+			}
+			for _, o := range e.Applied {
+				if o.Kind() != "Deployment" {
+					continue
+				}
+				m, ok := members[o.Key()]
+				if !ok {
+					m = f.Members[len(members)%len(f.Members)]
+					members[o.Key()] = m
+				}
+				m.scale(ctx, int32(min(max(sktrace.Replicas(o), 1), 6)))
+			}
+		}
+	})
+}
+
+// scale sets the web Deployment's replicas as another writer would.
+func (c *Cluster) scale(ctx context.Context, replicas int32) {
+	for range 5 {
+		d := &appsv1.Deployment{}
+		if err := c.Client.Get(ctx, Web, d); err != nil {
+			continue
+		}
+		if *d.Spec.Replicas == replicas {
+			return
+		}
+		d.Spec.Replicas = ptr.To(replicas)
+		if err := c.Client.Update(ctx, d); err == nil {
+			return
+		}
+		qenv.Sleep(ctx, 100*time.Millisecond)
+	}
 }
 
 // deploymentController moves the status toward the spec: it observes a new

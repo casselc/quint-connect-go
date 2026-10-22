@@ -15,6 +15,7 @@ import (
 	"github.com/casselc/quint-connect-go/examples/fleetrollout/rollout"
 	"github.com/casselc/quint-connect-go/qenv"
 	"github.com/casselc/quint-connect-go/qobs"
+	"github.com/casselc/quint-connect-go/sktrace"
 )
 
 // Config of a simulated rollout.
@@ -23,6 +24,11 @@ type Config struct {
 	Mutation rollout.Mutation
 	// NoCrashes keeps the controller up.
 	NoCrashes bool
+	// Workload, if set, is a production trace replayed onto the fleet as
+	// another writer while the rollout runs (kubesim.Fleet.Replay), Speed
+	// times faster (default 60: a trace's minute in a second).
+	Workload *sktrace.Trace
+	Speed    float64
 }
 
 // Target is the image rolled out; members start at web:v1.
@@ -40,6 +46,12 @@ func Run(c qenv.Chooser, cfg Config) (*kubesim.Fleet, error) {
 	f := &kubesim.Fleet{}
 	for i := 1; i <= cfg.Members; i++ {
 		f.Members = append(f.Members, kubesim.NewCluster(s, fmt.Sprintf("m%d", i), "web:v1"))
+	}
+	if cfg.Workload != nil {
+		if cfg.Speed == 0 {
+			cfg.Speed = 60
+		}
+		f.Replay(s, cfg.Workload, cfg.Speed)
 	}
 	newController := func() *rollout.Controller {
 		return &rollout.Controller{Clusters: f, Key: kubesim.Web, Image: Target, MaxUnavailable: 1, Mutation: cfg.Mutation}

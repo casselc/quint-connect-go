@@ -35,6 +35,7 @@ times. The four policies compared are `immediate`, `backoff`, `budget`
 | `TestPredictedRecovery` | CTMC | predicted recovery time per policy at 8, 9 and 9.5 requests/s |
 | `TestStormAfterSpike` | simulation (seeds 1–6) | which policies recover from +5 requests/s for a minute at 9 requests/s |
 | `TestAlertsFromTheChain` | load roles → calibrated chain → alert | an app instrumented with `qrole` (server, client with the policy) under the spike; the chain calibrated on its u and v; the rule holds through backoff's storm, cannot fire with a budget, never fires without a spike |
+| `TestProductionScaleUp` | simulation, with a production load shape | SimKube's scaling trace (desired replicas minute by minute, 0.2 requests/s each, `qload.Piecewise`) passes capacity for two minutes; backoff alone stays in the storm in 2 of 3 seeds, the others recover in all 3 |
 | `TestFindTrigger` | Hegel over simulations | a trigger exists for `immediate` (at 9) and for `backoff` (at 8); none is found with a budget |
 
 Results (recovery is from a full queue with 30 requests in the orbit):

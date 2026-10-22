@@ -128,3 +128,6 @@ the rest, each after the U items it depends on.
   `quinthegel.Shrink`; `Run` returns an error; `ExploreConfig.Chooser`.
   Next in it: one `Run` type across explorations, Violations and qgosim;
   P3 (Check vs Validate); `quintgo scaffold` printing a System.
+- D1–D2: done (DESIGN §21): `sktrace`, `qload.Piecewise`, retrystorm under
+  a production scale-up, fleetrollout under a replayed workload (and the
+  model's `scale` for other writers).

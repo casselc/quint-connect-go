@@ -42,3 +42,21 @@ func TestRetryStormIsMetastable(t *testing.T) {
 		t.Errorf("throttled to 8 rps, the queue should drain")
 	}
 }
+
+// A measured shape drives arrivals: each minute's arrivals follow its
+// value, and after the last value the last one holds.
+func TestPiecewise(t *testing.T) {
+	shape := qload.Piecewise(time.Minute, 0.5, 4, 12, 8) // 2, 6 and 4 requests/s
+	m := qload.Simulate(qload.Config{
+		Server:  qload.ServerConfig{Name: "s", ServiceRate: 100, QueueCap: 1000},
+		Client:  qload.ClientConfig{Name: "c", Rate: shape, Timeout: time.Second},
+		Horizon: 4 * time.Minute, Seed: 1,
+	})
+	arrivals := func(s qload.Sample) float64 { return float64(s.Arrivals) }
+	for i, want := range []float64{2, 6, 4, 4} {
+		from := time.Duration(i) * time.Minute
+		if got := m.Mean(from, from+time.Minute, arrivals); got < 0.8*want || got > 1.2*want {
+			t.Errorf("minute %d: %.2f arrivals/s, want about %g", i, got, want)
+		}
+	}
+}

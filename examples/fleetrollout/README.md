@@ -55,7 +55,23 @@ patch, the status still describes the old generation, fully rolled out.
 On kwok the real controller manager's lag was enough to trigger it on the
 first try, just as the simulated lag did.
 
+Under a production workload (`TestRolloutUnderProductionWorkload`):
+- SimKube's scaling trace, a real cluster's Deployments scaled over 19
+  minutes, is replayed onto the members as another writer
+  (`Config.Workload`, `kubesim.Fleet.Replay`, 60 times faster) while the
+  rollout runs, through the same faults.
+- The faithful controller conforms, and `IgnoreObservedGeneration` still
+  violates `withinBudget`, though in fewer runs: the scalings perturb its
+  timing.
+
 ## Findings along the way
+
+- **The model had no other writers.** Replaying a real workload put
+  another writer's updates on the members, and the model had no step for
+  them. A real cluster has autoscalers and people with kubectl. `scale` is
+  the environment's spec change, recorded at the API server under
+  `kubesim.AsWriter`: the generation moves on, and the cluster is
+  complete again only when its status catches up.
 
 - **In-memory progress breaks under lost responses, not just restarts.** I
   wrote the mutant expecting only a crash to expose it. The exploration
@@ -87,7 +103,7 @@ first try, just as the simulated lag did.
 |---|---|
 | `rollout/` | the controller, against the `Clusters` seam (reader and writer per member); mutants; `observe`/`patch` recording |
 | `kubesim/` | simulated members: fake clients with generation and conflict semantics, request faults, a Deployment controller with lag |
-| `fleet.go` | the simulated fleet: `Run(chooser, config)` |
+| `fleet.go` | the simulated fleet: `Run(chooser, config)`, with an optional production workload (`Config.Workload`, a SimKube trace) |
 | `cmd/fleet-controller` | the real controller (multicluster-runtime, static `clusters` provider, uncached reads, durable step log); `-verify` for the final reads |
 | `kwok/fleet.yaml`, `kwok-demo.sh` | the members' node and Deployment; the end-to-end run |
 | `model/fleet.qnt`, `fleet.binding.yaml` | the model and its binding (a new controller process is a `restart`) |

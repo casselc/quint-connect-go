@@ -71,6 +71,25 @@ module fleet {
     settled' = settled,
   }
 
+  // Another writer's update (an autoscaler's, a person's): the spec
+  // changes outside the rollout, so its generation moves on, and the
+  // cluster is complete again only when its status has caught up. A real
+  // workload replayed against the fleet (kubesim.Replay) has them, and the
+  // model had no step for them.
+  // On a cluster not yet read it changes nothing: the next read carries it.
+  action scale(cluster: str, rv: int, generation: int, writer: str): bool = all {
+    CLUSTERS.contains(cluster),
+    if (known.contains(cluster)) all {
+      rv > lastRV.get(cluster), generation >= gen.get(cluster),
+      lastRV' = lastRV.put(cluster, rv),
+      gen' = gen.put(cluster, generation),
+      complete' = if (generation > gen.get(cluster)) complete.put(cluster, false) else complete,
+    } else all {
+      lastRV' = lastRV, gen' = gen, complete' = complete,
+    },
+    spec' = spec, overBudget' = overBudget, settled' = settled,
+  }
+
   // A controller restart: it forgets nothing the model knows.
   action restart = all {
     lastRV' = lastRV, spec' = spec, gen' = gen, complete' = complete, overBudget' = overBudget, settled' = settled,
