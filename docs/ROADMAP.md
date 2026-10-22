@@ -119,3 +119,5 @@ the rest, each after the U items it depends on.
   classifications (an uncovered block after an unfaulted fault point,
   `deadcode`) wait for S3's declared kinds and the static pass in qweave.
 - S1: done (qrun).
+- U2 (P2): done (DESIGN §18): `Some`, `All`, `None`; `Violation.Expect`.
+  `Expect` on `qmeta.Recovery` goes with P4's one recovery API.

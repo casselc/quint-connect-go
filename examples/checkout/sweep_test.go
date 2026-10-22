@@ -10,7 +10,6 @@ import (
 	"github.com/casselc/quint-connect-go/qobs"
 	"github.com/casselc/quint-connect-go/qsweep"
 	"github.com/casselc/quint-connect-go/qtest"
-	"github.com/casselc/quint-connect-go/validate"
 )
 
 // The shop's parameter space: isolation level, orders and stock, and which
@@ -75,27 +74,13 @@ func TestNoIdempotencyKeySweep(t *testing.T) {
 	if testing.Short() {
 		t.Skip("sweeps hundreds of runs")
 	}
-	sw := qtest.SweepExplore(t, binding, qtest.Sweep{Factors: space, Opts: stockOf, Explore: qtest.ExploreConfig{Seeds: 20, Rates: crashy},
-		Expect: func(row qsweep.Row) []qtest.Expectation {
+	qtest.SweepExplore(t, binding, qtest.Sweep{Factors: space, Opts: stockOf, Explore: qtest.ExploreConfig{Seeds: 20, Rates: crashy},
+		Expect: func(row qsweep.Row) []qtest.Claim {
 			if row.On("rpc.provider") {
-				return []qtest.Expectation{qtest.Violates("chargedAtMostOnce")}
+				return []qtest.Claim{qtest.Violates("chargedAtMostOnce")}
 			}
-			return []qtest.Expectation{qtest.Violates("settledCorrectly")}
+			return []qtest.Claim{qtest.Violates("settledCorrectly"), qtest.None(qtest.Violates("chargedAtMostOnce"))}
 		}}, deploy(t, shop.NoIdempotencyKey))
-	for i, row := range sw.Rows {
-		if row.On("rpc.provider") || sw.Runs[i] == nil {
-			continue
-		}
-		for _, r := range sw.Runs[i].Runs {
-			for _, a := range r.Report.Actors {
-				for _, inv := range a.Invariants {
-					if inv.Name == "chargedAtMostOnce" && inv.Verdict == validate.Fail {
-						t.Errorf("%s, seed %d: charged twice without provider faults", row, r.Seed)
-					}
-				}
-			}
-		}
-	}
 }
 
 // Both orders of every pair of fault kinds, each imposed by a Script on a

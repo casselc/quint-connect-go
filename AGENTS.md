@@ -125,9 +125,11 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   mutant, a `run-demo.sh`, tests showing which check catches which
   mutant, and a README with the table of tests. Its row goes in the
   README's example table. State expected verdicts with `qtest.Expect`
-  (`Rejects`, `Mismatch`, `Violates`) and expected Hegel failures with
-  `quinthegel.FindViolation`, not by hand. Bindings give templates only
-  where a parameter is not the same-named step field.
+  (`Rejects`, `Mismatch`, `Violates`; over runs, `Some`, `All`, `None`)
+  and expected Hegel failures with `quinthegel.FindViolation(...).Expect`,
+  not by hand: no string matching on summaries, no walks of reports.
+  Bindings give templates only where a parameter is not the same-named
+  step field.
 
 ## Gotchas
 
@@ -192,7 +194,7 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   seeds in parallel, each with a recorder in the chooser's context
   (`qenv.WithContext`, `qobs.WithRecorder`). A step without it in its
   context finds its run through its goroutine: qenv registers each
-  task's goroutine and the simulation's creator (`qobs.SetFallback`,
+  task's goroutine and the simulation's creator (`qrun`,
   `qenv/goroutine.go`). Explore and Experiment runs are strict
   (`qobs.Strict`), so a step from a goroutine started with `go` panics.
   `quintgo lint -sim .` (in CI) flags `go` statements and wall-clock

@@ -204,9 +204,9 @@ qtest.SweepExplore(t, binding, qtest.Sweep{Factors: space, Explore: qtest.Explor
   another stock than the binding's fails every run otherwise.
 - Expect per row: say where a mutant's bug is real. Checkout's
   `NoIdempotencyKey` sweep splits it into its two bugs: one in every row,
-  and one only where the provider's responses are lost. "No run of this
-  row violates X" is a check of the reports (`sw.Runs[i].Runs[j].Report`):
-  `Expect` with several expectations wants one run that shows them all.
+  and one only where the provider's responses are lost: rows without
+  provider faults claim `qtest.Violates("settledCorrectly")` and
+  `qtest.None(qtest.Violates("chargedAtMostOnce"))`.
 - Orders of faults: a `qenv.Script` per ordered pair (`{a, b}`) imposes
   both orders of every pair, and `Remaining` names an order the system
   cannot produce. `qsweep.Sequences` (every order of t events in few

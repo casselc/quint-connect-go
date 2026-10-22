@@ -3,7 +3,6 @@ package broadcast
 import (
 	"github.com/casselc/quint-connect-go/examples/glomers/maelstrom/hegelnet"
 	"math/rand/v2"
-	"strings"
 	"testing"
 
 	"github.com/casselc/quint-connect-go/examples/glomers/maelstrom"
@@ -129,7 +128,5 @@ func TestHegelShrinksNoRetry(t *testing.T) {
 	v := quinthegel.FindViolation(t, quinthegel.Config{Binding: "broadcast.binding.yaml", Global: true}, func(tc hegel.TestCase, _ *quinthegel.Recorder) {
 		scenario(tc, NoRetry, 20)
 	}, hegel.WithTestCases(40), hegel.WithSeed(2))
-	if !strings.Contains(v.Summary, "convergedWhenSettled") {
-		t.Fatalf("want convergence to fail:\n%s", v.Summary)
-	}
+	v.Expect(t, qtest.Violates("convergedWhenSettled"))
 }

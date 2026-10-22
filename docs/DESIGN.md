@@ -1894,3 +1894,34 @@ found from the goroutine when the context carries none.
   woven with `-cover` too.
 - A test binary's generated main is in the build cache, outside the
   module: it is not instrumented.
+
+## 18. Claims over runs (`qtest.Some`, `All`, `None`)
+
+`Exploration.Expect` meant two things:
+- with `Conforms()`, that every run conforms, recognised by comparing its
+  description string;
+- with anything else, that one failing run meets all the expectations.
+
+So `Expect(Violates("a"), Violates("b"))` wanted a single run showing
+both. Nothing could say "no run of this row double-charges". The
+checkout sweep walked reports by hand for it, and the mutants table's
+first-match semantics hid NoIdempotencyKey's second bug (§16).
+
+A `Claim` judges a set of runs:
+- `Some(es...)`: one run meets them all;
+- `All(es...)`: every run meets them all;
+- `None(es...)`: no run meets any of them.
+
+An expectation alone is a claim about some run, and `Conforms` is about
+every run (a flag on the expectation, not its description). Several
+claims are judged one by one, and each failing claim is reported with the
+run that shows why. A `Some` claim that no run meets, while every run
+conforms, names the fault kinds no run faulted: the usual reason a bug
+did not show. No call site passed several expectations meaning "one run
+with all", so the change broke no test.
+
+`quinthegel.Violation` now carries the shrunk run's full report: the
+shrunk run is checked once more, since cached verdicts keep only their
+summary. With `Violation.Expect`, the four tests that matched strings in
+summaries state their verdicts like the rest (`Rejects("rotateGen")`,
+`Violates("convergedWhenSettled")`).

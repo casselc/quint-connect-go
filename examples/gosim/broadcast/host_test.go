@@ -11,7 +11,6 @@ package broadcast_test
 
 import (
 	"bytes"
-	"strings"
 	"testing"
 
 	"hegel.dev/go/hegel"
@@ -92,7 +91,5 @@ func TestHegelFindsNoRetry(t *testing.T) {
 		c.Rates.Kinds = map[string]float64{"fault.partition": 0.3}
 		rec.Add(run(t, c, "NoRetry")...)
 	}, hegel.WithTestCases(60), hegel.WithSeed(1))
-	if !strings.Contains(v.Summary, "convergedWhenSettled") {
-		t.Fatalf("want convergence to fail:\n%s", v.Summary)
-	}
+	v.Expect(t, qtest.Violates("convergedWhenSettled"))
 }

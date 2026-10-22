@@ -6,7 +6,9 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/casselc/quint-connect-go/qtest"
 	"github.com/casselc/quint-connect-go/qtrace"
+	"github.com/casselc/quint-connect-go/validate"
 	"hegel.dev/go/hegel"
 )
 
@@ -15,6 +17,9 @@ import (
 type Violation struct {
 	Steps   []qtrace.Step
 	Summary string // the validator's report on Steps
+	// Report is the shrunk run's full verdict, for Expect: it is checked
+	// once more, since cached verdicts keep only their summary.
+	Report *validate.Report
 	// QuintRuns and CacheHits count the cases checked with quint and those
 	// decided from earlier verdicts (see CaseChecker).
 	QuintRuns, CacheHits int64
@@ -80,9 +85,20 @@ func FindViolation(t testing.TB, cfg Config, body func(tc hegel.TestCase, rec *R
 		t.Fatalf("quinthegel: no case violated the model, but the test failed: %v", err)
 	}
 	found.QuintRuns, found.CacheHits = q, hits
+	if found.Report, err = c.Check(context.Background(), found.Steps); err != nil {
+		t.Fatalf("quinthegel: checking the shrunk run: %v", err)
+	}
 	t.Logf("quinthegel: %d runs checked with quint, %d decided from earlier verdicts; shrunk run:\n%s%s",
 		q, hits, Render(found.Steps), found.Summary)
 	return found
+}
+
+// Expect fails t unless the shrunk run's verdict meets every expectation
+// (qtest's Rejects, Mismatch, Violates, AnyOf): what the failure Hegel
+// found must look like, stated as for an exploration.
+func (v *Violation) Expect(t testing.TB, es ...qtest.Expectation) {
+	t.Helper()
+	qtest.Expect(t, v.Report, es...)
 }
 
 // Last returns the last step of the run, or the zero step if it is empty.

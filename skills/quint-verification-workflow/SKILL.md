@@ -81,6 +81,18 @@ document the gap (as glomers does for the scheme model).
   them into a `qenv` simulation (the quint-fault-injection skill). Then
   explore seeds with `qtest.Explore`, and shrink with `quinthegel.Chooser`.
 
+State what a set of runs must show with claims:
+- an expectation alone is about some run (`Conforms()` about every run);
+- several are judged one by one;
+- `qtest.Some(a, b)` wants one run showing both;
+- `qtest.All(e)` wants every run;
+- `qtest.None(e)` wants no run: what a bug must not do, or what a row
+  without a fault must never show.
+
+A shrunk Hegel failure is stated the same way:
+`quinthegel.FindViolation(...).Expect(t, qtest.Rejects("ship"))`. Don't
+match strings in its summary.
+
 Hegel finds what scripted scenarios don't (glomers kafka: a commit past
 the end of the log). When it does, add the shrunk run as a scripted
 regression.

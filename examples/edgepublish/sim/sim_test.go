@@ -2,7 +2,6 @@ package sim_test
 
 import (
 	"context"
-	"strings"
 	"testing"
 
 	"github.com/casselc/quint-connect-go/examples/edgepublish/publisher"
@@ -102,8 +101,6 @@ func TestHegelShrinksNoRotationLock(t *testing.T) {
 			tc.Errorf("%v", err)
 		}
 	}, hegel.WithTestCases(80))
-	if !strings.Contains(v.Summary, "quint:    rotateGen") {
-		t.Errorf("want the model to reject a rotation:\n%s", v.Summary)
-	}
+	v.Expect(t, qtest.Rejects("rotateGen"))
 	t.Logf("shrunk to %d steps:\n%s", len(v.Steps), quinthegel.Render(v.Steps))
 }

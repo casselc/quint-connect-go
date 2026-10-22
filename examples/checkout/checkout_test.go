@@ -3,7 +3,6 @@ package checkout_test
 import (
 	"context"
 	"fmt"
-	"regexp"
 	"testing"
 
 	"github.com/casselc/quint-connect-go/examples/checkout"
@@ -15,9 +14,6 @@ import (
 )
 
 const binding = "checkout.binding.yaml"
-
-// rejected matches a report of a shipment or cancellation the model cannot take.
-var rejected = regexp.MustCompile(`is not a transition[^\n]*\n\s+quint:\s+(ship|cancel)\(`)
 
 func explore(t *testing.T, cfg checkout.Config, x qtest.ExploreConfig) *qtest.Exploration {
 	return qtest.Explore(t, binding, x, func(c qenv.Chooser) {
@@ -53,21 +49,21 @@ func TestMutants(t *testing.T) {
 		m     shop.Mutation
 		iso   qenv.Isolation
 		rates qenv.Rates
-		want  []qtest.Expectation
+		want  []qtest.Claim
 	}{
-		{shop.NoLocks, qenv.Serializable, crashy, []qtest.Expectation{qtest.Conforms()}},
-		{shop.NoLocks, qenv.SnapshotIsolation, crashy, []qtest.Expectation{qtest.Conforms()}},
+		{shop.NoLocks, qenv.Serializable, crashy, []qtest.Claim{qtest.Conforms()}},
+		{shop.NoLocks, qenv.SnapshotIsolation, crashy, []qtest.Claim{qtest.Conforms()}},
 		// lost updates: the stock oversold, or a shipment and a cancellation
-		{shop.NoLocks, qenv.ReadCommitted, qenv.DefaultRates, []qtest.Expectation{qtest.AnyOf(qtest.Rejects("place"), shipOrCancel)}},
-		{shop.LockWithoutWrite, qenv.Serializable, crashy, []qtest.Expectation{qtest.Conforms()}},
-		{shop.LockWithoutWrite, qenv.ReadCommitted, crashy, []qtest.Expectation{qtest.Conforms()}},
+		{shop.NoLocks, qenv.ReadCommitted, qenv.DefaultRates, []qtest.Claim{qtest.AnyOf(qtest.Rejects("place"), shipOrCancel)}},
+		{shop.LockWithoutWrite, qenv.Serializable, crashy, []qtest.Claim{qtest.Conforms()}},
+		{shop.LockWithoutWrite, qenv.ReadCommitted, crashy, []qtest.Claim{qtest.Conforms()}},
 		// write skew: a shipment and a cancellation both commit
-		{shop.LockWithoutWrite, qenv.SnapshotIsolation, qenv.DefaultRates, []qtest.Expectation{shipOrCancel}},
+		{shop.LockWithoutWrite, qenv.SnapshotIsolation, qenv.DefaultRates, []qtest.Claim{shipOrCancel}},
 		// a retry after a lost response charges again
-		{shop.NoIdempotencyKey, qenv.Serializable, qenv.DefaultRates, []qtest.Expectation{qtest.Violates("chargedAtMostOnce")}},
+		{shop.NoIdempotencyKey, qenv.Serializable, qenv.DefaultRates, []qtest.Claim{qtest.Violates("chargedAtMostOnce")}},
 		// a crash between commit and publish loses the order's payment: a
 		// one-step window, found with crashes ten times as often
-		{shop.DualWrite, qenv.Serializable, crashy, []qtest.Expectation{qtest.Violates("settledCorrectly")}},
+		{shop.DualWrite, qenv.Serializable, crashy, []qtest.Claim{qtest.Violates("settledCorrectly")}},
 	}
 	for _, c := range cases {
 		t.Run(fmt.Sprintf("%d/%s", c.m, c.iso), func(t *testing.T) {
@@ -89,9 +85,7 @@ func TestHegelShrinksWriteSkew(t *testing.T) {
 			tc.Errorf("%v", err)
 		}
 	}, hegel.WithTestCases(50), hegel.WithSeed(1))
-	if !rejected.MatchString(v.Summary) {
-		t.Fatalf("want a shipment or cancellation the model rejects:\n%s", v.Summary)
-	}
+	v.Expect(t, qtest.AnyOf(qtest.Rejects("ship"), qtest.Rejects("cancel")))
 }
 
 // Hegel explores the faithful shop under snapshot isolation, in batches.

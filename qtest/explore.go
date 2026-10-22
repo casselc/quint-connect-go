@@ -169,35 +169,79 @@ func Explore(t testing.TB, bindingPath string, cfg ExploreConfig, scenario func(
 	return x
 }
 
-// Expect states what the exploration must show. With Conforms(): every
-// run conforms. Otherwise: some run fails and meets every expectation (a
-// bug can show up in more than one way; this says how it can). On a miss
-// it fails t with the first failing run's report and faults, and saves its
-// step log.
-func (x *Exploration) Expect(t testing.TB, es ...Expectation) {
+// Expect states what the exploration must show, claim by claim: Some,
+// All or None of the runs meeting expectations, or an Expectation alone
+// (some run; every run for Conforms). With no claims, every run conforms.
+// A claim that holds by a failing run is logged with that run; one that
+// does not fails t with the run that shows why (its report and faults,
+// its step log saved), or, when no run fails at all, the fault kinds the
+// runs never faulted.
+func (x *Exploration) Expect(t testing.TB, claims ...Claim) {
 	t.Helper()
-	bad := x.Failing()
-	conforms := len(es) == 1 && es[0].desc == Conforms().desc
-	if conforms {
-		if len(bad) > 0 {
-			t.Fatalf("quintgo: %d of %d runs violate the model; the first:\n%s", len(bad), len(x.Runs), x.describe(t, bad[0]))
-		}
-		return
+	if len(claims) == 0 {
+		claims = []Claim{Conforms()}
 	}
-	if len(bad) == 0 {
-		t.Fatalf("quintgo: all %d runs conform; want %s", len(x.Runs), describeAll(es))
+	reps := make([]*validate.Report, len(x.Runs))
+	for i, r := range x.Runs {
+		reps[i] = r.Report
 	}
-	for _, r := range bad {
-		ok := true
-		for _, e := range es {
-			ok = ok && e.check(r.Report)
-		}
-		if ok {
-			t.Logf("quintgo: %d of %d runs violate the model; seed %d shows %s:\n%s", len(bad), len(x.Runs), r.Seed, describeAll(es), x.describe(t, r))
-			return
+	bad := len(x.Failing())
+	failedAny := false
+	for _, c := range claims {
+		j := c.judge(reps)
+		q, isQ := c.(quantified)
+		every := !isQ && c.(Expectation).every || isQ && q.kind == "all"
+		switch {
+		case j.ok && j.show >= 0 && !every:
+			r := x.Runs[j.show]
+			if !r.Report.OK() {
+				t.Logf("quintgo: %d of %d runs violate the model; seed %d shows %s:\n%s", bad, len(x.Runs), r.Seed, c, x.describe(t, r))
+			}
+		case j.ok:
+		case j.show >= 0:
+			failedAny = true
+			what := "show"
+			if every {
+				what = "do not show"
+			}
+			t.Errorf("quintgo: %d of %d runs %s %s; the first:\n%s", j.n, len(x.Runs), what, describeClaim(c), x.describe(t, x.Runs[j.show]))
+		case bad == 0:
+			failedAny = true
+			t.Errorf("quintgo: all %d runs conform; want %s%s", len(x.Runs), c, x.unfaulted())
+		default:
+			failedAny = true
+			first := x.Failing()[0]
+			t.Errorf("quintgo: %d of %d runs violate the model, none as %s; the first:\n%s", bad, len(x.Runs), c, x.describe(t, first))
 		}
 	}
-	t.Fatalf("quintgo: %d of %d runs violate the model, none as %s; the first:\n%s", len(bad), len(x.Runs), describeAll(es), x.describe(t, bad[0]))
+	if failedAny {
+		t.FailNow()
+	}
+}
+
+// describeClaim names what a failing All or None was about.
+func describeClaim(c Claim) string {
+	if q, ok := c.(quantified); ok {
+		var d []string
+		for _, e := range q.es {
+			d = append(d, e.desc)
+		}
+		return strings.Join(d, " and ")
+	}
+	return c.String()
+}
+
+// unfaulted names the fault kinds no run faulted: a reason a bug did not
+// show.
+func (x *Exploration) unfaulted() string {
+	var kinds []string
+	for _, p := range x.Coverage().Unfaulted() {
+		kinds = append(kinds, p.Kind)
+	}
+	if len(kinds) == 0 {
+		return ""
+	}
+	return fmt.Sprintf(" (never faulted: %s; raise their rates or the seeds)", strings.Join(kinds, ", "))
 }
 
 func describeAll(es []Expectation) string {

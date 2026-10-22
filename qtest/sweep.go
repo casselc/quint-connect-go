@@ -26,7 +26,7 @@ type Sweep struct {
 	Opts func(qsweep.Row) []Option
 	// Expect is what each row's runs should show (nil: Conforms): a
 	// mutant's bug is real under some rows only.
-	Expect func(qsweep.Row) []Expectation
+	Expect func(qsweep.Row) []Claim
 }
 
 // Swept is a sweep's rows and their explorations.
@@ -68,7 +68,7 @@ func SweepExplore(t *testing.T, bindingPath string, sw Sweep, scenario func(row 
 			}
 			x := Explore(t, bindingPath, xc, func(c qenv.Chooser) { scenario(row, c) })
 			s.Runs[i] = x
-			want := []Expectation{Conforms()}
+			want := []Claim{Conforms()}
 			if sw.Expect != nil {
 				want = sw.Expect(row)
 			}

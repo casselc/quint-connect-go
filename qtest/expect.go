@@ -22,6 +22,7 @@ func RequireQuint(t testing.TB) {
 type Expectation struct {
 	desc  string
 	check func(*validate.Report) bool
+	every bool // as a Claim alone: every run (Conforms), not some run
 }
 
 func (e Expectation) String() string { return e.desc }
@@ -29,7 +30,7 @@ func (e Expectation) String() string { return e.desc }
 // Conforms: every actor's run is a behaviour of the model and satisfies
 // its invariants.
 func Conforms() Expectation {
-	return Expectation{"the run conforms and satisfies every invariant", func(r *validate.Report) bool { return r.OK() }}
+	return Expectation{"the run conforms and satisfies every invariant", func(r *validate.Report) bool { return r.OK() }, true}
 }
 
 func failed(r *validate.Report, kind, action string) bool {
@@ -45,20 +46,20 @@ func failed(r *validate.Report, kind, action string) bool {
 // Rejects: the model cannot take an observed step of this action (an
 // implementation bug, or a wrong binding). "" matches any action.
 func Rejects(action string) Expectation {
-	return Expectation{fmt.Sprintf("a %s step the model cannot take", orAny(action)), func(r *validate.Report) bool { return failed(r, "disabled", action) }}
+	return Expectation{desc: fmt.Sprintf("a %s step the model cannot take", orAny(action)), check: func(r *validate.Report) bool { return failed(r, "disabled", action) }}
 }
 
 // Mismatch: after a step of this action, the observed state differs from
 // the model's (the binding's expect fails). "" matches any action.
 func Mismatch(action string) Expectation {
-	return Expectation{fmt.Sprintf("a state mismatch after a %s step", orAny(action)), func(r *validate.Report) bool { return failed(r, "state", action) }}
+	return Expectation{desc: fmt.Sprintf("a state mismatch after a %s step", orAny(action)), check: func(r *validate.Report) bool { return failed(r, "state", action) }}
 }
 
 // Violates: the run is a behaviour of the model, and the model's invariant
 // fails on it: a property the design (or this binding's view of it)
 // does not guarantee, seen in a real run.
 func Violates(invariant string) Expectation {
-	return Expectation{fmt.Sprintf("a conforming run that violates %s", invariant), func(r *validate.Report) bool {
+	return Expectation{desc: fmt.Sprintf("a conforming run that violates %s", invariant), check: func(r *validate.Report) bool {
 		for _, a := range r.Actors {
 			if a.Conforms != validate.Pass {
 				continue
@@ -75,7 +76,7 @@ func Violates(invariant string) Expectation {
 
 // AnyOf: the report meets at least one of es.
 func AnyOf(es ...Expectation) Expectation {
-	return Expectation{describeOr(es), func(r *validate.Report) bool {
+	return Expectation{desc: describeOr(es), check: func(r *validate.Report) bool {
 		for _, e := range es {
 			if e.check(r) {
 				return true
@@ -98,6 +99,102 @@ func orAny(action string) string {
 		return "model"
 	}
 	return action
+}
+
+// A Claim is what a test expects of a set of runs (Exploration.Expect,
+// Sweep.Expect): that some, every or no run meets expectations. An
+// Expectation alone is a claim about some run (Some), except Conforms,
+// which is about every run (All); several claims are judged one by one,
+// so Expect(t, Violates("a"), Violates("b")) wants each shown by some
+// run, not one run showing both (Some(a, b) says that).
+type Claim interface {
+	judge(reports []*validate.Report) judgment
+	String() string
+}
+
+// judgment is a claim's verdict: show is the run to print (-1: none).
+type judgment struct {
+	ok   bool
+	show int
+	n    int // runs meeting (Some, None) or missing (All) the expectations
+}
+
+func (e Expectation) judge(rs []*validate.Report) judgment {
+	if e.every {
+		return All(e).judge(rs)
+	}
+	return Some(e).judge(rs)
+}
+
+type quantified struct {
+	kind string // "some", "all", "none"
+	es   []Expectation
+}
+
+// Some: one run meets every one of es.
+func Some(es ...Expectation) Claim { return quantified{"some", es} }
+
+// All: every run meets every one of es.
+func All(es ...Expectation) Claim { return quantified{"all", es} }
+
+// None: no run meets any of es: what a bug must not do, or a row where a
+// fault cannot happen must never show.
+func None(es ...Expectation) Claim { return quantified{"none", es} }
+
+func (q quantified) String() string {
+	var d []string
+	for _, e := range q.es {
+		d = append(d, e.desc)
+	}
+	switch q.kind {
+	case "some":
+		return "some run showing " + strings.Join(d, " and ")
+	case "all":
+		return "every run showing " + strings.Join(d, " and ")
+	}
+	return "no run showing " + strings.Join(d, ", or ")
+}
+
+func (q quantified) meets(r *validate.Report) (all, any bool) {
+	all = true
+	for _, e := range q.es {
+		ok := r != nil && e.check(r)
+		all = all && ok
+		any = any || ok
+	}
+	return all, any
+}
+
+func (q quantified) judge(rs []*validate.Report) judgment {
+	j := judgment{show: -1}
+	for i, r := range rs {
+		all, any := q.meets(r)
+		switch q.kind {
+		case "some":
+			if all {
+				j.n++
+				if j.show < 0 {
+					j.show = i
+				}
+			}
+		case "all":
+			if !all {
+				j.n++
+				if j.show < 0 {
+					j.show = i
+				}
+			}
+		case "none":
+			if any {
+				j.n++
+				if j.show < 0 {
+					j.show = i
+				}
+			}
+		}
+	}
+	j.ok = (q.kind == "some") == (j.n > 0)
+	return j
 }
 
 // Expect fails t unless the report meets every expectation, printing the
