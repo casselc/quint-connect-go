@@ -5,3 +5,4 @@
 .hegel/
 /quintgo
 .claude/worktrees/
+*.test
