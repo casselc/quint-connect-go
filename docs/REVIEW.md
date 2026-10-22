@@ -242,12 +242,29 @@ Two reviews, architecture and design, with nothing released, so every
 shim was in scope. The plan they led to is ROADMAP's W track; the full
 reports were working files.
 
-### Architecture
+What they found, and where the W track fixed it:
+- Bugs: escaped steps compared by count, prefixed Script kinds, `Rates.Of`
+  matching, Shrink ignoring the System's options (W1).
+- The process-wide global recorder installed by default (W2).
+- Deprecated and internal-only exports (W3).
+- Two ways to configure qtest, quinthegel and sweeps (W4).
+- Two names for one concept across qload, qenv, qmeta, quinthegel and qtest (W5).
+- The chooser's `fault.` prefix in user-facing kinds (W6).
+- Crash defaults that hid post-commit crashes (W7).
+- A first hour that starts nowhere in particular (W8).
 
-| # | Item | Action | Effort | Risk |
-|
+## Fourth review (after W7)
 
-### Design
-
-| # | Item | Change | Effort |
-|
+Architecture and design again, and a planner reconciling them with the
+roadmap. Both said the plan holds. They moved the rename and the gosim
+split before W8, and release readiness before X. Their new findings, now
+ROADMAP's M, W9 and R items:
+- Published modules with `replace` directives, which cannot be consumed.
+- The gosim fork under upstream's module path.
+- Wire names to rename deliberately.
+- quinthegel's leftovers.
+- Claims' arity.
+- Two configuration fields.
+- Environment-variable prefixes.
+- A stale Packages table and stale hello snippets.
+- No license.
