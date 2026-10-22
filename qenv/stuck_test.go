@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -38,5 +39,28 @@ func TestDaemonsAndReceivesAreNotStuck(t *testing.T) {
 	s.Spawn("consumer", func(ctx context.Context) { q.Receive(ctx) })
 	if err := s.Run(time.Second); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// Outside a simulation Wait and Signal.Wait are real waits: a seam's code
+// runs unchanged with a real client, whose goroutines notify.
+func TestWaitOutsideASimulation(t *testing.T) {
+	ctx := context.Background()
+	var mu sync.Mutex
+	done := false
+	var sig qenv.Signal
+	go func() { //qenv:ok a real goroutine on purpose: the wait is outside any simulation
+		time.Sleep(5 * time.Millisecond) //qenv:ok real time on purpose
+		mu.Lock()
+		done = true
+		mu.Unlock()
+		sig.Notify()
+	}()
+	if !sig.Wait(ctx, time.Now().Add(5*time.Second)) { //qenv:ok a real deadline
+		t.Fatal("Signal.Wait: not notified")
+	}
+	qenv.Wait(ctx, func() bool { mu.Lock(); defer mu.Unlock(); return done })
+	if qenv.WaitUntil(ctx, func() bool { return false }, time.Now().Add(10*time.Millisecond)) { //qenv:ok a real deadline
+		t.Error("WaitUntil past its deadline reported ready")
 	}
 }
