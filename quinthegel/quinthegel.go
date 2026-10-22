@@ -307,7 +307,6 @@ func Render(steps []qtrace.Step) string {
 	return b.String()
 }
 
-
 // Checker returns a validate.Checker for a binding, typechecking the model
 // once per test binary and options (validate.Cached).
 func Checker(bindingPath string, o validate.Options) (*validate.Checker, error) {
