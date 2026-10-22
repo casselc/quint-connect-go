@@ -48,7 +48,15 @@ weaves:
 `quintgo lint -weave` reports both, but they are a problem only under
 Orchestrion.
 
-Tests: `go test ./...` weaves two fixtures (`testdata/`). It checks the
+**Instrumenting the main module.** Two flags weave the main module's own
+non-test files (or the packages `-coverpkg` names), never the toolkit's:
+- `-cover` counts blocks for qcover, attributed to each run's steps;
+- `-mutate` weaves mutants for qmut, all in one build: each `if`
+  condition negated, each pure comparison's boundary moved (`<` to `<=`),
+  each call statement dropped, every one behind a switch a run turns on
+  (`qmut.WithMutant`). `qtest.System.Mutate` explores each.
+
+Tests: `go test ./...` weaves the fixtures (`testdata/`). It checks the
 woven text, and runs the sync fixture in a qenv simulation, where its
 embedded lock, method-value unlock and goroutine would hang the scheduler
 unwoven.

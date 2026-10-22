@@ -36,16 +36,19 @@ type Config struct {
 	// qcover's Hit would count itself, and qenv's scheduler is not code
 	// under test.
 	Cover bool
-	// CoverPkgs, if set, limits Cover to packages with these import path
-	// prefixes.
+	// CoverPkgs, if set, limits Cover and Mutate to packages with these
+	// import path prefixes.
 	CoverPkgs []string
+	// Mutate weaves mutant schemata into the same packages as Cover would
+	// (qmut): every mutant in one build, turned on per run.
+	Mutate bool
 }
 
 const toolkit = "github.com/casselc/quint-connect-go"
 
 // covers reports whether Cover instruments the package path.
 func (c Config) covers(path string, main bool) bool {
-	if !c.Cover || !main {
+	if !main {
 		return false
 	}
 	if (path == toolkit || strings.HasPrefix(path, toolkit+"/")) && !strings.HasPrefix(path, toolkit+"/examples/") {
@@ -182,7 +185,7 @@ func Weave(c Config) (*Result, error) {
 	for _, s := range skipped {
 		r.Skipped = append(r.Skipped, s.String())
 	}
-	if len(aspects) == 0 && !c.Cover {
+	if len(aspects) == 0 && !c.Cover && !c.Mutate {
 		return r, nil
 	}
 	patterns := c.Patterns
@@ -202,7 +205,7 @@ func Weave(c Config) (*Result, error) {
 		if visitErr != nil || p.Module == nil || len(p.Errors) > 0 {
 			return // the standard library, or a package that does not build
 		}
-		pi := pkgInfo{fset: pc.Fset, info: p.TypesInfo, path: p.PkgPath, root: p.Module.Main, cover: c.covers(p.PkgPath, p.Module.Main), modDir: p.Module.Dir}
+		pi := pkgInfo{fset: pc.Fset, info: p.TypesInfo, path: p.PkgPath, root: p.Module.Main, cover: c.Cover && c.covers(p.PkgPath, p.Module.Main), mutate: c.Mutate && c.covers(p.PkgPath, p.Module.Main), modDir: p.Module.Dir}
 		for i, f := range p.Syntax {
 			name := p.CompiledGoFiles[i]
 			if done[name] {

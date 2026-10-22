@@ -27,9 +27,10 @@ func run() int {
 	verbose := flag.Bool("v", false, "list the woven files and the aspects skipped")
 	chdir := flag.String("C", "", "change to `dir` first (the module to weave and build)")
 	cover := flag.Bool("cover", false, "instrument the main module's blocks for qcover (which code each model step ran)")
-	coverPkg := flag.String("coverpkg", "", "with -cover, only packages with these comma-separated import path prefixes")
+	coverPkg := flag.String("coverpkg", "", "with -cover or -mutate, only packages with these comma-separated import path prefixes")
+	mutate := flag.Bool("mutate", false, "weave mutant schemata into the main module's packages for qmut (System.Mutate)")
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: qweave [-C dir] [-tool file] [-cover [-coverpkg prefixes]] [-v] go <command> [arguments]")
+		fmt.Fprintln(os.Stderr, "usage: qweave [-C dir] [-tool file] [-cover] [-mutate] [-coverpkg prefixes] [-v] go <command> [arguments]")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -44,7 +45,7 @@ func run() int {
 		flag.Usage()
 		return 2
 	}
-	cfg := qweave.Config{Tool: *tool, Cover: *cover}
+	cfg := qweave.Config{Tool: *tool, Cover: *cover, Mutate: *mutate}
 	if *coverPkg != "" {
 		cfg.CoverPkgs = strings.Split(*coverPkg, ",")
 	}

@@ -168,7 +168,7 @@ func (s *Shop) PlaceOrder(ctx context.Context, id, sku string, qty int) error {
 		tx.Put("stock/"+sku, stock-qty)
 		tx.Put("order/"+id, Order{ID: id, SKU: sku, Qty: qty})
 		s.emit(tx, Event{Type: "placed", Order: id})
-		tx.OnCommit(func() { qobs.Record(ctx, "place", nil, "order", id, "qty", qty) })
+		tx.OnCommit(func() { qobs.Record(ctx, "place", nil, "order", id, "qty", qty, "obs.stock", stock-qty) })
 		created = true
 		return nil
 	})
@@ -204,7 +204,8 @@ func (s *Shop) Cancel(ctx context.Context, id string) error {
 		if err != nil {
 			return err
 		}
-		tx.Put("stock/"+o.SKU, sv.(int)+o.Qty)
+		restocked := sv.(int) + o.Qty
+		tx.Put("stock/"+o.SKU, restocked)
 		if s.Mutation == LockWithoutWrite {
 			tx.Put("cancel/"+id, true)
 		} else {
@@ -212,7 +213,7 @@ func (s *Shop) Cancel(ctx context.Context, id string) error {
 			tx.Put("order/"+id, o)
 		}
 		s.emit(tx, Event{Type: "cancelled", Order: id})
-		tx.OnCommit(func() { qobs.Record(ctx, "cancel", nil, "order", id) })
+		tx.OnCommit(func() { qobs.Record(ctx, "cancel", nil, "order", id, "obs.stock", restocked) })
 		return nil
 	})
 }

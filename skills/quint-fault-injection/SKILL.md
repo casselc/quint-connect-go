@@ -214,6 +214,28 @@ t.Log(x.CodeCoverage()) // never run, run by no step, outcomes that ran the same
   apart and the code does not. That is fine when the outcome is the
   environment's (a lost response), and a question when it is the code's.
 
+## 4a'''. What the model constrains: mutants (`qweave -mutate`, `System.Mutate`)
+
+```sh
+go run -C path/to/qweave ./cmd/qweave -C . -mutate -coverpkg your/module/pkg go test -run TestMutation ./...
+```
+
+```go
+rep := sys.Mutate(t, qtest.ExploreConfig{Seeds: 20, Rates: crashy}, nil) // skips unwoven
+t.Log(rep) // reached, killed, survived, unreached
+```
+
+- Every mutant (a negated `if`, a moved comparison boundary, a dropped
+  call) is in one build; each is explored with the seeds, verdicts shared.
+- A survivor is code the model does not constrain. Ask, for each: is it
+  equivalent (a dropped ack the environment redelivers anyway), is the
+  effect unobserved (a step records nothing the model compares: add the
+  field and an `expect` to the binding), or is the code not needed?
+- Checkout's first run had a cancel that forgot to restock survive: no
+  step carried the stock. Recording it and an `expect: 'stock ==
+  {{.obs.stock}}'` killed it.
+- Unreached mutants are coverage's: no run reached their code.
+
 ## 4a'. Sweep the configuration space: covering arrays (`qsweep`, `qtest.SweepExplore`)
 
 When the product of configurations grows (isolation level × sizes ×

@@ -2136,3 +2136,55 @@ nothing in the byte rule, the recordings or the rates changed. The
 `fault.` prefix in rates, `Without` and `Swarm` is still a second
 spelling; changing it would break every rate table, so it stays until a
 breaking release.
+
+## 26. Mutant schemata (A2)
+
+Coverage says which code ran; it does not say whether the model cares
+what the code did. A mutant answers that: change the code, explore, and
+see whether any run is rejected. A survivor in covered code is code the
+model does not constrain.
+
+Building one binary per mutant costs a link per mutant, and a simulation's
+explorations are short. `qweave -mutate` instead weaves every mutant of
+the main module (or `-coverpkg`) into one build, each behind a switch
+(mutant schemata):
+- an `if` condition `c` becomes `quintqmut.Cond(id, c)`, negated when on;
+- a pure comparison (operands without calls) becomes
+  `quintqmut.Pick(id, a < b, a <= b)`: its boundary moved; an `if` whose
+  condition is one gets both, nested;
+- a call statement (not `panic` or `print`) becomes
+  `if !quintqmut.On(id) { call }`: dropped.
+
+Each file registers its mutants at init (`qmut.Register`), with the
+function, the operator and a one-line snippet. A run turns one on with
+`qmut.WithMutant(ctx, id)`, found through qrun like a recorder, so seeds of
+one mutant, or of different mutants, run in parallel in one process. A
+`qmut.Reach` notes the mutants whose code a run reached, on or off.
+
+`qtest.System.Mutate` explores the baseline (which must conform, and
+gives the reach), then each reached mutant with the same seeds. A mutant
+is killed by a rejected run, a `Run` error or a panic. The explorations
+share a `VerdictCache`: most mutants' runs repeat steps already checked.
+
+On checkout (SnapshotIsolation, 20 crashy seeds, about 8 minutes):
+67 mutants reached, 12 unreached. The first run killed 48. A survivor was
+`Cancel` dropping `tx.Put("stock/"+sku, stock+qty)`: the model restocks on
+cancel, but no step carried the stock and the binding compared nothing.
+Place and cancel now record `obs.stock`, and the binding expects
+`stock == {{.obs.stock}}`; the restock mutant is killed (49, 73%). The
+other survivors:
+- equivalent under the environment: dropped acks (the queue redelivers,
+  the consumers are idempotent), dropped rollbacks (an uncommitted
+  transaction is discarded), the retry loop's boundary and its sleep, a
+  fourth payment worker;
+- the relay's `Delete` of a sent outbox row: resending is idempotent;
+- mutation switches (`NoLocks`, `DualWrite`) negated: equivalent under
+  snapshot isolation, or a race the seeds did not reach;
+- `PlaceOrder`'s stock check (`stock < qty`, its boundary) and error
+  branches: a refused order records no step, so overselling shows only
+  when stock goes negative, which the model's place guard would reject
+  only with a recorded step. Recording refusals needs a model action for
+  them: a model change, left for a deliberate edit.
+
+The report is a list to read, not a score to assert: equivalent mutants
+survive by right. `examples/checkout/mutate_test.go` logs it.

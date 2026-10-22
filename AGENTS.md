@@ -39,6 +39,7 @@ qgosim/       separate module: qenv and whole programs in gosim (the fork: branc
 qweave/       separate module: weaves Orchestrion aspects with types into a go -overlay (cmd/qweave); also gosim's
 qload/ qmeta/ load simulation (open/closed-loop clients, servers, triggers); CTMC, recovery property, alert rules
 qcover/ qrun/ code coverage by model step (woven by qweave -cover); a run's state found from its context or goroutine
+qmut/         mutant schemata (woven by qweave -mutate): one build, a mutant per run; qtest's System.Mutate explores each
 sktrace/      SimKube traces (msgpack v3, own decoder): production workloads as load shapes and replayed writes
 qsweep/       covering arrays (pairwise and t-way rows with constraints, sequence covering); qtest.SweepExplore runs them
 qrole/        load roles (//quint:serve, //quint:operation, //quint:call; aspects in orchestrion.yml): u and v as gauges
@@ -174,6 +175,12 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   block's code is attributed to its task's next step, so a client whose
   step a service records shows as "run by no step": read that list as
   code no step of its own task explains, not as dead code.
+- `qweave -mutate` switches mutants through qrun, like `-cover`, so it
+  mutates the main module only (or `-coverpkg`). A survivor is often an
+  unobserved effect, not unneeded code: a step that records nothing the
+  binding compares (checkout's cancel never carried the stock). Mutants
+  equivalent under the environment (dropped acks, retries' boundaries)
+  survive by right: read the report, do not assert a score.
 - A Script imposes its faults in strict order, each waiting for its kind:
   a fault of a phase that has passed (checkout's API faults happen only
   while orders are placed) blocks every later one. Script ordered pairs,

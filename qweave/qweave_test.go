@@ -192,3 +192,38 @@ func TestCoverFixtureRuns(t *testing.T) {
 	}
 	t.Logf("%s", out)
 }
+
+// -mutate weaves every mutant of the main module into one build, and the
+// fixture's test turns each on in turn: each changes what it sees.
+func TestMutateFixtureRuns(t *testing.T) {
+	if testing.Short() {
+		t.Skip("builds the fixture")
+	}
+	r, err := qweave.Weave(qweave.Config{Dir: "testdata/mutate", Mutate: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Files) != 1 {
+		t.Fatalf("woven %d files, want limit.go alone (test files are not mutated)", len(r.Files))
+	}
+	for _, b := range r.Files {
+		src := string(b)
+		for _, want := range []string{"quintqmut.Cond(", "quintqmut.Pick(", "quintqmut.On(", "quintqmut.Register([]quintqmut.Mutant{"} {
+			if !strings.Contains(src, want) {
+				t.Errorf("no %s in:\n%s", want, src)
+			}
+		}
+	}
+	overlay, err := r.WriteOverlay(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("go", "test", "-count=1", "-v", "-overlay="+overlay, "./...")
+	cmd.Dir = "testdata/mutate"
+	cmd.Env = os.Environ()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	t.Logf("%s", out)
+}

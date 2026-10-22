@@ -25,6 +25,7 @@ type pkgInfo struct {
 	// cover instruments the file's blocks (Config.Cover); modDir is the
 	// module's directory, for the blocks' file names
 	cover  bool
+	mutate bool // Config.Mutate
 	modDir string
 }
 
@@ -79,7 +80,11 @@ func weaveFile(p pkgInfo, file *ast.File, src []byte, name string, aspects []*As
 	}
 	// the module's own files: not tests, not generated ones in the build
 	// cache (a test binary's main)
-	if p.cover && !strings.HasSuffix(name, "_test.go") && p.modDir != "" && strings.HasPrefix(name, p.modDir+string(filepath.Separator)) {
+	own := !strings.HasSuffix(name, "_test.go") && p.modDir != "" && strings.HasPrefix(name, p.modDir+string(filepath.Separator))
+	if p.mutate && own {
+		w.mutate() // before coverage: a block's Hit goes before a dropped call's switch
+	}
+	if p.cover && own {
 		w.instrument()
 	}
 	if len(w.edits) == 0 {

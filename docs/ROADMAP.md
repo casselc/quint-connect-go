@@ -26,7 +26,7 @@ say which code they ran, and what the model says about it.
     was never faulted (an error path the exploration did not try; needs
     S3's declared kinds), and a static pass in qweave for blocks no
     function reaches (dead, as `deadcode` finds).
-- **A2. Mutation testing, woven by qweave.** A mutant per covered block
+- **A2. Mutation testing, woven by qweave. Done (DESIGN §26).** A mutant per covered block
   (a flipped condition, a dropped statement), each explored. A survivor
   in covered code is code the model does not constrain: the sharper
   answer to "what is this code for?".
@@ -138,3 +138,7 @@ the rest, each after the U items it depends on.
 - U5: chooser `Unwrap` and `qenv.As` (DESIGN §24); fault options by name,
   additive (DESIGN §25: `Faults`, `FaultOf`, `Only`, `Scripted.Name`). The
   `fault.` prefix in rates stays until a breaking release.
+- A2: done (DESIGN §26): `qweave -mutate`, `qmut`, `System.Mutate`; on
+  checkout it found that no step carried the stock after a cancel (fixed
+  in the binding), and that refused orders record no step (a model change,
+  open).
