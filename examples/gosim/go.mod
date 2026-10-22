@@ -4,6 +4,7 @@ go 1.26.1
 
 require (
 	github.com/casselc/quint-connect-go v0.0.0
+	github.com/casselc/quint-connect-go/examples/edgepublish v0.0.0
 	github.com/casselc/quint-connect-go/qgosim v0.0.0
 	github.com/jellevandenhooff/gosim v0.0.0
 	hegel.dev/go/hegel v0.9.27
@@ -19,7 +20,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cloudflare/circl v1.5.0 // indirect
 	github.com/cyphar/filepath-securejoin v0.3.4 // indirect
-	github.com/dave/dst v0.27.3 // indirect
+	github.com/dave/dst v0.27.4 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dlclark/regexp2 v1.11.4 // indirect
 	github.com/dominikbraun/graph v0.23.0 // indirect
@@ -37,9 +38,9 @@ require (
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
 	github.com/joho/godotenv v1.5.1 // indirect
 	github.com/kevinburke/ssh_config v1.2.0 // indirect
-	github.com/klauspost/cpuid/v2 v2.2.9 // indirect
-	github.com/mattn/go-colorable v0.1.14 // indirect
-	github.com/mattn/go-isatty v0.0.20 // indirect
+	github.com/klauspost/cpuid/v2 v2.4.0 // indirect
+	github.com/mattn/go-colorable v0.1.15 // indirect
+	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/mattn/go-sqlite3 v1.14.24 // indirect
 	github.com/mattn/go-zglob v0.0.6 // indirect
 	github.com/mitchellh/hashstructure/v2 v2.0.2 // indirect
@@ -71,6 +72,7 @@ require (
 
 replace (
 	github.com/casselc/quint-connect-go => ../..
+	github.com/casselc/quint-connect-go/examples/edgepublish => ../edgepublish
 	github.com/casselc/quint-connect-go/qgosim => ../../qgosim
 	// The fork: ../../qgosim/fetch-gosim.sh puts it there.
 	github.com/jellevandenhooff/gosim => ../../qgosim/.gosim-fork

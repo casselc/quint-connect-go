@@ -33,15 +33,27 @@ func Sink() qobs.Sink { return qobs.NewJSONLSink(emitter{}) }
 // (Chooser), its processes run on gosim machines (Platform), and its
 // context records steps to the host (Sink), so qobs.Record(ctx, ...) from
 // its tasks and s.Context() reaches Run.
+//
+// The recorder is also qobs's global one, on this machine and on every
+// machine the Platform boots (gosim gives each machine its own globals):
+// code that records with a context of its own (context.Background() in a
+// goroutine started with go) records into the run too.
 func New() *qenv.Sim {
-	ctx := qobs.WithRecorder(context.Background(), qobs.NewRecorder(Sink(), qobs.WithID("sim")))
-	return qenv.NewNative(qenv.WithContext(Chooser{}, ctx), NewPlatform())
+	rec := qobs.NewRecorder(Sink(), qobs.WithID("sim"))
+	qobs.SetGlobal(rec)
+	p := NewPlatform()
+	p.Recorder = rec
+	ctx := qobs.WithRecorder(context.Background(), rec)
+	return qenv.NewNative(qenv.WithContext(Chooser{}, ctx), p)
 }
 
 // Platform runs each process of a simulation on a gosim machine of its own:
 // a crash stops all its goroutines at once, without running deferred code.
 type Platform struct {
-	ops chan func()
+	// Recorder, if set, is installed as qobs's global recorder on each
+	// machine as it boots.
+	Recorder *qobs.Recorder
+	ops      chan func()
 }
 
 // NewPlatform returns a Platform. Its machines are crashed and restarted by
@@ -66,7 +78,14 @@ type machine struct {
 
 // Machine implements qenv.Platform.
 func (p *Platform) Machine(name string, main func()) qenv.Machine {
-	return &machine{p: p, m: gosim.NewMachine(gosim.MachineConfig{Label: name, MainFunc: main})}
+	boot := main
+	if p.Recorder != nil {
+		boot = func() {
+			qobs.SetGlobal(p.Recorder)
+			main()
+		}
+	}
+	return &machine{p: p, m: gosim.NewMachine(gosim.MachineConfig{Label: name, MainFunc: boot})}
 }
 
 func (m *machine) Crash() { m.do(m.m.Crash) }

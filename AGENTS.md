@@ -250,3 +250,13 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   them) hand gosim bytes in chunks for every choice but faults. A chooser
   without it (a plain wrapper) falls back to one round trip per choice,
   about 9 times slower.
+- gosim weaves Orchestrion aspects itself (the fork's `weave`): the
+  translated module's `gosim.tool.go` (else `orchestrion.tool.go`) names
+  the packages whose `orchestrion.yml` apply. List qobs for
+  `//quint:action`, never qenv/weave (gosim simulates sync itself).
+  Supported: function-body join points with a directive, prepend-statements
+  advice; others are skipped (debug log). On the native runtime with a
+  Platform, qenv takes no lock across user code (gosim is cooperative):
+  never put a real lock or a multi-send loop where a crash or a goroutine
+  switch could strand it (DESIGN §15.8), and compare times without
+  monotonic readings (`Sim.Now` already drops them).

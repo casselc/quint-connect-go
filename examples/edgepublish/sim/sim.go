@@ -109,14 +109,19 @@ func (e *exporter) start() {
 
 // Run runs the exporter for 3 minutes of virtual time with faults, then
 // lets the last incarnation drain its queue and close.
-func Run(c qenv.Chooser, cfg Config) error {
+func Run(c qenv.Chooser, cfg Config) error { return RunOn(qenv.New(c), cfg) }
+
+// RunOn is Run on a simulation of any runtime: qenv's (woven by
+// qenv/weave), or the native one in gosim, where the publisher's locks,
+// wait group and goroutine are gosim's (examples/gosim/edgepublish). It
+// closes s.
+func RunOn(s *qenv.Sim, cfg Config) error {
 	if cfg.Requests == 0 {
 		cfg.Requests = 6
 	}
 	if cfg.Workers == 0 {
 		cfg.Workers = 2
 	}
-	s := qenv.New(c)
 	defer s.Close()
 	store := publisher.NewMemStore()
 	store.Hook = func(ctx context.Context, op publisher.Op) publisher.Fault {

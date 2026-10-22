@@ -1455,7 +1455,7 @@ Chooser built from the trace, while the schedule stays nominal.
 |---|---|---|
 | 0 | the fork in a repository of its own, with CI; choices in chunks from the host (§14's cost) (done, §15.7: a branch for now) | a repository |
 | 1 | the runtime interface, the native runtime and the gosim adapter; checkout's tests on qenv and on gosim (done, §15.6) | — |
-| 2 | the pass framework in the translator; `//quint:action` as a pass, so the edgepublish publisher runs in gosim without Orchestrion | 0 |
+| 2 | the pass framework in the translator; `//quint:action` as a pass, so the edgepublish publisher runs in gosim without Orchestrion (done, §15.8) | 0 |
 | 3 | the `-toolexec` front end; Orchestrion aspect files; method values, promoted calls and channels woven | 2 |
 | 4 | load roles and action metrics; calibration from production; alerting rules from the chain | 3 |
 | 5 | fault points and fault coverage; a Quint trace as a Chooser | 2 |
@@ -1542,4 +1542,53 @@ The effect on broadcast's TCP cluster:
 
 For Hegel, the chunks are the same draws its chooser makes on qenv's
 scheduler, so shrinking a gosim run behaves as shrinking a qenv run does.
+
+### 15.8 Phase 2 as built
+
+**The translator reads Orchestrion's own aspect files.** It applies the
+aspects of the packages the module's tool file names (`gosim.tool.go`,
+else `orchestrion.tool.go`). `//quint:action` is therefore woven from the
+same `qobs/orchestrion.yml` that `orchestrion go build` uses: there is no
+second definition to drift from it.
+- **Where weaving happens.** The fork's `weave` package works at the
+  source level, before gosim's own rewrites. Woven files go to every
+  `go/packages` load as an overlay, so types, imports and the
+  dependency graph see the woven code. `//line` directives keep positions
+  on the original lines, and the aspects are part of the translation
+  cache's key.
+- **What is supported.** Function-body join points with a directive, and
+  prepend-statements advice, with `.Function.ArgumentOfType`,
+  `.ResultOfType` and `.DirectiveArgs`. Unnamed results the advice needs
+  are named, as Orchestrion names them.
+- **Imports.** An import the advice needs that the file already has
+  under another name reuses that name. gosim's translator gives all
+  imports of a path one name, so a second import of qobs, as
+  `quintqobs`, failed to compile.
+
+**The publisher on gosim.** The edgepublish publisher runs unchanged
+and with no qenv/weave:
+- its `sync.RWMutex`, its `WaitGroup` and its background seal goroutine
+  are gosim's;
+- the seal records through `context.Background()`, so qgosim installs
+  the run's recorder as qobs's global on every machine.
+
+It passes the same checks as the woven qenv runs: explored runs conform,
+and ManifestBeforeTable and NoRotationLock are caught. NoRotationLock is
+caught in 29 of 30 runs. gosim's schedules interleave its unlocked
+rotation with pushes far more often than qenv's woven locks do.
+
+**The native runtime became cooperative.** With a Platform, it takes no
+lock across the code under test. Three failures led there:
+- **A lost mutex.** A `sync.Mutex` in starvation mode is handed to its
+  next waiter. When that waiter's machine crashed, the mutex stayed
+  locked, and Settle never returned.
+- **A forgotten waiter.** A broadcast looping over channel sends
+  switches goroutines at every send. A waiter that woke and re-registered
+  in between was forgotten, and two paid orders never shipped. Waits are
+  now a `sync.Cond` with no lock, whose `Broadcast` is one step of
+  gosim's runtime.
+- **Mismatched clocks.** A `time.Time`'s monotonic reading is relative
+  to a per-machine global under gosim, so deadlines passed between
+  machines compared wrongly. The native clock now drops the monotonic
+  reading.
 

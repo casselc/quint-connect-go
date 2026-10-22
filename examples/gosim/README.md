@@ -12,6 +12,13 @@ checked against the system's Quint model with its usual binding.
   machines over real TCP ([broadcast/tcp](broadcast/tcp)): `net.Listen`,
   `net.Dial`, `bufio`, `encoding/json`, tickers, goroutines and mutexes,
   all simulated. A nemesis isolates nodes.
+- [edgepublish](edgepublish): the edgepublish publisher
+  ([../edgepublish](../edgepublish)) in its simulated environment
+  (`sim.RunOn`). It is not woven by Orchestrion, and has no qenv/weave:
+  its `sync.RWMutex`, `sync.WaitGroup` and background goroutine are
+  gosim's. Its `//quint:action` annotations are woven by gosim's
+  translator, from the qobs aspects that [gosim.tool.go](gosim.tool.go)
+  names.
 - [checkout](checkout): the checkout saga ([../checkout](../checkout)),
   its deployment unchanged (`checkout.Deploy`), on qenv's native runtime
   (DESIGN.md §15.1). Its tasks are goroutines, its processes are gosim
@@ -51,6 +58,10 @@ module of its own that runs on gosim's runtime. Hegel cannot run in there
 | `broadcast.TestReplayIsDeterministic` | `qenv.Recorder`, then `qenv.Replay` | none | identical steps from the same ~5500 choices |
 | `broadcast.TestReadOwnOnlyRejected` | `qenv.NewSeeded` | `ReadOwnOnly` | `qtest.Mismatch("read")` |
 | `broadcast.TestHegelFindsNoRetry` (not `-short`) | `quinthegel.Chooser` | `NoRetry` | `quinthegel.FindViolation`: `convergedWhenSettled`, shrunk to gossip lost to an isolated node |
+| `edgepublish.TestExploredRunsConformOnGosim` | `qtest.Explore`, crashes of the exporter's machine | none | conforms |
+| `edgepublish.TestInvariantsHoldWithoutAmbiguousWritesOnGosim` | `qtest.Explore` | none, no ambiguous writes | conforms, invariants hold |
+| `edgepublish.TestMutantsOnGosim` | `qtest.Explore`, no crashes | `ManifestBeforeTable` | `qtest.Rejects("writeManifest")` |
+| | | `NoRotationLock` | a rotation or write the model rejects (29 of 30 runs) |
 | `checkout.TestFaithfulConformsOnGosim` | `qtest.Explore`, crashes 1 in 20 | none, at each isolation level | conforms |
 | `checkout.TestMutantsOnGosim` | `qtest.Explore` | `LockWithoutWrite` at snapshot isolation | a ship or cancel the model rejects (write skew) |
 | | | `NoIdempotencyKey` | `chargedAtMostOnce` or `settledCorrectly` violated |

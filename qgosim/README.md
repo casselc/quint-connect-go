@@ -34,6 +34,18 @@ The fork:
   `Close` and `Alive`;
 - with a chooser that has entropy (`qenv.EntropyOf`), makes every choice
   but faults from bytes the host hands out in chunks of 512, one round
-  trip each.
+  trip each;
+- weaves Orchestrion aspects before translating. The module's
+  `gosim.tool.go` (else `orchestrion.tool.go`) names the packages whose
+  `orchestrion.yml` apply, so `//quint:action` and `//quint:thread`
+  (qobs's aspects) record steps in a simulation without an Orchestrion
+  build. Supported so far: function-body join points with a directive,
+  and prepend-statements advice. Don't list qenv/weave: gosim simulates
+  `sync` and goroutines itself.
+
+`New` installs the run's recorder as qobs's global recorder on every
+machine (gosim gives each its own globals). Code that records with
+`context.Background()`, such as a goroutine started with `go`, then
+records into the run.
 
 gosim's race mode does not build on 1.26 yet.

@@ -166,6 +166,12 @@ both kinds of code:
 - **any program**: start machines with `gosim.NewMachine`, and ask for
   faults with `gosimruntime.Choose("fault.<name>", n)`, where option 0
   is no fault. Record with qobs into `qgosim.Sink()`.
+- **code annotated with `//quint:action`**: add a `gosim.tool.go`
+  (`//go:build tools`) to the module that imports
+  `github.com/casselc/quint-connect-go/qobs`. The translator then weaves
+  qobs's aspects, as `orchestrion go test` would. Leave qenv/weave out:
+  gosim simulates locks and goroutines itself, so code that needed weaving
+  on qenv's scheduler runs as it is (examples/gosim/edgepublish).
 
 On either kind:
 - put the simulated test under `//go:build sim`, and its host test under

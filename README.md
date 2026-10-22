@@ -266,9 +266,13 @@ moves there unchanged. `qenv.NewNative` runs the same doubles and
 processes on plain goroutines and `time`, which gosim simulates, with
 processes as gosim machines. Give your run function a `*qenv.Sim`, and
 call it with `qenv.New(c)` or `qgosim.New()`.
-[examples/gosim](examples/gosim) runs the Glomers broadcast node over TCP
-on three gosim machines, and the checkout saga with its model checks
-(DESIGN.md §14, §15.1).
+gosim's translator also weaves Orchestrion aspects. List qobs in a
+`gosim.tool.go`, and `//quint:action` records steps with no Orchestrion
+build.
+[examples/gosim](examples/gosim) has three systems on gosim: the Glomers
+broadcast node over TCP on three machines, the checkout saga, and the
+edgepublish publisher, unwoven by qenv/weave, each with its model checks
+(DESIGN.md §14, §15.1, §15.8).
 
 Each seeded run is checked in one quint batch, and the failing seed's
 faults and step log are reported. `quinthegel.FindViolation` with
