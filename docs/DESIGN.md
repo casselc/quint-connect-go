@@ -2181,11 +2181,23 @@ other survivors:
 - the relay's `Delete` of a sent outbox row: resending is idempotent;
 - mutation switches (`NoLocks`, `DualWrite`) negated: equivalent under
   snapshot isolation, or a race the seeds did not reach;
-- `PlaceOrder`'s stock check (`stock < qty`, its boundary) and error
-  branches: a refused order records no step, so overselling shows only
-  when stock goes negative, which the model's place guard would reject
-  only with a recorded step. Recording refusals needs a model action for
-  them: a model change, left for a deliberate edit.
+- `PlaceOrder`'s error branches (`err != nil`, `ok` negated): a shop that
+  places nothing records nothing, and a safety model accepts a run with no
+  steps;
+- the refusal's own recording (two mutants dropping it) and the
+  `ErrSoldOut` return negated: a missing refusal is a step the model
+  cannot require (a client may give up before any), and the client's
+  answer is no step.
+
+Refusals are steps (V17). A refused order recorded nothing, so the stock
+check was unconstrained both ways. The model has `refuse(order, qty)`,
+enabled only when `stock < qty`, and changes nothing. The shop records it
+from its read-only transaction's commit: returning ErrSoldOut from the
+transaction would roll back and drop the hook, so it returns nil and the
+error after. The binding compares the stock. Both stock-check mutants
+(negated, `<=` for `<`) are now killed: 70 reached, 51 killed (73%), 19
+survive, 12 unreached. The three new mutants, in the refusal code, survive:
+they are among the bullets above.
 
 The report is a list to read, not a score to assert: equivalent mutants
 survive by right. `examples/checkout/mutate_test.go` logs it.

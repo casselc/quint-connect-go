@@ -119,7 +119,11 @@ for long runs. Never use the mechanism model without its lemma.
 - **Refusals.** If the model has no step for a refused call, the binding
   says `outcomes: { error: skip }`. A refused call is then no step, and a
   wrongly *accepted* one is a step the model rejects. Drive invalid
-  inputs (Hegel) to exercise this.
+  inputs (Hegel) to exercise this. A skipped refusal leaves the check
+  that refuses unconstrained: a call wrongly *refused* is no step either.
+  When that matters, give the refusal an action enabled only when the
+  call must fail (checkout's `refuse(order, qty)`, when `stock < qty`):
+  its mutants are then killed.
 - **Restarts.** A crash is a parameterless model action (`restart`). The
   binding's `restart:` inserts it where the recorded process identity
   changes.

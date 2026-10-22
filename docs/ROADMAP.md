@@ -327,7 +327,9 @@ names what it needs.
   patterns; modes, pitfalls); quint-start's new rows and System snippet;
   `v.Summary` advice gone; `TestSkillsAvoidDeprecated`.
 - **V17. Models.** Refusals as steps in checkout (DESIGN §26's open item),
-  with the model action and the mutants it kills.
+  with the model action and the mutants it kills. *Done:* `refuse(order,
+  qty)`, enabled when stock < qty; the stock check's two mutants killed,
+  51 of 70 (73%).
 
 - **R1. Releasable modules.** A `go.work` for development; no `replace
   => ../` in qanalysis and qgosim; tagged core and sub-modules; `go

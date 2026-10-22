@@ -188,6 +188,9 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
   that calls back (qenv's commit hooks) is one call-graph node for every
   closure handed to it, and going through it made cancel "reach"
   PlaceOrder.
+- A step for a refusal recorded with `Txn.OnCommit` needs the transaction
+  to commit: return nil from it and the error after `qenv.Retry`
+  (checkout's `PlaceOrder`). An error rolls back and drops the hook.
 - `qenv.Store` detects lock-wait cycles: the transaction whose
   `GetForUpdate` would close one aborts with `ErrDeadlock` (an
   ErrConflict). `qenv.Service` delivers a response in the handler's
