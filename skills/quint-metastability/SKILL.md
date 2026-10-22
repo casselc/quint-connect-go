@@ -180,7 +180,12 @@ func (c *Client) attempt(ctx context.Context) error
 - Calibrate on the series: `qmeta.CalibrateTimeout(p,
   qmeta.Trajectories(obs, []float64{5, 10, 20}, 10))`. Hold λ (measured as
   the rate of new operations): fitting it to a storm drives it to μ, where
-  nothing recovers.
+  nothing recovers. `fit.Warning()` says when the fit got there anyway.
+- `roles.Orbit` is the waiting part of the chain's v (requests between
+  attempts); the chain's own v also holds attempts in flight that will
+  time out, known only in hindsight (`qload.Sample.Orbit` vs `Waiting`).
+  Under immediate retries the gauge stays at 0 through a storm: the
+  alert sees u alone there.
 - `region := qmeta.New(fit).Region(healthy, 120)` is the states with less
   than even odds of being healthy within 2 minutes (`RecoveryWithin`). Not
   the mean hitting time: near a storm it is dominated by rare tips into

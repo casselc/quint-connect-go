@@ -2221,3 +2221,32 @@ simulation (`OfSimulation`) or an application (`Of`), run with `Runs`,
 `TriggerSearch` judged by `Expect(t, found)`, as FindViolation's result
 is. `MaxExtraRate` no longer defaults to the base rate (the System does
 not know it): set it.
+
+## 28. Small unifications (U7: S5, S6, S7)
+
+**S7, the orbit.** The chain's v is the papers' orbit: an arrival that
+will time out enters u and v together, and leaves v after the timeout
+and the backoff. That is `qload.Sample.Orbit`, known in hindsight. qrole's
+v (operations in progress with no attempt in flight) is what a running
+system can see: the waiting part, now also `Sample.Waiting`, so one run
+has both. In the paper's storm (9.5 req/s, a spike to 20) the orbit is 79
+and the waiting part 0 under immediate retries; with a 5 s backoff, 215
+and 134 (`TestTwoOrbits`). So:
+- a chain calibrated on qrole's gauges (`CalibrateTimeout`) is a chain of
+  the waiting part, and its fitted timeout absorbs the attempts in flight;
+- under immediate retries v is invisible to a running system, and an
+  alert on it sees only u. retrystorm's alerts are on backoff, where
+  the waiting part is most of the orbit.
+
+**S6, duplicates.** The simulation lint moved from qenv to
+`internal/lint`: gosim translates everything a simulated package imports,
+and qenv pulled go/ast, go/parser and go/token into every translation.
+`Explored.Faults` reuses `Recorder.Faults`. Kept: qload's step counter,
+which samples per tick inside the simulation (merging it with
+`qrole.MetricsSink` would make qload depend on OTel metrics), and the
+simdeps list, which a derivation could only replace with a deny-list of
+host packages or a gosim build of examples/gosim.
+
+**S5, one hook entry.** Superseded: B1 put the pprof labels in qrole's
+one `track`, which Serve, Operation and Call share; a hook package would
+add an indirection for three call sites.

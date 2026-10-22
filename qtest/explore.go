@@ -40,15 +40,7 @@ type Explored struct {
 }
 
 // Faults are the run's fault choices that were not nominal.
-func (e *Explored) Faults() []qenv.Choice {
-	var out []qenv.Choice
-	for _, c := range e.Choices {
-		if qenv.IsFault(c.Kind) && c.Value != 0 {
-			out = append(out, c)
-		}
-	}
-	return out
-}
+func (e *Explored) Faults() []qenv.Choice { return (&qenv.Recorder{Choices: e.Choices}).Faults() }
 
 // An Exploration is many seeded runs of a simulated scenario, checked
 // against the model in bulk.

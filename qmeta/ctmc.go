@@ -2,7 +2,10 @@
 // chain (CTMC), following Alvaro et al., "Formal Analysis of Metastable
 // Failures in Software Systems" (2025). A request-response server is
 // abstracted to (u, v): u requests in the system (queued or in service)
-// and v in the orbit, waiting to be retried. From those few numbers the
+// and v in the orbit: requests whose current attempt will time out, or
+// that wait to retry (qload.Sample.Orbit). A running system sees only the
+// waiting part (qrole's v, qload.Sample.Waiting); calibrate on it with
+// CalibrateTimeout, and the fitted timeout absorbs the difference. From those few numbers the
 // chain predicts, in seconds, what simulation (qload) takes minutes and a
 // stress test hours to show:
 //   - Field: the most likely direction of the dynamics at every state, a

@@ -1,6 +1,7 @@
 package qload_test
 
 import (
+	"math/rand/v2"
 	"testing"
 	"time"
 
@@ -57,6 +58,40 @@ func TestPiecewise(t *testing.T) {
 		from := time.Duration(i) * time.Minute
 		if got := m.Mean(from, from+time.Minute, arrivals); got < 0.8*want || got > 1.2*want {
 			t.Errorf("minute %d: %.2f arrivals/s, want about %g", i, got, want)
+		}
+	}
+}
+
+// The chain's v (Sample.Orbit, in hindsight) and what a running system
+// sees (Sample.Waiting, qrole's v) on one run: the waiting requests are
+// part of the orbit, and with immediate retries almost none of it, so a
+// chain calibrated on qrole's gauges is a chain of the waiting part.
+func TestTwoOrbits(t *testing.T) {
+	for _, c := range []struct {
+		name    string
+		backoff func(int, *rand.Rand) time.Duration
+	}{{"immediate", nil}, {"backoff", func(int, *rand.Rand) time.Duration { return 5 * time.Second }}} {
+		cfg := example(9.5)
+		cfg.Client.Backoff = c.backoff
+		m := qload.Simulate(cfg)
+		orbit := m.Mean(800*time.Second, 1000*time.Second, func(s qload.Sample) float64 { return float64(s.Orbit) })
+		waiting := m.Mean(800*time.Second, 1000*time.Second, func(s qload.Sample) float64 { return float64(s.Waiting) })
+		t.Logf("%s: orbit %.0f, waiting %.0f in the storm", c.name, orbit, waiting)
+		for _, s := range m.Samples {
+			// a request that sleeps across a sample is in both; one whose
+			// sleep started in the tick is in Orbit from the tick's sample
+			if s.Waiting > s.Orbit+5 {
+				t.Errorf("%s at %v: %d waiting, more than the orbit's %d", c.name, s.T, s.Waiting, s.Orbit)
+				break
+			}
+		}
+		switch {
+		case orbit < 50:
+			t.Errorf("%s: orbit %.0f; want a storm", c.name, orbit)
+		case c.backoff == nil && waiting > 1:
+			t.Errorf("immediate retries: %.0f waiting; want none", waiting)
+		case c.backoff != nil && waiting < 10:
+			t.Errorf("with backoff: %.0f waiting; want part of the orbit", waiting)
 		}
 	}
 }

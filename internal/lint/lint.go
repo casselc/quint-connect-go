@@ -1,4 +1,8 @@
-package qenv
+// Package lint finds code that escapes a qenv simulation or its weaving
+// (quintgo lint -sim, -weave). It is apart from qenv so that gosim, which
+// translates everything a simulated package imports, does not translate
+// go/ast and go/parser with it.
+package lint
 
 import (
 	"fmt"
@@ -37,7 +41,7 @@ func sortFindings(fs []Finding) {
 
 func (f Finding) String() string { return f.Pos + ": " + f.What + ": " + f.Fix }
 
-// Lint scans the Go files under dir that import qenv (simulation code),
+// Sim scans the Go files under dir that import qenv (simulation code),
 // tests excluded, for code that escapes the simulation:
 //   - goroutines started with `go`: outside the scheduler, so runs are
 //     not reproducible, and a step they record has no run (qobs.Strict
@@ -51,7 +55,7 @@ func (f Finding) String() string { return f.Pos + ": " + f.What + ": " + f.Fix }
 //
 // A line with a //qenv:ok comment is exempt, for code that runs outside
 // the simulation on purpose (a real server next to a simulated client).
-func Lint(dir string) ([]Finding, error) {
+func Sim(dir string) ([]Finding, error) {
 	var out []Finding
 	fset := token.NewFileSet()
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
@@ -149,7 +153,7 @@ func lintFile(fset *token.FileSet, f *ast.File) []Finding {
 var syncMethods = map[string]bool{"Lock": true, "Unlock": true, "TryLock": true, "RLock": true, "RUnlock": true,
 	"TryRLock": true, "Add": true, "Done": true, "Wait": true}
 
-// LintWoven scans the Go files under dir, tests excluded, for what
+// Woven scans the Go files under dir, tests excluded, for what
 // qenv/weave cannot bring into a simulation:
 //   - a go statement not marked //qenv:go: its goroutine runs outside the
 //     simulation;
@@ -165,7 +169,7 @@ var syncMethods = map[string]bool{"Lock": true, "Unlock": true, "TryLock": true,
 // Method values are found by name (no type information), so a method of
 // another type with one of those names is reported too: mark a deliberate
 // one //qenv:ok.
-func LintWoven(dir string) ([]Finding, error) {
+func Woven(dir string) ([]Finding, error) {
 	var out []Finding
 	fset := token.NewFileSet()
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {

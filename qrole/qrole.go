@@ -138,7 +138,12 @@ func Call(ctx context.Context, service string) func(err error) {
 // Queue is u: the requests the server name is serving now.
 func (r *Roles) Queue(name string) int { return int(r.get(r.serve, name).inflight.Load()) }
 
-// Orbit is v: operations on service in progress with no attempt in flight.
+// Orbit is v as a running system sees it: operations on service in
+// progress with no attempt in flight, waiting to retry. The chain's v also
+// counts attempts in flight that will time out, which only hindsight
+// knows (qload.Sample.Orbit); with immediate retries this v stays near
+// zero through a storm, and a chain calibrated on it is a chain of the
+// waiting part (qload.Sample.Waiting).
 func (r *Roles) Orbit(service string) int {
 	n := r.get(r.ops, service).inflight.Load() - r.get(r.calls, service).inflight.Load()
 	return int(max(n, 0))

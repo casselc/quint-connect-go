@@ -146,3 +146,6 @@ the rest, each after the U items it depends on.
   faults, `QUINTGO_SEED`, unhealthy baselines, λ ≥ capacity); factors
   naming their model constants; one `FindTrigger` over `qmeta.System`
   with `Expect`.
+- U7: done (DESIGN §28): the chain's v is the hindsight orbit, qrole's the
+  waiting part (`Sample.Waiting`, `TestTwoOrbits`); the lint out of qenv
+  (`internal/lint`); S5 superseded by B1.

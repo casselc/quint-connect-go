@@ -289,7 +289,9 @@ func (c *Client) requestFrom(ctx context.Context, first int) {
 		}
 		if wait > 0 {
 			c.m.inOrbit(c.sim.Elapsed(), c.sim.Elapsed()+wait)
+			c.m.waiting++
 			qenv.Sleep(ctx, wait)
+			c.m.waiting--
 		}
 		c.m.retries++
 	}
@@ -299,10 +301,14 @@ func (c *Client) requestFrom(ctx context.Context, first int) {
 type Sample struct {
 	T time.Duration
 	// Queue is the server's requests in system (queued or in service).
-	// Orbit is the papers' orbit: requests whose current attempt will time
-	// out, or that wait to retry. Known only in hindsight, it is filled in
-	// when the run ends.
+	// Orbit is the papers' orbit, the chain's v (qmeta): requests whose
+	// current attempt will time out, or that wait to retry. Known only in
+	// hindsight, it is filled in when the run ends.
 	Queue, Orbit int
+	// Waiting is the part of the orbit a running system can see: requests
+	// waiting to retry now, between attempts (qrole.Roles.Orbit). With
+	// immediate retries it stays near zero while Orbit fills.
+	Waiting int
 	// Counts over the tick.
 	Arrivals, Retries, Successes, Timeouts, Rejected, Failed, Completions int
 	// P99 latency of the tick's successes (first attempt to success).
@@ -315,13 +321,14 @@ type Metrics struct {
 
 	arrivals, retries, successes, timeouts, rejected, failed, completions int
 	tick                                                                  time.Duration
+	waiting                                                               int
 	orbit                                                                 map[int]int // sample index -> change of Orbit
 	latencies                                                             []time.Duration
 }
 
 // sample records the tick ending now and resets the tick's counters.
 func (m *Metrics) sample(t time.Duration, sv *Server) {
-	s := Sample{T: t, Queue: sv.InSystem(), Arrivals: m.arrivals, Retries: m.retries,
+	s := Sample{T: t, Queue: sv.InSystem(), Waiting: m.waiting, Arrivals: m.arrivals, Retries: m.retries,
 		Successes: m.successes, Timeouts: m.timeouts, Rejected: m.rejected, Failed: m.failed, Completions: m.completions}
 	if n := len(m.latencies); n > 0 {
 		sort.Slice(m.latencies, func(i, j int) bool { return m.latencies[i] < m.latencies[j] })
@@ -382,8 +389,10 @@ func (c *Client) inject(n int) {
 	for i := 0; i < n; i++ {
 		delay := time.Duration(c.rnd.Float64() * float64(c.cfg.Timeout))
 		c.m.inOrbit(0, delay)
+		c.m.waiting++
 		c.sim.Spawn(c.cfg.Name+".orbit", func(ctx context.Context) {
 			qenv.Sleep(ctx, delay)
+			c.m.waiting--
 			c.requestFrom(ctx, 1)
 		})
 	}

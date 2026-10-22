@@ -261,6 +261,11 @@ ci/           install-quint.sh (quint + its Rust evaluator, avoiding GitHub API 
 - qload metrics are time series of rates; sample counters reset every
   tick. `Sample.Orbit` is known only in hindsight (an attempt is in the
   orbit from its start if it times out) and is filled when the run ends.
+- Two v's: the chain's orbit (`qload.Sample.Orbit`, in hindsight:
+  attempts that will time out, and requests waiting to retry) and what a
+  running system sees (`qrole`'s `Orbit`, `Sample.Waiting`: the waiting
+  part). Under immediate retries the second stays at 0 through a storm
+  (`TestTwoOrbits`): alerts on it see only u.
 - An alert region is defined by the probability of recovering within the
   bound (`RecoveryWithin`), not the mean hitting time, which near a storm
   is dominated by rare tips into it. Calibrate a running system with
