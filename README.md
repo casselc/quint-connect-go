@@ -233,10 +233,18 @@ puts real clients behind them. Steps are recorded where effects happen:
 `Txn.OnCommit`, a fake API server's interceptor, the provider. Then:
 
 ```go
-qtest.Explore(t, "checkout.binding.yaml", qtest.ExploreConfig{Seeds: 100}, func(c qenv.Chooser) {
-	checkout.Run(c, checkout.Config{Isolation: qenv.SnapshotIsolation, Mutation: shop.LockWithoutWrite})
-}).Expect(t, qtest.AnyOf(qtest.Rejects("ship"), qtest.Rejects("cancel")))   // write skew
+sys := qtest.System{Binding: "checkout.binding.yaml", Run: func(c qenv.Chooser) error {
+	_, err := checkout.Run(c, checkout.Config{Isolation: qenv.SnapshotIsolation, Mutation: shop.LockWithoutWrite})
+	return err
+}}
+skew := qtest.AnyOf(qtest.Rejects("ship"), qtest.Rejects("cancel"))
+sys.Explore(t, qtest.ExploreConfig{Seeds: 100}).Expect(t, skew)     // seeds, checked in one batch
+quinthegel.Shrink(t, sys, hegel.WithTestCases(50)).Expect(t, skew)  // Hegel, shrunk to its interleaving
 ```
+
+A `qtest.System` binds an application to its model once; `Explore`,
+`Sweep` (covering arrays), `FollowTraces` (a model's traces' faults) and
+`quinthegel.Shrink` all run it.
 
 Seeds run in parallel, each recording into its own recorder. The
 recorder travels in the chooser's context (`qenv.WithContext`) to every
@@ -351,7 +359,7 @@ r := qmeta.Assess(x, "markPaid", qmeta.Trigger{Slowdown: 3, Duration: time.Minut
 | Package | |
 |---|---|
 | `connect` | MBT driver runtime: `Run`, `Test`, `Replay`, `Switch`, `Pick[T]`, `StateDriver`, `GenerateRun`/`GenerateTest` ; `FaultScript` (a trace's faults imposed on a whole program in qenv) |
-| `quinthegel` | Hegel integration: `Test` (modes `Batched`/`Each`/`After`/`Off`), `FindViolation` (expected failures, shrunk), `Recorder`, `CaseChecker`/`CheckCase`, `Replay`, `Traces`; the Hegel adapters of other packages: `Chooser` (qenv's choices from a test case), `FindTrigger`/`SearchTrigger` (qmeta's trigger search) |
+| `quinthegel` | Hegel integration: `Test` (modes `Batched`/`Each`/`After`/`Off`), `FindViolation` (expected failures, shrunk), `Recorder`, `CaseChecker`/`CheckCase`, `Replay`, `Traces`; the Hegel adapters of other packages: `Chooser` (qenv's choices from a test case), `FindTrigger`/`SearchTrigger` (qmeta's trigger search) ; `Shrink(t, sys)` (a `qtest.System` under Hegel, its failure replayable from `Violation.Choices`) |
 | `itf` | ITF traces: `Parse`, `Value`, `Decode`/`Encode` (Go ⇄ Quint values), `ParseQuint` (Quint literals) |
 | `qobs` | runtime recorder: `Record`, `Thread`, `WithRecorder` (a context's own recorder, so runs in parallel record apart), `SetFallback` (a goroutine's run, which qenv provides), `Strict` (a step with nowhere to go panics); sinks `MemorySink`, `FileSink`/`DurableFileSink`/`JSONLSink`, `OTelSink`, `Tee`; `orchestrion.yml` |
 | `qtrace` | the step schema, `Reconstruct` (ordering, gaps, restarts), step log I/O |
@@ -359,7 +367,7 @@ r := qmeta.Assess(x, "markPaid", qmeta.Trigger{Slowdown: 3, Duration: time.Minut
 | `convert` | an application's own spans to steps, by YAML rules |
 | `binding` | the YAML binding: lint against `quint typecheck`, annotation scan, plan, Quint module and ITF generation |
 | `validate` | replay with `quint test`: `Checker.Check`, `CheckRuns`, `ValidateITF`, structured verdicts |
-| `qtest` | record-then-check inside a Go test; `Expect` with `Conforms`/`Rejects`/`Mismatch`/`Violates`/`AnyOf`; `Explore` (seeded simulated runs, in parallel, checked in bulk); `Check`/`Validate` for steps recorded elsewhere; `Constants` (another instance of the binding's model); `RequireQuint` ; `SweepExplore` (a covering array of configurations, each row explored, expectations per row) ; claims over runs (`Some`, `All`, `None`: an expectation alone is about some run, `Conforms` about every run) |
+| `qtest` | record-then-check inside a Go test; `Expect` with `Conforms`/`Rejects`/`Mismatch`/`Violates`/`AnyOf`; `Explore` (seeded simulated runs, in parallel, checked in bulk); `Check`/`Validate` for steps recorded elsewhere; `Constants` (another instance of the binding's model); `RequireQuint` ; `SweepExplore` (a covering array of configurations, each row explored, expectations per row) ; claims over runs (`Some`, `All`, `None`: an expectation alone is about some run, `Conforms` about every run) ; `System` (an app bound to its model: `Explore`, `Sweep`, `FollowTraces`) |
 | `qenv` | deterministic simulated environments: scheduler, virtual time, crashable processes, choosers (seeded, replay, swarm; Hegel's is `quinthegel.Chooser`), a native runtime (`NewNative`: the same doubles on goroutines and `time`, for gosim), `Store` (isolation levels), `Queue`, `Service` (RPC, with optional `Capacity`: workers, queue, service times, shedding); `WithContext` (what every task's context carries, e.g. the run's recorder); crashes per virtual second (`NemesisEvery`); scheduler self-checks (`Check`, `QENV_CHECK=1`); `Lint` (what escapes a simulation: `go` statements, the wall clock) ; fault points (`FaultPoint`, `//quint:fault` via `qenv/fault`), fault coverage (`CoverageOf`, `qtest.Exploration.Coverage`), `Script` (exactly the faults it is given) ; `Without` (fault kinds off for a run); pair and order coverage of faults (`Coverage.Pairs`, `Untried`, `OneWay`) |
 | `qenv/weave` | Orchestrion aspects and the functions they call: `sync` locks and wait groups, and `//qenv:go` goroutines, simulated inside a qenv simulation and real outside |
 | `qenv/fault` | the aspect of `//quint:fault`: a function's entry becomes a fault choice (its package's own errors, or a crash) in a simulation, declared for coverage; woven by qweave |

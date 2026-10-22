@@ -82,10 +82,18 @@ qobs.Record(s.Context(), "settle", nil)
 ## 4. Explore, then shrink
 
 ```go
-qtest.Explore(t, "app.binding.yaml", qtest.ExploreConfig{Seeds: 100, Rates: rates}, func(c qenv.Chooser) {
-	app.Run(c, cfg)
-}).Expect(t, qtest.Violates("chargedAtMostOnce"))                    // or Conforms(), Rejects(a), AnyOf(...)
+sys := qtest.System{Binding: "app.binding.yaml", Run: func(c qenv.Chooser) error { return app.Run(c, cfg) }}
+sys.Explore(t, qtest.ExploreConfig{Seeds: 100, Rates: rates}).Expect(t, qtest.Violates("chargedAtMostOnce")) // or Conforms(), Some/All/None(...)
+quinthegel.Shrink(t, sys, hegel.WithTestCases(50)).Expect(t, qtest.Violates("chargedAtMostOnce"))
 ```
+
+- **One System, every workflow:** `sys.Explore` (seeds), `sys.Sweep`
+  (covering rows), `sys.FollowTraces` (a model's traces' faults),
+  `quinthegel.Shrink` (Hegel), all from the same `Run`. `Run` returns an
+  error when the system could not run, which fails the test and names
+  the seed: never `t.Fatal` inside it, since a seed's goroutine is not
+  the test's. `ExploreConfig.Chooser` gives each seed its own chooser (a
+  Script, `qenv.Replay(v.Choices)` of a shrunk failure).
 
 - **Batching:** every seeded run is checked in one quint batch. On a
   miss, the report names the seed, its faults and its step log.

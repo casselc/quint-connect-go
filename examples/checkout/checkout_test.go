@@ -1,14 +1,12 @@
 package checkout_test
 
 import (
-	"context"
 	"fmt"
 	"testing"
 
 	"github.com/casselc/quint-connect-go/examples/checkout"
 	"github.com/casselc/quint-connect-go/examples/checkout/shop"
 	"github.com/casselc/quint-connect-go/qenv"
-	"github.com/casselc/quint-connect-go/qobs"
 	"github.com/casselc/quint-connect-go/qtest"
 	"github.com/casselc/quint-connect-go/quinthegel"
 	"hegel.dev/go/hegel"
@@ -16,12 +14,16 @@ import (
 
 const binding = "checkout.binding.yaml"
 
+// system is the shop as cfg deploys it, bound to the model.
+func system(cfg checkout.Config) qtest.System {
+	return qtest.System{Binding: binding, Run: func(c qenv.Chooser) error {
+		_, err := checkout.Run(c, cfg)
+		return err
+	}}
+}
+
 func explore(t *testing.T, cfg checkout.Config, x qtest.ExploreConfig) *qtest.Exploration {
-	return qtest.Explore(t, binding, x, func(c qenv.Chooser) {
-		if _, err := checkout.Run(c, cfg); err != nil {
-			t.Fatal(err)
-		}
-	})
+	return system(cfg).Explore(t, x)
 }
 
 // crashy crashes a process at one scheduling step in twenty.
@@ -81,23 +83,16 @@ func TestHegelShrinksWriteSkew(t *testing.T) {
 	if testing.Short() {
 		t.Skip("shrinking against the model")
 	}
-	v := quinthegel.FindViolation(t, quinthegel.Config{Binding: binding}, func(tc hegel.TestCase, rec *quinthegel.Recorder) {
-		c := rec.Env(quinthegel.Chooser(tc)) // the run records its steps and choices into rec
-		if _, err := checkout.Run(c, checkout.Config{Isolation: qenv.SnapshotIsolation, Mutation: shop.LockWithoutWrite}); err != nil {
-			tc.Errorf("%v", err)
-		}
-	}, hegel.WithTestCases(50), hegel.WithSeed(1))
-	v.Expect(t, qtest.AnyOf(qtest.Rejects("ship"), qtest.Rejects("cancel")))
+	sys := system(checkout.Config{Isolation: qenv.SnapshotIsolation, Mutation: shop.LockWithoutWrite})
+	skew := qtest.AnyOf(qtest.Rejects("ship"), qtest.Rejects("cancel"))
+	v := quinthegel.Shrink(t, sys, hegel.WithTestCases(50), hegel.WithSeed(1))
+	v.Expect(t, skew)
 
-	mem := &qobs.MemorySink{}
-	if _, err := checkout.Run(qenv.WithContext(qenv.Replay(v.Choices), qobs.WithRecorder(context.Background(), qobs.NewRecorder(mem))),
-		checkout.Config{Isolation: qenv.SnapshotIsolation, Mutation: shop.LockWithoutWrite}); err != nil {
-		t.Fatal(err)
-	}
-	if got, want := quinthegel.Render(mem.Steps()), quinthegel.Render(v.Steps); got != want {
+	replay := sys.Explore(t, qtest.ExploreConfig{Seeds: 1, Chooser: func(uint64) qenv.Chooser { return qenv.Replay(v.Choices) }})
+	if got, want := quinthegel.Render(replay.Runs[0].Steps), quinthegel.Render(v.Steps); got != want {
 		t.Errorf("the replayed run differs:\n%s\nfrom the shrunk run:\n%s", got, want)
 	}
-	qtest.Validate(t, binding, mem.Steps()).Expect(t, qtest.AnyOf(qtest.Rejects("ship"), qtest.Rejects("cancel")))
+	replay.Expect(t, skew)
 }
 
 // Hegel explores the faithful shop under snapshot isolation, in batches.

@@ -95,14 +95,21 @@ itself (a process with its own loop), let the trace choose only the
 environment: its failures and crashes.
 
 ```go
-sc, err := connect.FaultScript(tr, connect.FaultMap{
+faults := connect.FaultMap{
 	"writeFail": func(*connect.Step) *connect.Fault { return &connect.Fault{Kind: "journal.write", Option: 1, Recorded: true} },
 	"restart":   func(*connect.Step) *connect.Fault { return &connect.Fault{Kind: "nemesis.crash.writer", Recorded: true} },
-}, connect.ReplayOptions{})
-s := qenv.New(qenv.WithContext(sc, qobs.WithRecorder(ctx, qobs.NewRecorder(mem))))
-// ... deploy, s.Run, then: sc.Remaining() is empty, and
-qtest.Check(t, binding, mem.Steps())
+}
+sys := qtest.System{Binding: "journal.binding.yaml", Run: func(c qenv.Chooser) error {
+	s := qenv.New(c); defer s.Close()
+	// ... deploy the program's processes
+	return s.Run(time.Minute)
+}}
+sys.FollowTraces(t, connect.Config{Spec: "journal.qnt", MaxSamples: 8}, faults).Expect(t, qtest.Conforms())
 ```
+
+`FollowTraces` generates the traces, scripts each one's faults
+(`connect.FaultScript`), runs the system on the script, fails a run that
+could not follow its trace (`Script.Remaining`), and checks every run.
 
 - Each mapped step is a fault: a fault point's or a double's kind and
   option, or `nemesis.crash.<process>`. It fires at the first choice of
@@ -111,8 +118,8 @@ qtest.Check(t, binding, mem.Steps())
 - `Recorded` says whether the program records the step itself (a failed
   write, a restart). Steps it does not record don't count toward the
   next fault's wait.
-- A fault left in `Remaining()`, or recorded actions that differ from
-  the trace, mean the program could not follow it. A model check that
+- A fault left in `Remaining()` means the program could not follow its
+  trace. A model check that
   fails means it followed the trace's faults but did the wrong thing
   (connect/faults_test.go: a restart that forgot the durable count).
 

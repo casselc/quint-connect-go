@@ -50,6 +50,11 @@ func (s *Swept) Coverage() *qenv.Coverage {
 // row, checking its expectation there.
 func SweepExplore(t *testing.T, bindingPath string, sw Sweep, scenario func(row qsweep.Row, c qenv.Chooser)) *Swept {
 	t.Helper()
+	return sweep(t, bindingPath, sw, func(row qsweep.Row, c qenv.Chooser) error { scenario(row, c); return nil })
+}
+
+func sweep(t *testing.T, bindingPath string, sw Sweep, scenario func(row qsweep.Row, c qenv.Chooser) error) *Swept {
+	t.Helper()
 	strength := sw.Strength
 	if strength == 0 {
 		strength = 2
@@ -66,7 +71,7 @@ func SweepExplore(t *testing.T, bindingPath string, sw Sweep, scenario func(row 
 			if sw.Opts != nil {
 				xc.Opts = append(append([]Option(nil), xc.Opts...), sw.Opts(row)...)
 			}
-			x := Explore(t, bindingPath, xc, func(c qenv.Chooser) { scenario(row, c) })
+			x := explore(t, bindingPath, xc, func(c qenv.Chooser) error { return scenario(row, c) })
 			s.Runs[i] = x
 			want := []Claim{Conforms()}
 			if sw.Expect != nil {

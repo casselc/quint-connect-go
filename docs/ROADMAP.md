@@ -123,5 +123,8 @@ the rest, each after the U items it depends on.
   `Expect` on `qmeta.Recovery` goes with P4's one recovery API.
 - U3 (S4): choices aligned to steps (DESIGN §19): `Choice.Step`, Script
   waiting on the run's recorder, `Recorder.Env`, `Violation.Choices`
-  replayable. One `Run` type for Explore, FindViolation and qgosim waits
-  for U4's `qtest.System`, which returns it.
+  replayable.
+- U4 (P1): `qtest.System` (DESIGN §20): Explore, Sweep, FollowTraces,
+  `quinthegel.Shrink`; `Run` returns an error; `ExploreConfig.Chooser`.
+  Next in it: one `Run` type across explorations, Violations and qgosim;
+  P3 (Check vs Validate); `quintgo scaffold` printing a System.

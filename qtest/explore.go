@@ -29,6 +29,9 @@ type Explored struct {
 	Report      *validate.Report
 	// Code is the run's code coverage, with ExploreConfig.Coverage.
 	Code *qcover.Counts
+	// Err is the scenario's error: the run did not run to its end
+	// (System.Run's error).
+	Err error
 }
 
 // Faults are the run's fault choices that were not nominal.
@@ -99,6 +102,9 @@ type ExploreConfig struct {
 	// Coverage collects each run's code coverage, by step (qcover; the
 	// code must be woven with qweave -cover): Exploration.CodeCoverage.
 	Coverage bool
+	// Chooser, if set, makes each seed's chooser instead of a seeded one
+	// at Rates: a Script per seed, a Replay of a recorded run, a swarm.
+	Chooser func(seed uint64) qenv.Chooser
 }
 
 // Explore runs scenario once per seed, each time with a seeded qenv chooser
@@ -109,6 +115,13 @@ type ExploreConfig struct {
 // ones: many random schedules and faults, every one judged by the model.
 // State expectations with Exploration.Expect.
 func Explore(t testing.TB, bindingPath string, cfg ExploreConfig, scenario func(c qenv.Chooser)) *Exploration {
+	t.Helper()
+	return explore(t, bindingPath, cfg, func(c qenv.Chooser) error { scenario(c); return nil })
+}
+
+// explore is Explore with a scenario that returns its error: a run that
+// fails to run (rather than to conform) fails t, naming its seed.
+func explore(t testing.TB, bindingPath string, cfg ExploreConfig, scenario func(c qenv.Chooser) error) *Exploration {
 	t.Helper()
 	if cfg.Seeds == 0 {
 		cfg.Seeds = 50
@@ -132,8 +145,14 @@ func Explore(t testing.TB, bindingPath string, cfg ExploreConfig, scenario func(
 		go func() { //qenv:ok runs seeds side by side, each its own simulation
 			defer func() { <-sem; wg.Done() }()
 			mem := &qobs.MemorySink{}
-			ch := qenv.NewSeeded(seed)
-			ch.Rates = cfg.Rates
+			var ch qenv.Chooser
+			if cfg.Chooser != nil {
+				ch = cfg.Chooser(seed)
+			} else {
+				s := qenv.NewSeeded(seed)
+				s.Rates = cfg.Rates
+				ch = s
+			}
 			rec := &qenv.Recorder{C: ch}
 			var sink qobs.Sink = mem
 			ctx := context.Background()
@@ -143,12 +162,17 @@ func Explore(t testing.TB, bindingPath string, cfg ExploreConfig, scenario func(
 				ctx, sink = qcover.WithCounts(ctx, code), code.Sink(mem)
 			}
 			r := qobs.NewRecorder(sink, c.Recorder...)
-			scenario(qenv.WithContext(rec, qobs.WithRecorder(ctx, r)))
-			x.Runs[i] = &Explored{Seed: seed, Steps: mem.Steps(), Choices: rec.Choices, Interrupted: r.Interrupted(), Code: code}
+			err := scenario(qenv.WithContext(rec, qobs.WithRecorder(ctx, r)))
+			x.Runs[i] = &Explored{Seed: seed, Steps: mem.Steps(), Choices: rec.Choices, Interrupted: r.Interrupted(), Code: code, Err: err}
 			runs[i] = mem.Steps()
 		}()
 	}
 	wg.Wait()
+	for _, r := range x.Runs {
+		if r.Err != nil {
+			t.Errorf("quintgo: seed %d did not run: %v", r.Seed, r.Err)
+		}
+	}
 	if t.Failed() {
 		// a scenario failed t (t.Fatal from a run's goroutine ends only
 		// that run)

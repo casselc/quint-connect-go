@@ -113,3 +113,18 @@ func (v *Violation) Last() qtrace.Step {
 	}
 	return v.Steps[len(v.Steps)-1]
 }
+
+// Shrink runs Hegel against the system, expecting the model to reject
+// some test case, and shrinks it (FindViolation): every choice of the
+// system's environment is Hegel's (Chooser), recorded with the run's steps
+// (Recorder.Env), so the shrunk Violation replays outside Hegel.
+//
+//	quinthegel.Shrink(t, sys, hegel.WithTestCases(50)).Expect(t, qtest.Rejects("ship"))
+func Shrink(t testing.TB, sys qtest.System, opts ...hegel.Option) *Violation {
+	t.Helper()
+	return FindViolation(t, Config{Binding: sys.Binding, Constants: sys.Constants}, func(tc hegel.TestCase, rec *Recorder) {
+		if err := sys.Run(rec.Env(Chooser(tc))); err != nil {
+			tc.Errorf("quinthegel: the system did not run: %v", err)
+		}
+	}, opts...)
+}

@@ -32,8 +32,8 @@ func stockOf(row qsweep.Row) []qtest.Option {
 }
 
 // deploy runs the shop as a row says, with the fault kinds it turns off.
-func deploy(t *testing.T, m shop.Mutation) func(qsweep.Row, qenv.Chooser) {
-	return func(row qsweep.Row, c qenv.Chooser) {
+func deploy(m shop.Mutation) func(qsweep.Row, qenv.Chooser) error {
+	return func(row qsweep.Row, c qenv.Chooser) error {
 		var off []string
 		for _, k := range []string{"queue.ack", "rpc.api", "rpc.provider"} {
 			if !row.On(k) {
@@ -42,11 +42,14 @@ func deploy(t *testing.T, m shop.Mutation) func(qsweep.Row, qenv.Chooser) {
 		}
 		cfg := checkout.Config{Isolation: isoOf[row.Get("iso")], Mutation: m,
 			Orders: row.Int("orders"), Stock: row.Int("stock"), NoCrashes: !row.On("crash")}
-		if _, err := checkout.Run(qenv.Without(c, off...), cfg); err != nil {
-			t.Fatal(err)
-		}
+		_, err := checkout.Run(qenv.Without(c, off...), cfg)
+		return err
 	}
 }
+
+// shopSystem is the shop bound to its model, for sweeps (each row says how
+// to deploy it).
+var shopSystem = qtest.System{Binding: binding}
 
 // The faithful shop conforms on every pairwise row: every pair of factor
 // values, every pair of fault kinds together and each kind alone, at
@@ -56,7 +59,7 @@ func TestFaithfulSweep(t *testing.T) {
 	if testing.Short() {
 		t.Skip("sweeps hundreds of runs")
 	}
-	sw := qtest.SweepExplore(t, binding, qtest.Sweep{Factors: space, Opts: stockOf, Explore: qtest.ExploreConfig{Seeds: 20, Rates: crashy}}, deploy(t, shop.Faithful))
+	sw := shopSystem.Sweep(t, qtest.Sweep{Factors: space, Opts: stockOf, Explore: qtest.ExploreConfig{Seeds: 20, Rates: crashy}}, deploy(shop.Faithful))
 	cov := sw.Coverage()
 	t.Log(cov)
 	if u := cov.Untried(); len(u) > 0 {
@@ -74,13 +77,13 @@ func TestNoIdempotencyKeySweep(t *testing.T) {
 	if testing.Short() {
 		t.Skip("sweeps hundreds of runs")
 	}
-	qtest.SweepExplore(t, binding, qtest.Sweep{Factors: space, Opts: stockOf, Explore: qtest.ExploreConfig{Seeds: 20, Rates: crashy},
+	shopSystem.Sweep(t, qtest.Sweep{Factors: space, Opts: stockOf, Explore: qtest.ExploreConfig{Seeds: 20, Rates: crashy},
 		Expect: func(row qsweep.Row) []qtest.Claim {
 			if row.On("rpc.provider") {
 				return []qtest.Claim{qtest.Violates("chargedAtMostOnce")}
 			}
 			return []qtest.Claim{qtest.Violates("settledCorrectly"), qtest.None(qtest.Violates("chargedAtMostOnce"))}
-		}}, deploy(t, shop.NoIdempotencyKey))
+		}}, deploy(shop.NoIdempotencyKey))
 }
 
 // Both orders of every pair of fault kinds, each imposed by a Script on a

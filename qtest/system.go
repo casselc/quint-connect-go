@@ -1,0 +1,99 @@
+package qtest
+
+import (
+	"context"
+	"testing"
+
+	"github.com/casselc/quint-connect-go/connect"
+	"github.com/casselc/quint-connect-go/itf"
+	"github.com/casselc/quint-connect-go/qenv"
+	"github.com/casselc/quint-connect-go/qsweep"
+)
+
+// A System is an application bound to its model: the binding, the model's
+// constants for its instance, and how to run it on a chooser. The
+// workflows over it share that one definition: explore seeds (Explore),
+// follow a model's traces through their faults (FollowTraces), sweep
+// configurations (Sweep), and shrink a failure with Hegel
+// (quinthegel.Shrink).
+//
+//	sys := qtest.System{Binding: "checkout.binding.yaml", Run: func(c qenv.Chooser) error {
+//		_, err := checkout.Run(c, cfg)
+//		return err
+//	}}
+//	sys.Explore(t, qtest.ExploreConfig{Seeds: 100}).Expect(t, qtest.Conforms())
+type System struct {
+	Binding string
+	// Constants are the model's constants for this instance, over the
+	// binding's (Constants).
+	Constants map[string]string
+	// Opts are further options (artifacts, quint options).
+	Opts []Option
+	// Run deploys and runs the application on c: a simulation made from c
+	// (qenv.New(c)) records into the run's recorder. An error means the run
+	// could not run to its end, not that it violates the model: it fails
+	// the test, naming its seed.
+	Run func(c qenv.Chooser) error
+}
+
+func (s System) opts(more ...Option) []Option {
+	out := append([]Option(nil), s.Opts...)
+	if len(s.Constants) > 0 {
+		out = append(out, Constants(s.Constants))
+	}
+	return append(out, more...)
+}
+
+// Explore runs the system once per seed and checks every run (Explore).
+func (s System) Explore(t testing.TB, cfg ExploreConfig) *Exploration {
+	t.Helper()
+	cfg.Opts = s.opts(cfg.Opts...)
+	return explore(t, s.Binding, cfg, s.Run)
+}
+
+// FollowTraces drives the whole system through each of the model's traces'
+// faults (connect.FaultScript): the trace's mapped actions are imposed as
+// faults in its order, the system makes every other step itself, and its
+// recorded run is checked against the model. A run that cannot follow its
+// trace (a scripted fault it never came to) fails the test with the
+// faults left. trace configures `quint run` (Dir defaults to a temporary
+// directory).
+func (s System) FollowTraces(t *testing.T, trace connect.Config, faults connect.FaultMap) *Exploration {
+	t.Helper()
+	if trace.Dir == "" {
+		trace.Dir = t.TempDir()
+	}
+	files, _, err := connect.GenerateRun(context.Background(), trace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scripts := make([]*qenv.Script, len(files))
+	for i, f := range files {
+		tr, err := itf.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if scripts[i], err = connect.FaultScript(tr, faults, connect.ReplayOptions{Trace: i, StatePath: trace.StatePath, NondetPath: trace.NondetPath}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	x := s.Explore(t, ExploreConfig{Seeds: len(files), Chooser: func(seed uint64) qenv.Chooser { return scripts[seed-1] }})
+	for i, sc := range scripts {
+		if r := sc.Remaining(); len(r) > 0 {
+			t.Errorf("quintgo: trace %d: scripted faults never happened: %v (the run did not follow its trace: "+
+				"the fault's kind never came up after the steps before it)", i, r)
+		}
+	}
+	if t.Failed() {
+		t.FailNow()
+	}
+	return x
+}
+
+// Sweep explores each covering row of sw (SweepExplore), running the
+// system as run says for the row.
+func (s System) Sweep(t *testing.T, sw Sweep, run func(row qsweep.Row, c qenv.Chooser) error) *Swept {
+	t.Helper()
+	sw.Explore.Opts = s.opts(sw.Explore.Opts...)
+	return sweep(t, s.Binding, sw, run)
+}

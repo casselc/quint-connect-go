@@ -3,16 +3,13 @@ package connect_test
 import (
 	"context"
 	"errors"
-	"reflect"
 	"testing"
 	"time"
 
 	"github.com/casselc/quint-connect-go/connect"
-	"github.com/casselc/quint-connect-go/itf"
 	"github.com/casselc/quint-connect-go/qenv"
 	"github.com/casselc/quint-connect-go/qobs"
 	"github.com/casselc/quint-connect-go/qtest"
-	"github.com/casselc/quint-connect-go/qtrace"
 )
 
 var errDisk = errors.New("disk full")
@@ -54,68 +51,31 @@ var journalFaults = connect.FaultMap{
 	},
 }
 
-// followTraces runs the journal under each of the model's traces' faults
-// and checks that the run took the trace's actions; it returns the runs'
-// steps and the faults imposed, by kind.
-func followTraces(t *testing.T, forgets bool) ([][]qtrace.Step, map[string]int) {
-	t.Helper()
-	files, _, err := connect.GenerateRun(context.Background(), connect.Config{
-		Spec: "testdata/journal.qnt", MaxSamples: 8, MaxSteps: 8, Seed: "11", Dir: t.TempDir()})
-	if err != nil {
-		t.Fatal(err)
-	}
-	kinds := map[string]int{}
-	var runs [][]qtrace.Step
-	for i, f := range files {
-		tr, err := itf.ReadFile(f)
-		if err != nil {
-			t.Fatal(err)
-		}
-		sc, err := connect.FaultScript(tr, journalFaults, connect.ReplayOptions{Trace: i})
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, f := range sc.Faults {
-			kinds[f.Kind]++
-		}
-		mem := &qobs.MemorySink{}
-		s := qenv.New(qenv.WithContext(sc, qobs.WithRecorder(context.Background(), qobs.NewRecorder(mem))))
+// journalSystem runs the journal in a simulation of its own.
+func journalSystem(forgets bool) qtest.System {
+	return qtest.System{Binding: "testdata/journal.binding.yaml", Run: func(c qenv.Chooser) error {
+		s := qenv.New(c)
+		defer s.Close()
 		j := &journal{forgets: forgets}
 		var p *qenv.Process
 		p = s.Process("writer", true, func(ctx context.Context) { j.run(ctx, &p) })
-		if err := s.Run(time.Minute); err != nil {
-			t.Fatal(err)
-		}
-		s.Close()
-		var want, got []string
-		for _, st := range tr.States[1:] {
-			want = append(want, st.Action)
-		}
-		for _, st := range mem.Steps() {
-			got = append(got, st.Action)
-		}
-		// the trace is a prefix: the program goes on to its sixth write
-		if r := sc.Remaining(); len(r) > 0 || !reflect.DeepEqual(got[:min(len(got), len(want))], want) {
-			t.Fatalf("trace %d: the run did not follow it (faults left %v)\nwant %v\ngot  %v", i, r, want, got)
-		}
-		runs = append(runs, mem.Steps())
-	}
-	return runs, kinds
+		return s.Run(time.Minute)
+	}}
 }
+
+var journalTraces = connect.Config{Spec: "testdata/journal.qnt", MaxSamples: 8, MaxSteps: 8, Seed: "11"}
 
 // Quint traces drive the whole program through its environment: each
 // trace's failed writes and restart are imposed as faults, the program
-// makes every other step itself, and its recorded run is the trace's,
-// action for action, and conforms to the model.
+// makes every other step itself, and every run follows its trace and
+// conforms to the model.
 func TestFaultScriptDrivesProgram(t *testing.T) {
 	qtest.RequireQuint(t)
-	runs, kinds := followTraces(t, false)
-	t.Logf("faults imposed: %v", kinds)
-	if kinds["journal.write"] == 0 || kinds["nemesis.crash.writer"] == 0 {
-		t.Fatalf("the traces lack a failed write or a restart: %v", kinds)
-	}
-	for _, steps := range runs {
-		qtest.Check(t, "testdata/journal.binding.yaml", steps)
+	x := journalSystem(false).FollowTraces(t, journalTraces, journalFaults)
+	x.Expect(t, qtest.Conforms())
+	cov := x.Coverage()
+	if w, r := cov.Point("journal.write"), cov.Point("nemesis"); w == nil || w.Faulted() == 0 || r == nil || r.Faulted() == 0 {
+		t.Fatalf("the traces lack a failed write or a restart:\n%s", cov)
 	}
 }
 
@@ -123,20 +83,5 @@ func TestFaultScriptDrivesProgram(t *testing.T) {
 // the model rejects its restart: the trace's crash is what exposes it.
 func TestFaultScriptCatchesForgetfulRestart(t *testing.T) {
 	qtest.RequireQuint(t)
-	runs, _ := followTraces(t, true)
-	caught := 0
-	for _, steps := range runs {
-		wrote := false
-		for _, st := range steps {
-			wrote = wrote || st.Action == "write"
-			if st.Action == "restart" && wrote {
-				qtest.Expect(t, qtest.Validate(t, "testdata/journal.binding.yaml", steps).Report, qtest.Mismatch("restart"))
-				caught++
-				break
-			}
-		}
-	}
-	if caught == 0 {
-		t.Fatal("no trace restarts after a write")
-	}
+	journalSystem(true).FollowTraces(t, journalTraces, journalFaults).Expect(t, qtest.Mismatch("restart"))
 }

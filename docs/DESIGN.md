@@ -1953,3 +1953,35 @@ Hegel in the run.
 Writing that test hit P3 of the review: `qtest.Check` fails a test on a
 violation before `.Expect` can say it was wanted. The test uses
 `Validate`.
+
+## 20. One system, every workflow (`qtest.System`, U4)
+
+Each workflow wired the same pieces by hand: a scenario that runs the
+app, its recorder, the chooser's context, and the binding passed again at
+every call.
+- connect's trace-following test was 40 lines of `GenerateRun`,
+  `FaultScript`, a sink, a recorder and the `Progress` closure.
+- Checkout's tests called `t.Fatal` from seeds' goroutines.
+
+`qtest.System{Binding, Constants, Opts, Run}` binds an application to its
+model once. `Run(c) error` deploys and runs it on a chooser. An error
+means it could not run, which fails the test and names the seed; it is
+not a verdict.
+- `sys.Explore(t, cfg)` explores seeds. `ExploreConfig.Chooser` gives
+  each seed its own chooser instead of a seeded one.
+- `sys.Sweep(t, sw, run)` sweeps covering rows, the row deciding how to
+  run.
+- `sys.FollowTraces(t, trace, faults)` generates the model's traces,
+  scripts each one's faults, runs the system on each script, and fails a
+  run whose script did not complete (`Remaining`), the P6 message.
+- `quinthegel.Shrink(t, sys)` lives in quinthegel, which imports qtest:
+  Hegel stays out of qtest. It is FindViolation over `sys.Run` on
+  `rec.Env(Chooser(tc))`.
+
+connect's test is now a System and two calls. It runs in 5 s instead of
+9 s, because Explore checks the traces' runs in one batch. Checkout's
+replay of its shrunk write skew is an exploration of one seed whose
+chooser is `qenv.Replay(v.Choices)`.
+
+Left for later: one `Run` type for exploration runs, Violations and
+qgosim's, and `quintgo scaffold` printing a System skeleton.
